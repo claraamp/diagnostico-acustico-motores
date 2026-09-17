@@ -1,0 +1,23 @@
+# Dados brutos e processados — grandes demais para o repo, reconstruíveis via script
+data/raw/*
+!data/raw/.gitkeep
+data/processed/**/*.bin
+!data/processed/**/manifest.json
+
+# Ambiente Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Build do firmware (Fase 2)
+firmware/**/Debug/
+firmware/**/Release/
+firmware/**/*.o
+firmware/**/*.elf
+firmware/**/*.bin
+!firmware/**/CMakeLists.txt
+
+# Editor / SO
+.vscode/
+.DS_Store
