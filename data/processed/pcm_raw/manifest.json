@@ -1,0 +1,52 @@
+{
+  "normal": {
+    "arquivo_origem": "0Nm_Normal.mat",
+    "rotulo_binario": "normal",
+    "arquivo_pcm": "data/processed/pcm_raw/normal.bin",
+    "fs_hz": 51200,
+    "n_amostras": 3072000,
+    "duracao_s": 60.0,
+    "pico_original_pa": 0.8760986328125,
+    "pico_pcm": 8505
+  },
+  "bpfi_0.3mm": {
+    "arquivo_origem": "0Nm_BPFI_03.mat",
+    "rotulo_binario": "falha",
+    "arquivo_pcm": "data/processed/pcm_raw/bpfi_0.3mm.bin",
+    "fs_hz": 51200,
+    "n_amostras": 3072000,
+    "duracao_s": 60.0,
+    "pico_original_pa": 1.7249023437500002,
+    "pico_pcm": 16744
+  },
+  "bpfi_1.0mm": {
+    "arquivo_origem": "0Nm_BPFI_10.mat",
+    "rotulo_binario": "falha",
+    "arquivo_pcm": "data/processed/pcm_raw/bpfi_1.0mm.bin",
+    "fs_hz": 51200,
+    "n_amostras": 3072000,
+    "duracao_s": 60.0,
+    "pico_original_pa": 3.3079833984375,
+    "pico_pcm": 32112
+  },
+  "bpfo_0.3mm": {
+    "arquivo_origem": "0Nm_BPFO_03.mat",
+    "rotulo_binario": "falha",
+    "arquivo_pcm": "data/processed/pcm_raw/bpfo_0.3mm.bin",
+    "fs_hz": 51200,
+    "n_amostras": 3072000,
+    "duracao_s": 60.0,
+    "pico_original_pa": 0.75361328125,
+    "pico_pcm": 7316
+  },
+  "bpfo_1.0mm": {
+    "arquivo_origem": "0Nm_BPFO_10.mat",
+    "rotulo_binario": "falha",
+    "arquivo_pcm": "data/processed/pcm_raw/bpfo_1.0mm.bin",
+    "fs_hz": 51200,
+    "n_amostras": 3072000,
+    "duracao_s": 60.0,
+    "pico_original_pa": 3.0546875,
+    "pico_pcm": 29653
+  }
+}
