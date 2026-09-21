@@ -1,0 +1,1437 @@
+{
+  "fs_origem_hz": 51200.0,
+  "n_clipes": 5,
+  "duracao_s": 60.0,
+  "sintetico": false,
+  "condicao": "0Nm",
+  "classes": {
+    "normal": "normal",
+    "bpfi_0.3mm": "falha",
+    "bpfi_1.0mm": "falha",
+    "bpfo_0.3mm": "falha",
+    "bpfo_1.0mm": "falha"
+  },
+  "min_preservacao_exigida": 0.95,
+  "energia_discriminante_f95_hz": {
+    "bpfi_0.3mm": 5633.9,
+    "bpfi_1.0mm": 2260.3,
+    "bpfo_0.3mm": 5999.3,
+    "bpfo_1.0mm": 2387.2
+  },
+  "energia_discriminante_f99_hz": {
+    "bpfi_0.3mm": 9155.0,
+    "bpfi_1.0mm": 3005.6,
+    "bpfo_0.3mm": 9151.2,
+    "bpfo_1.0mm": 4220.4
+  },
+  "banda_demodulacao_hz": [
+    2700.0,
+    4700.0
+  ],
+  "banda_demodulacao_nota_db": 5.88,
+  "banda_demodulacao_fracao_energia": 0.0172,
+  "ranking_bandas": [
+    {
+      "lo_hz": 2700.0,
+      "hi_hz": 4700.0,
+      "largura_hz": 2000.0,
+      "fracao_energia": 0.0172,
+      "snr_por_clipe": {
+        "bpfi_1.0mm": 1.52,
+        "bpfo_1.0mm": 10.25
+      },
+      "nota_db": 5.88
+    },
+    {
+      "lo_hz": 4200.0,
+      "hi_hz": 7200.0,
+      "largura_hz": 3000.0,
+      "fracao_energia": 0.0158,
+      "snr_por_clipe": {
+        "bpfi_1.0mm": 5.22,
+        "bpfo_1.0mm": 6.44
+      },
+      "nota_db": 5.83
+    },
+    {
+      "lo_hz": 2700.0,
+      "hi_hz": 5700.0,
+      "largura_hz": 3000.0,
+      "fracao_energia": 0.0262,
+      "snr_por_clipe": {
+        "bpfi_1.0mm": 0.75,
+        "bpfo_1.0mm": 9.54
+      },
+      "nota_db": 5.14
+    },
+    {
+      "lo_hz": 1700.0,
+      "hi_hz": 4700.0,
+      "largura_hz": 3000.0,
+      "fracao_energia": 0.4806,
+      "snr_por_clipe": {
+        "bpfi_1.0mm": 3.5,
+        "bpfo_1.0mm": 6.51
+      },
+      "nota_db": 5.0
+    },
+    {
+      "lo_hz": 1700.0,
+      "hi_hz": 3700.0,
+      "largura_hz": 2000.0,
+      "fracao_energia": 0.4634,
+      "snr_por_clipe": {
+        "bpfi_1.0mm": 3.52,
+        "bpfo_1.0mm": 6.18
+      },
+      "nota_db": 4.85
+    },
+    {
+      "lo_hz": 200.0,
+      "hi_hz": 1200.0,
+      "largura_hz": 1000.0,
+      "fracao_energia": 0.0463,
+      "snr_por_clipe": {
+        "bpfi_1.0mm": 8.58,
+        "bpfo_1.0mm": 0.55
+      },
+      "nota_db": 4.57
+    },
+    {
+      "lo_hz": 2200.0,
+      "hi_hz": 4200.0,
+      "largura_hz": 2000.0,
+      "fracao_energia": 0.4806,
+      "snr_por_clipe": {
+        "bpfi_1.0mm": 0.78,
+        "bpfo_1.0mm": 7.76
+      },
+      "nota_db": 4.27
+    },
+    {
+      "lo_hz": 2200.0,
+      "hi_hz": 3200.0,
+      "largura_hz": 1000.0,
+      "fracao_energia": 0.4634,
+      "snr_por_clipe": {
+        "bpfi_1.0mm": 1.81,
+        "bpfo_1.0mm": 6.31
+      },
+      "nota_db": 4.06
+    },
+    {
+      "lo_hz": 3200.0,
+      "hi_hz": 4200.0,
+      "largura_hz": 1000.0,
+      "fracao_energia": 0.0172,
+      "snr_por_clipe": {
+        "bpfi_1.0mm": 3.27,
+        "bpfo_1.0mm": 4.8
+      },
+      "nota_db": 4.04
+    },
+    {
+      "lo_hz": 2200.0,
+      "hi_hz": 5200.0,
+      "largura_hz": 3000.0,
+      "fracao_energia": 0.4897,
+      "snr_por_clipe": {
+        "bpfi_1.0mm": 0.8,
+        "bpfo_1.0mm": 6.76
+      },
+      "nota_db": 3.78
+    }
+  ],
+  "varredura_energia": [
+    {
+      "lo_hz": 200.0,
+      "hi_hz": 1200.0,
+      "energia_normal": 1.6391656570709614e-05,
+      "energia_falha": 0.0018318544437483058,
+      "razao_db": 20.482681159703894
+    },
+    {
+      "lo_hz": 1200.0,
+      "hi_hz": 2200.0,
+      "energia_normal": 0.0006747687843282168,
+      "energia_falha": 0.017829051988831352,
+      "razao_db": 14.219732680052475
+    },
+    {
+      "lo_hz": 2200.0,
+      "hi_hz": 3200.0,
+      "energia_normal": 0.00013051989047083246,
+      "energia_falha": 0.01832041163608861,
+      "razao_db": 21.472585268134875
+    },
+    {
+      "lo_hz": 3200.0,
+      "hi_hz": 4200.0,
+      "energia_normal": 0.00010992682514033216,
+      "energia_falha": 0.0006781254386776247,
+      "razao_db": 7.902063514300504
+    },
+    {
+      "lo_hz": 4200.0,
+      "hi_hz": 5200.0,
+      "energia_normal": 8.253110770892246e-05,
+      "energia_falha": 0.00035935568549776684,
+      "razao_db": 6.389068462542182
+    },
+    {
+      "lo_hz": 5200.0,
+      "hi_hz": 6200.0,
+      "energia_normal": 4.528743386293252e-05,
+      "energia_falha": 0.00012588919439133627,
+      "razao_db": 4.440107415462831
+    },
+    {
+      "lo_hz": 6200.0,
+      "hi_hz": 7200.0,
+      "energia_normal": 0.0001783803366073952,
+      "energia_falha": 0.00013748438218790394,
+      "razao_db": -1.130936126901104
+    },
+    {
+      "lo_hz": 7200.0,
+      "hi_hz": 8200.0,
+      "energia_normal": 6.512397691977992e-06,
+      "energia_falha": 0.00012903272054029763,
+      "razao_db": 12.969589403723907
+    },
+    {
+      "lo_hz": 8200.0,
+      "hi_hz": 9200.0,
+      "energia_normal": 1.0774094599953964e-05,
+      "energia_falha": 5.553581095888203e-05,
+      "razao_db": 7.121923335437808
+    },
+    {
+      "lo_hz": 9200.0,
+      "hi_hz": 10200.0,
+      "energia_normal": 9.798437118999155e-07,
+      "energia_falha": 1.2486167636098866e-05,
+      "razao_db": 11.052723514568205
+    },
+    {
+      "lo_hz": 10200.0,
+      "hi_hz": 11200.0,
+      "energia_normal": 2.488996221779507e-06,
+      "energia_falha": 8.975609269441594e-06,
+      "razao_db": 5.570397010431208
+    },
+    {
+      "lo_hz": 11200.0,
+      "hi_hz": 12200.0,
+      "energia_normal": 8.452710254713593e-07,
+      "energia_falha": 4.522537265247126e-06,
+      "razao_db": 7.283861717731588
+    },
+    {
+      "lo_hz": 12200.0,
+      "hi_hz": 13200.0,
+      "energia_normal": 9.198778769883565e-07,
+      "energia_falha": 6.504130664734601e-06,
+      "razao_db": 8.494590832073436
+    },
+    {
+      "lo_hz": 13200.0,
+      "hi_hz": 14200.0,
+      "energia_normal": 1.1513445732430961e-07,
+      "energia_falha": 3.4656168317002088e-06,
+      "razao_db": 14.78575225920514
+    },
+    {
+      "lo_hz": 14200.0,
+      "hi_hz": 15200.0,
+      "energia_normal": 1.525581842097583e-06,
+      "energia_falha": 4.415528414359749e-06,
+      "razao_db": 4.6154717286435645
+    },
+    {
+      "lo_hz": 15200.0,
+      "hi_hz": 16200.0,
+      "energia_normal": 8.315869310260406e-08,
+      "energia_falha": 1.2888558655012354e-05,
+      "razao_db": 21.902966968586185
+    },
+    {
+      "lo_hz": 16200.0,
+      "hi_hz": 17200.0,
+      "energia_normal": 3.3152751881590443e-07,
+      "energia_falha": 2.9530643743394564e-06,
+      "razao_db": 9.49753330984924
+    },
+    {
+      "lo_hz": 17200.0,
+      "hi_hz": 18200.0,
+      "energia_normal": 1.41586127200095e-07,
+      "energia_falha": 2.922660849482881e-06,
+      "razao_db": 13.147577193350928
+    },
+    {
+      "lo_hz": 18200.0,
+      "hi_hz": 19200.0,
+      "energia_normal": 2.699552992943012e-07,
+      "energia_falha": 1.887784632841549e-06,
+      "razao_db": 8.446605892678733
+    },
+    {
+      "lo_hz": 19200.0,
+      "hi_hz": 20200.0,
+      "energia_normal": 3.341029465158635e-08,
+      "energia_falha": 1.3458338426821642e-06,
+      "razao_db": 16.051111392054665
+    },
+    {
+      "lo_hz": 20200.0,
+      "hi_hz": 21200.0,
+      "energia_normal": 1.2045167219251955e-07,
+      "energia_falha": 1.4064584216329539e-06,
+      "razao_db": 10.673140643295781
+    },
+    {
+      "lo_hz": 21200.0,
+      "hi_hz": 22200.0,
+      "energia_normal": 2.6392284345378545e-08,
+      "energia_falha": 1.09306800172676e-06,
+      "razao_db": 16.171701994637225
+    },
+    {
+      "lo_hz": 22200.0,
+      "hi_hz": 23200.0,
+      "energia_normal": 1.4312762073226217e-08,
+      "energia_falha": 6.616828822471889e-07,
+      "razao_db": 16.64926447692188
+    },
+    {
+      "lo_hz": 23200.0,
+      "hi_hz": 24200.0,
+      "energia_normal": 1.0541610001305523e-08,
+      "energia_falha": 6.070330500156377e-07,
+      "razao_db": 17.603053919901463
+    },
+    {
+      "lo_hz": 24200.0,
+      "hi_hz": 25200.0,
+      "energia_normal": 3.820445175263299e-09,
+      "energia_falha": 1.3350536218893787e-07,
+      "razao_db": 15.433847375284076
+    }
+  ],
+  "baseline_aprovado": true,
+  "baseline": {
+    "picos": {
+      "eixo (1x)": {
+        "presente": true,
+        "melhor_snr_db": 37.74,
+        "melhor_clipe": "bpfi_0.3mm",
+        "f_pico_hz": 50.25,
+        "por_clipe": {
+          "bpfi_0.3mm": {
+            "snr_db": 37.74,
+            "f_pico_hz": 50.25
+          },
+          "bpfi_1.0mm": {
+            "snr_db": 27.17,
+            "f_pico_hz": 50.25
+          },
+          "bpfo_0.3mm": {
+            "snr_db": 25.1,
+            "f_pico_hz": 50.25
+          },
+          "bpfo_1.0mm": {
+            "snr_db": 26.52,
+            "f_pico_hz": 50.25
+          }
+        }
+      },
+      "BPFO (1x)": {
+        "presente": true,
+        "melhor_snr_db": 7.31,
+        "melhor_clipe": "bpfo_1.0mm",
+        "f_pico_hz": 178.5,
+        "por_clipe": {
+          "bpfo_0.3mm": {
+            "snr_db": 2.44,
+            "f_pico_hz": 180.0
+          },
+          "bpfo_1.0mm": {
+            "snr_db": 7.31,
+            "f_pico_hz": 178.5
+          }
+        }
+      },
+      "BPFO (2x)": {
+        "presente": true,
+        "melhor_snr_db": 9.62,
+        "melhor_clipe": "bpfo_0.3mm",
+        "f_pico_hz": 357.25,
+        "por_clipe": {
+          "bpfo_0.3mm": {
+            "snr_db": 9.62,
+            "f_pico_hz": 357.25
+          },
+          "bpfo_1.0mm": {
+            "snr_db": 6.33,
+            "f_pico_hz": 358.25
+          }
+        }
+      },
+      "BPFO (3x)": {
+        "presente": true,
+        "melhor_snr_db": 6.42,
+        "melhor_clipe": "bpfo_0.3mm",
+        "f_pico_hz": 535.75,
+        "por_clipe": {
+          "bpfo_0.3mm": {
+            "snr_db": 6.42,
+            "f_pico_hz": 535.75
+          },
+          "bpfo_1.0mm": {
+            "snr_db": 2.6,
+            "f_pico_hz": 537.25
+          }
+        }
+      },
+      "BPFI (1x)": {
+        "presente": true,
+        "melhor_snr_db": 9.88,
+        "melhor_clipe": "bpfi_0.3mm",
+        "f_pico_hz": 273.5,
+        "por_clipe": {
+          "bpfi_0.3mm": {
+            "snr_db": 9.88,
+            "f_pico_hz": 273.5
+          },
+          "bpfi_1.0mm": {
+            "snr_db": 0.74,
+            "f_pico_hz": 271.75
+          }
+        }
+      },
+      "BPFI (2x)": {
+        "presente": true,
+        "melhor_snr_db": 7.01,
+        "melhor_clipe": "bpfi_0.3mm",
+        "f_pico_hz": 545.0,
+        "por_clipe": {
+          "bpfi_0.3mm": {
+            "snr_db": 7.01,
+            "f_pico_hz": 545.0
+          },
+          "bpfi_1.0mm": {
+            "snr_db": 6.42,
+            "f_pico_hz": 544.25
+          }
+        }
+      },
+      "BPFI (3x)": {
+        "presente": true,
+        "melhor_snr_db": 7.73,
+        "melhor_clipe": "bpfi_0.3mm",
+        "f_pico_hz": 815.25,
+        "por_clipe": {
+          "bpfi_0.3mm": {
+            "snr_db": 7.73,
+            "f_pico_hz": 815.25
+          },
+          "bpfi_1.0mm": {
+            "snr_db": 3.82,
+            "f_pico_hz": 817.5
+          }
+        }
+      }
+    },
+    "separabilidade": {
+      "acuracia_balanceada": 1.0,
+      "fisher_medio": 3.9913,
+      "fisher_max": 29.282,
+      "n_treino": 210,
+      "n_teste": 90
+    },
+    "custo": {
+      "fs_hz": 51200,
+      "nyquist_hz": 25600.0,
+      "amostras_por_janela_25ms": 1280,
+      "n_fft": 2048,
+      "ram_buffer_1s_int16_bytes": 102400,
+      "ram_buffer_1s_kib": 100.0,
+      "flops_fft_por_janela": 61440,
+      "mflops_mfcc_estimado": 6.14,
+      "mac_por_s_fir_antialiasing": 0,
+      "fator_inteiro": true,
+      "L_up": 1,
+      "M_down": 1,
+      "taps_fir": 0
+    }
+  },
+  "por_taxa": {
+    "25600": {
+      "filtro": {
+        "numtaps": 75,
+        "cutoff_hz": 11520.0,
+        "transition_hz": 1280.0,
+        "stopband_atten_db": 59.31181606575606,
+        "passband_ripple_db": 0.05375853502804295,
+        "integer_factor": true,
+        "up": 1,
+        "down": 2
+      },
+      "banda_envelope_hz": [
+        2700.0,
+        4700.0
+      ],
+      "banda_truncada": false,
+      "banda_substituta": false,
+      "aliasing_db": -0.023,
+      "preservacao": {
+        "bpfi_0.3mm": 0.9943,
+        "bpfi_1.0mm": 0.9999,
+        "bpfo_0.3mm": 0.9993,
+        "bpfo_1.0mm": 0.9993
+      },
+      "preservacao_pior_classe": 0.9943,
+      "pior_classe": "bpfi_0.3mm",
+      "picos": {
+        "eixo (1x)": {
+          "presente": true,
+          "melhor_snr_db": 37.56,
+          "melhor_clipe": "bpfi_0.3mm",
+          "f_pico_hz": 50.25,
+          "por_clipe": {
+            "bpfi_0.3mm": {
+              "snr_db": 37.56,
+              "f_pico_hz": 50.25
+            },
+            "bpfi_1.0mm": {
+              "snr_db": 26.97,
+              "f_pico_hz": 50.25
+            },
+            "bpfo_0.3mm": {
+              "snr_db": 25.12,
+              "f_pico_hz": 50.25
+            },
+            "bpfo_1.0mm": {
+              "snr_db": 26.44,
+              "f_pico_hz": 50.25
+            }
+          }
+        },
+        "BPFO (1x)": {
+          "presente": true,
+          "melhor_snr_db": 7.28,
+          "melhor_clipe": "bpfo_1.0mm",
+          "f_pico_hz": 178.5,
+          "por_clipe": {
+            "bpfo_0.3mm": {
+              "snr_db": 2.3,
+              "f_pico_hz": 180.0
+            },
+            "bpfo_1.0mm": {
+              "snr_db": 7.28,
+              "f_pico_hz": 178.5
+            }
+          }
+        },
+        "BPFO (2x)": {
+          "presente": true,
+          "melhor_snr_db": 9.46,
+          "melhor_clipe": "bpfo_0.3mm",
+          "f_pico_hz": 357.25,
+          "por_clipe": {
+            "bpfo_0.3mm": {
+              "snr_db": 9.46,
+              "f_pico_hz": 357.25
+            },
+            "bpfo_1.0mm": {
+              "snr_db": 6.27,
+              "f_pico_hz": 358.25
+            }
+          }
+        },
+        "BPFO (3x)": {
+          "presente": true,
+          "melhor_snr_db": 6.24,
+          "melhor_clipe": "bpfo_0.3mm",
+          "f_pico_hz": 538.25,
+          "por_clipe": {
+            "bpfo_0.3mm": {
+              "snr_db": 6.24,
+              "f_pico_hz": 538.25
+            },
+            "bpfo_1.0mm": {
+              "snr_db": 2.62,
+              "f_pico_hz": 537.25
+            }
+          }
+        },
+        "BPFI (1x)": {
+          "presente": true,
+          "melhor_snr_db": 9.93,
+          "melhor_clipe": "bpfi_0.3mm",
+          "f_pico_hz": 273.5,
+          "por_clipe": {
+            "bpfi_0.3mm": {
+              "snr_db": 9.93,
+              "f_pico_hz": 273.5
+            },
+            "bpfi_1.0mm": {
+              "snr_db": 0.97,
+              "f_pico_hz": 271.75
+            }
+          }
+        },
+        "BPFI (2x)": {
+          "presente": true,
+          "melhor_snr_db": 6.89,
+          "melhor_clipe": "bpfi_0.3mm",
+          "f_pico_hz": 545.0,
+          "por_clipe": {
+            "bpfi_0.3mm": {
+              "snr_db": 6.89,
+              "f_pico_hz": 545.0
+            },
+            "bpfi_1.0mm": {
+              "snr_db": 6.52,
+              "f_pico_hz": 544.25
+            }
+          }
+        },
+        "BPFI (3x)": {
+          "presente": true,
+          "melhor_snr_db": 7.67,
+          "melhor_clipe": "bpfi_0.3mm",
+          "f_pico_hz": 815.25,
+          "por_clipe": {
+            "bpfi_0.3mm": {
+              "snr_db": 7.67,
+              "f_pico_hz": 815.25
+            },
+            "bpfi_1.0mm": {
+              "snr_db": 3.87,
+              "f_pico_hz": 817.5
+            }
+          }
+        }
+      },
+      "bpfi_presente": true,
+      "bpfo_presente": true,
+      "snr_bpfi_db": 9.93,
+      "snr_bpfo_db": 7.28,
+      "harmonicas_bpfi_presentes": 3,
+      "harmonicas_bpfo_presentes": 3,
+      "separabilidade": {
+        "acuracia_balanceada": 1.0,
+        "fisher_medio": 3.9192,
+        "fisher_max": 28.5197,
+        "n_treino": 210,
+        "n_teste": 85
+      },
+      "custo": {
+        "fs_hz": 25600,
+        "nyquist_hz": 12800.0,
+        "amostras_por_janela_25ms": 640,
+        "n_fft": 1024,
+        "ram_buffer_1s_int16_bytes": 51200,
+        "ram_buffer_1s_kib": 50.0,
+        "flops_fft_por_janela": 27648,
+        "mflops_mfcc_estimado": 2.76,
+        "mac_por_s_fir_antialiasing": 1920000,
+        "fator_inteiro": true,
+        "L_up": 1,
+        "M_down": 2,
+        "taps_fir": 75
+      }
+    },
+    "16000": {
+      "filtro": {
+        "numtaps": 583,
+        "cutoff_hz": 7200.0,
+        "transition_hz": 800.0,
+        "stopband_atten_db": 60.37447115832678,
+        "passband_ripple_db": 0.05458188877053573,
+        "integer_factor": false,
+        "up": 5,
+        "down": 16
+      },
+      "banda_envelope_hz": [
+        2700.0,
+        4700.0
+      ],
+      "banda_truncada": false,
+      "banda_substituta": false,
+      "aliasing_db": -0.032,
+      "preservacao": {
+        "bpfi_0.3mm": 0.9784,
+        "bpfi_1.0mm": 0.9994,
+        "bpfo_0.3mm": 0.9681,
+        "bpfo_1.0mm": 0.9973
+      },
+      "preservacao_pior_classe": 0.9681,
+      "pior_classe": "bpfo_0.3mm",
+      "picos": {
+        "eixo (1x)": {
+          "presente": true,
+          "melhor_snr_db": 37.66,
+          "melhor_clipe": "bpfi_0.3mm",
+          "f_pico_hz": 50.25,
+          "por_clipe": {
+            "bpfi_0.3mm": {
+              "snr_db": 37.66,
+              "f_pico_hz": 50.25
+            },
+            "bpfi_1.0mm": {
+              "snr_db": 26.9,
+              "f_pico_hz": 50.25
+            },
+            "bpfo_0.3mm": {
+              "snr_db": 25.32,
+              "f_pico_hz": 50.25
+            },
+            "bpfo_1.0mm": {
+              "snr_db": 26.48,
+              "f_pico_hz": 50.25
+            }
+          }
+        },
+        "BPFO (1x)": {
+          "presente": true,
+          "melhor_snr_db": 6.9,
+          "melhor_clipe": "bpfo_1.0mm",
+          "f_pico_hz": 178.5,
+          "por_clipe": {
+            "bpfo_0.3mm": {
+              "snr_db": 2.35,
+              "f_pico_hz": 180.0
+            },
+            "bpfo_1.0mm": {
+              "snr_db": 6.9,
+              "f_pico_hz": 178.5
+            }
+          }
+        },
+        "BPFO (2x)": {
+          "presente": true,
+          "melhor_snr_db": 9.5,
+          "melhor_clipe": "bpfo_0.3mm",
+          "f_pico_hz": 357.25,
+          "por_clipe": {
+            "bpfo_0.3mm": {
+              "snr_db": 9.5,
+              "f_pico_hz": 357.25
+            },
+            "bpfo_1.0mm": {
+              "snr_db": 6.41,
+              "f_pico_hz": 358.25
+            }
+          }
+        },
+        "BPFO (3x)": {
+          "presente": true,
+          "melhor_snr_db": 6.34,
+          "melhor_clipe": "bpfo_0.3mm",
+          "f_pico_hz": 535.75,
+          "por_clipe": {
+            "bpfo_0.3mm": {
+              "snr_db": 6.34,
+              "f_pico_hz": 535.75
+            },
+            "bpfo_1.0mm": {
+              "snr_db": 2.49,
+              "f_pico_hz": 537.25
+            }
+          }
+        },
+        "BPFI (1x)": {
+          "presente": true,
+          "melhor_snr_db": 9.74,
+          "melhor_clipe": "bpfi_0.3mm",
+          "f_pico_hz": 273.5,
+          "por_clipe": {
+            "bpfi_0.3mm": {
+              "snr_db": 9.74,
+              "f_pico_hz": 273.5
+            },
+            "bpfi_1.0mm": {
+              "snr_db": 0.89,
+              "f_pico_hz": 273.5
+            }
+          }
+        },
+        "BPFI (2x)": {
+          "presente": true,
+          "melhor_snr_db": 7.14,
+          "melhor_clipe": "bpfi_0.3mm",
+          "f_pico_hz": 545.0,
+          "por_clipe": {
+            "bpfi_0.3mm": {
+              "snr_db": 7.14,
+              "f_pico_hz": 545.0
+            },
+            "bpfi_1.0mm": {
+              "snr_db": 6.76,
+              "f_pico_hz": 544.25
+            }
+          }
+        },
+        "BPFI (3x)": {
+          "presente": true,
+          "melhor_snr_db": 7.6,
+          "melhor_clipe": "bpfi_0.3mm",
+          "f_pico_hz": 815.25,
+          "por_clipe": {
+            "bpfi_0.3mm": {
+              "snr_db": 7.6,
+              "f_pico_hz": 815.25
+            },
+            "bpfi_1.0mm": {
+              "snr_db": 3.46,
+              "f_pico_hz": 817.5
+            }
+          }
+        }
+      },
+      "bpfi_presente": true,
+      "bpfo_presente": true,
+      "snr_bpfi_db": 9.74,
+      "snr_bpfo_db": 6.9,
+      "harmonicas_bpfi_presentes": 3,
+      "harmonicas_bpfo_presentes": 3,
+      "separabilidade": {
+        "acuracia_balanceada": 1.0,
+        "fisher_medio": 3.4865,
+        "fisher_max": 28.1248,
+        "n_treino": 210,
+        "n_teste": 90
+      },
+      "custo": {
+        "fs_hz": 16000,
+        "nyquist_hz": 8000.0,
+        "amostras_por_janela_25ms": 400,
+        "n_fft": 512,
+        "ram_buffer_1s_int16_bytes": 32000,
+        "ram_buffer_1s_kib": 31.2,
+        "flops_fft_por_janela": 12288,
+        "mflops_mfcc_estimado": 1.23,
+        "mac_por_s_fir_antialiasing": 9328000,
+        "fator_inteiro": false,
+        "L_up": 5,
+        "M_down": 16,
+        "taps_fir": 583
+      }
+    },
+    "12800": {
+      "filtro": {
+        "numtaps": 147,
+        "cutoff_hz": 5760.0,
+        "transition_hz": 640.0,
+        "stopband_atten_db": 60.3567081548315,
+        "passband_ripple_db": 0.05984802392387691,
+        "integer_factor": true,
+        "up": 1,
+        "down": 4
+      },
+      "banda_envelope_hz": [
+        2700.0,
+        4700.0
+      ],
+      "banda_truncada": false,
+      "banda_substituta": false,
+      "aliasing_db": -0.168,
+      "preservacao": {
+        "bpfi_0.3mm": 0.9607,
+        "bpfi_1.0mm": 0.9989,
+        "bpfo_0.3mm": 0.9612,
+        "bpfo_1.0mm": 0.9949
+      },
+      "preservacao_pior_classe": 0.9607,
+      "pior_classe": "bpfi_0.3mm",
+      "picos": {
+        "eixo (1x)": {
+          "presente": true,
+          "melhor_snr_db": 37.52,
+          "melhor_clipe": "bpfi_0.3mm",
+          "f_pico_hz": 50.25,
+          "por_clipe": {
+            "bpfi_0.3mm": {
+              "snr_db": 37.52,
+              "f_pico_hz": 50.25
+            },
+            "bpfi_1.0mm": {
+              "snr_db": 26.65,
+              "f_pico_hz": 50.25
+            },
+            "bpfo_0.3mm": {
+              "snr_db": 25.49,
+              "f_pico_hz": 50.25
+            },
+            "bpfo_1.0mm": {
+              "snr_db": 26.55,
+              "f_pico_hz": 50.25
+            }
+          }
+        },
+        "BPFO (1x)": {
+          "presente": true,
+          "melhor_snr_db": 6.61,
+          "melhor_clipe": "bpfo_1.0mm",
+          "f_pico_hz": 178.5,
+          "por_clipe": {
+            "bpfo_0.3mm": {
+              "snr_db": 2.23,
+              "f_pico_hz": 180.0
+            },
+            "bpfo_1.0mm": {
+              "snr_db": 6.61,
+              "f_pico_hz": 178.5
+            }
+          }
+        },
+        "BPFO (2x)": {
+          "presente": true,
+          "melhor_snr_db": 9.26,
+          "melhor_clipe": "bpfo_0.3mm",
+          "f_pico_hz": 357.25,
+          "por_clipe": {
+            "bpfo_0.3mm": {
+              "snr_db": 9.26,
+              "f_pico_hz": 357.25
+            },
+            "bpfo_1.0mm": {
+              "snr_db": 6.39,
+              "f_pico_hz": 358.25
+            }
+          }
+        },
+        "BPFO (3x)": {
+          "presente": true,
+          "melhor_snr_db": 6.28,
+          "melhor_clipe": "bpfo_0.3mm",
+          "f_pico_hz": 538.25,
+          "por_clipe": {
+            "bpfo_0.3mm": {
+              "snr_db": 6.28,
+              "f_pico_hz": 538.25
+            },
+            "bpfo_1.0mm": {
+              "snr_db": 2.46,
+              "f_pico_hz": 537.25
+            }
+          }
+        },
+        "BPFI (1x)": {
+          "presente": true,
+          "melhor_snr_db": 9.68,
+          "melhor_clipe": "bpfi_0.3mm",
+          "f_pico_hz": 273.5,
+          "por_clipe": {
+            "bpfi_0.3mm": {
+              "snr_db": 9.68,
+              "f_pico_hz": 273.5
+            },
+            "bpfi_1.0mm": {
+              "snr_db": 1.56,
+              "f_pico_hz": 273.5
+            }
+          }
+        },
+        "BPFI (2x)": {
+          "presente": true,
+          "melhor_snr_db": 7.1,
+          "melhor_clipe": "bpfi_0.3mm",
+          "f_pico_hz": 545.0,
+          "por_clipe": {
+            "bpfi_0.3mm": {
+              "snr_db": 7.1,
+              "f_pico_hz": 545.0
+            },
+            "bpfi_1.0mm": {
+              "snr_db": 7.1,
+              "f_pico_hz": 544.25
+            }
+          }
+        },
+        "BPFI (3x)": {
+          "presente": true,
+          "melhor_snr_db": 7.48,
+          "melhor_clipe": "bpfi_0.3mm",
+          "f_pico_hz": 815.25,
+          "por_clipe": {
+            "bpfi_0.3mm": {
+              "snr_db": 7.48,
+              "f_pico_hz": 815.25
+            },
+            "bpfi_1.0mm": {
+              "snr_db": 5.01,
+              "f_pico_hz": 816.0
+            }
+          }
+        }
+      },
+      "bpfi_presente": true,
+      "bpfo_presente": true,
+      "snr_bpfi_db": 9.68,
+      "snr_bpfo_db": 6.61,
+      "harmonicas_bpfi_presentes": 3,
+      "harmonicas_bpfo_presentes": 3,
+      "separabilidade": {
+        "acuracia_balanceada": 1.0,
+        "fisher_medio": 2.8528,
+        "fisher_max": 9.0618,
+        "n_treino": 210,
+        "n_teste": 85
+      },
+      "custo": {
+        "fs_hz": 12800,
+        "nyquist_hz": 6400.0,
+        "amostras_por_janela_25ms": 320,
+        "n_fft": 512,
+        "ram_buffer_1s_int16_bytes": 25600,
+        "ram_buffer_1s_kib": 25.0,
+        "flops_fft_por_janela": 12288,
+        "mflops_mfcc_estimado": 1.23,
+        "mac_por_s_fir_antialiasing": 1881600,
+        "fator_inteiro": true,
+        "L_up": 1,
+        "M_down": 4,
+        "taps_fir": 147
+      }
+    },
+    "8000": {
+      "filtro": {
+        "numtaps": 1163,
+        "cutoff_hz": 3600.0,
+        "transition_hz": 400.0,
+        "stopband_atten_db": 60.42123001390983,
+        "passband_ripple_db": 0.05522750686779784,
+        "integer_factor": false,
+        "up": 5,
+        "down": 32
+      },
+      "banda_envelope_hz": [
+        2700.0,
+        3920.0
+      ],
+      "banda_truncada": true,
+      "banda_substituta": false,
+      "aliasing_db": -0.006,
+      "preservacao": {
+        "bpfi_0.3mm": 0.8907,
+        "bpfi_1.0mm": 0.9935,
+        "bpfo_0.3mm": 0.865,
+        "bpfo_1.0mm": 0.9841
+      },
+      "preservacao_pior_classe": 0.865,
+      "pior_classe": "bpfo_0.3mm",
+      "picos": {
+        "eixo (1x)": {
+          "presente": true,
+          "melhor_snr_db": 42.27,
+          "melhor_clipe": "bpfi_0.3mm",
+          "f_pico_hz": 50.25,
+          "por_clipe": {
+            "bpfi_0.3mm": {
+              "snr_db": 42.27,
+              "f_pico_hz": 50.25
+            },
+            "bpfi_1.0mm": {
+              "snr_db": 23.17,
+              "f_pico_hz": 50.25
+            },
+            "bpfo_0.3mm": {
+              "snr_db": 8.51,
+              "f_pico_hz": 50.25
+            },
+            "bpfo_1.0mm": {
+              "snr_db": 22.17,
+              "f_pico_hz": 50.25
+            }
+          }
+        },
+        "BPFO (1x)": {
+          "presente": true,
+          "melhor_snr_db": 10.6,
+          "melhor_clipe": "bpfo_1.0mm",
+          "f_pico_hz": 178.5,
+          "por_clipe": {
+            "bpfo_0.3mm": {
+              "snr_db": 6.85,
+              "f_pico_hz": 180.0
+            },
+            "bpfo_1.0mm": {
+              "snr_db": 10.6,
+              "f_pico_hz": 178.5
+            }
+          }
+        },
+        "BPFO (2x)": {
+          "presente": false,
+          "melhor_snr_db": 2.71,
+          "melhor_clipe": "bpfo_0.3mm",
+          "f_pico_hz": 357.75,
+          "por_clipe": {
+            "bpfo_0.3mm": {
+              "snr_db": 2.71,
+              "f_pico_hz": 357.75
+            },
+            "bpfo_1.0mm": {
+              "snr_db": 2.61,
+              "f_pico_hz": 359.5
+            }
+          }
+        },
+        "BPFO (3x)": {
+          "presente": true,
+          "melhor_snr_db": 7.64,
+          "melhor_clipe": "bpfo_1.0mm",
+          "f_pico_hz": 537.25,
+          "por_clipe": {
+            "bpfo_0.3mm": {
+              "snr_db": 2.09,
+              "f_pico_hz": 537.75
+            },
+            "bpfo_1.0mm": {
+              "snr_db": 7.64,
+              "f_pico_hz": 537.25
+            }
+          }
+        },
+        "BPFI (1x)": {
+          "presente": true,
+          "melhor_snr_db": 11.08,
+          "melhor_clipe": "bpfi_0.3mm",
+          "f_pico_hz": 270.5,
+          "por_clipe": {
+            "bpfi_0.3mm": {
+              "snr_db": 11.08,
+              "f_pico_hz": 270.5
+            },
+            "bpfi_1.0mm": {
+              "snr_db": 5.03,
+              "f_pico_hz": 271.25
+            }
+          }
+        },
+        "BPFI (2x)": {
+          "presente": false,
+          "melhor_snr_db": 4.75,
+          "melhor_clipe": "bpfi_1.0mm",
+          "f_pico_hz": 544.25,
+          "por_clipe": {
+            "bpfi_0.3mm": {
+              "snr_db": 3.31,
+              "f_pico_hz": 545.25
+            },
+            "bpfi_1.0mm": {
+              "snr_db": 4.75,
+              "f_pico_hz": 544.25
+            }
+          }
+        },
+        "BPFI (3x)": {
+          "presente": true,
+          "melhor_snr_db": 9.26,
+          "melhor_clipe": "bpfi_1.0mm",
+          "f_pico_hz": 816.0,
+          "por_clipe": {
+            "bpfi_0.3mm": {
+              "snr_db": 7.15,
+              "f_pico_hz": 815.5
+            },
+            "bpfi_1.0mm": {
+              "snr_db": 9.26,
+              "f_pico_hz": 816.0
+            }
+          }
+        }
+      },
+      "bpfi_presente": true,
+      "bpfo_presente": true,
+      "snr_bpfi_db": 11.08,
+      "snr_bpfo_db": 10.6,
+      "harmonicas_bpfi_presentes": 2,
+      "harmonicas_bpfo_presentes": 2,
+      "separabilidade": {
+        "acuracia_balanceada": 1.0,
+        "fisher_medio": 2.5668,
+        "fisher_max": 9.043,
+        "n_treino": 210,
+        "n_teste": 90
+      },
+      "custo": {
+        "fs_hz": 8000,
+        "nyquist_hz": 4000.0,
+        "amostras_por_janela_25ms": 200,
+        "n_fft": 256,
+        "ram_buffer_1s_int16_bytes": 16000,
+        "ram_buffer_1s_kib": 15.6,
+        "flops_fft_por_janela": 5376,
+        "mflops_mfcc_estimado": 0.54,
+        "mac_por_s_fir_antialiasing": 9304000,
+        "fator_inteiro": false,
+        "L_up": 5,
+        "M_down": 32,
+        "taps_fir": 1163
+      }
+    },
+    "6400": {
+      "filtro": {
+        "numtaps": 293,
+        "cutoff_hz": 2880.0,
+        "transition_hz": 320.0,
+        "stopband_atten_db": 60.42348034306557,
+        "passband_ripple_db": 0.059428756110218244,
+        "integer_factor": true,
+        "up": 1,
+        "down": 8
+      },
+      "banda_envelope_hz": [
+        2700.0,
+        3136.0
+      ],
+      "banda_truncada": true,
+      "banda_substituta": false,
+      "aliasing_db": -0.088,
+      "preservacao": {
+        "bpfi_0.3mm": 0.8218,
+        "bpfi_1.0mm": 0.9906,
+        "bpfo_0.3mm": 0.8329,
+        "bpfo_1.0mm": 0.9765
+      },
+      "preservacao_pior_classe": 0.8218,
+      "pior_classe": "bpfi_0.3mm",
+      "picos": {
+        "eixo (1x)": {
+          "presente": true,
+          "melhor_snr_db": 24.83,
+          "melhor_clipe": "bpfi_0.3mm",
+          "f_pico_hz": 50.25,
+          "por_clipe": {
+            "bpfi_0.3mm": {
+              "snr_db": 24.83,
+              "f_pico_hz": 50.25
+            },
+            "bpfi_1.0mm": {
+              "snr_db": 23.03,
+              "f_pico_hz": 50.25
+            },
+            "bpfo_0.3mm": {
+              "snr_db": 11.22,
+              "f_pico_hz": 50.25
+            },
+            "bpfo_1.0mm": {
+              "snr_db": 24.64,
+              "f_pico_hz": 50.25
+            }
+          }
+        },
+        "BPFO (1x)": {
+          "presente": false,
+          "melhor_snr_db": 0.7,
+          "melhor_clipe": "bpfo_1.0mm",
+          "f_pico_hz": 178.25,
+          "por_clipe": {
+            "bpfo_0.3mm": {
+              "snr_db": 0.64,
+              "f_pico_hz": 180.5
+            },
+            "bpfo_1.0mm": {
+              "snr_db": 0.7,
+              "f_pico_hz": 178.25
+            }
+          }
+        },
+        "BPFO (2x)": {
+          "presente": true,
+          "melhor_snr_db": 7.09,
+          "melhor_clipe": "bpfo_1.0mm",
+          "f_pico_hz": 359.25,
+          "por_clipe": {
+            "bpfo_0.3mm": {
+              "snr_db": 2.28,
+              "f_pico_hz": 356.5
+            },
+            "bpfo_1.0mm": {
+              "snr_db": 7.09,
+              "f_pico_hz": 359.25
+            }
+          }
+        },
+        "BPFO (3x)": {
+          "presente": true,
+          "melhor_snr_db": 6.92,
+          "melhor_clipe": "bpfo_1.0mm",
+          "f_pico_hz": 538.0,
+          "por_clipe": {
+            "bpfo_0.3mm": {
+              "snr_db": 0.56,
+              "f_pico_hz": 537.5
+            },
+            "bpfo_1.0mm": {
+              "snr_db": 6.92,
+              "f_pico_hz": 538.0
+            }
+          }
+        },
+        "BPFI (1x)": {
+          "presente": true,
+          "melhor_snr_db": 8.38,
+          "melhor_clipe": "bpfi_0.3mm",
+          "f_pico_hz": 270.75,
+          "por_clipe": {
+            "bpfi_0.3mm": {
+              "snr_db": 8.38,
+              "f_pico_hz": 270.75
+            },
+            "bpfi_1.0mm": {
+              "snr_db": 7.09,
+              "f_pico_hz": 273.5
+            }
+          }
+        },
+        "BPFI (2x)": {
+          "presente": false,
+          "melhor_snr_db": 3.98,
+          "melhor_clipe": "bpfi_0.3mm",
+          "f_pico_hz": 543.5,
+          "por_clipe": {
+            "bpfi_0.3mm": {
+              "snr_db": 3.98,
+              "f_pico_hz": 543.5
+            },
+            "bpfi_1.0mm": {
+              "snr_db": 3.0,
+              "f_pico_hz": 544.25
+            }
+          }
+        },
+        "BPFI (3x)": {
+          "presente": false,
+          "melhor_snr_db": 3.11,
+          "melhor_clipe": "bpfi_0.3mm",
+          "f_pico_hz": 817.25,
+          "por_clipe": {
+            "bpfi_0.3mm": {
+              "snr_db": 3.11,
+              "f_pico_hz": 817.25
+            },
+            "bpfi_1.0mm": {
+              "snr_db": 2.95,
+              "f_pico_hz": 816.0
+            }
+          }
+        }
+      },
+      "bpfi_presente": true,
+      "bpfo_presente": false,
+      "snr_bpfi_db": 8.38,
+      "snr_bpfo_db": 0.7,
+      "harmonicas_bpfi_presentes": 1,
+      "harmonicas_bpfo_presentes": 2,
+      "separabilidade": {
+        "acuracia_balanceada": 1.0,
+        "fisher_medio": 5.5267,
+        "fisher_max": 48.301,
+        "n_treino": 210,
+        "n_teste": 85
+      },
+      "custo": {
+        "fs_hz": 6400,
+        "nyquist_hz": 3200.0,
+        "amostras_por_janela_25ms": 160,
+        "n_fft": 256,
+        "ram_buffer_1s_int16_bytes": 12800,
+        "ram_buffer_1s_kib": 12.5,
+        "flops_fft_por_janela": 5376,
+        "mflops_mfcc_estimado": 0.54,
+        "mac_por_s_fir_antialiasing": 1875200,
+        "fator_inteiro": true,
+        "L_up": 1,
+        "M_down": 8,
+        "taps_fir": 293
+      }
+    }
+  },
+  "figuras": [
+    "reports/decimation/fig1_psd_por_classe.png",
+    "reports/decimation/fig2_envelope_por_taxa.png",
+    "reports/decimation/fig3_filtros_antialiasing.png",
+    "reports/decimation/fig4_assinatura_vs_custo.png"
+  ],
+  "faixa_alvo_hz": [
+    8000.0,
+    16000.0
+  ],
+  "recomendacao": {
+    "fs_hz": 12800,
+    "nivel": "todos os critérios",
+    "justificativa": [
+      "Menor taxa dentro da faixa-alvo que preserva ao menos 95% da energia discriminante em todas as classes — o pior caso é bpfi_0.3mm com 96.1%.",
+      "Energia espúria por aliasing dentro de +1 dB na banda útil.",
+      "51.200 / 4 é decimação por fator inteiro: um único FIR passa-baixa seguido de descarte de amostras — exatamente o que `arm_fir_decimate_f32` (CMSIS-DSP) implementa no STM32F411, sem estágio de interpolação."
+    ],
+    "candidatos": [
+      {
+        "fs_hz": 25600,
+        "preservacao_pior_classe": 0.9943,
+        "pior_classe": "bpfi_0.3mm",
+        "snr_bpfi_db": 9.93,
+        "snr_bpfo_db": 7.28,
+        "acc_diagnostica": 1.0,
+        "inteiro": true,
+        "na_faixa": false,
+        "ok_pres": true,
+        "ok_alias": true
+      },
+      {
+        "fs_hz": 16000,
+        "preservacao_pior_classe": 0.9681,
+        "pior_classe": "bpfo_0.3mm",
+        "snr_bpfi_db": 9.74,
+        "snr_bpfo_db": 6.9,
+        "acc_diagnostica": 1.0,
+        "inteiro": false,
+        "na_faixa": true,
+        "ok_pres": true,
+        "ok_alias": true
+      },
+      {
+        "fs_hz": 12800,
+        "preservacao_pior_classe": 0.9607,
+        "pior_classe": "bpfi_0.3mm",
+        "snr_bpfi_db": 9.68,
+        "snr_bpfo_db": 6.61,
+        "acc_diagnostica": 1.0,
+        "inteiro": true,
+        "na_faixa": true,
+        "ok_pres": true,
+        "ok_alias": true
+      },
+      {
+        "fs_hz": 8000,
+        "preservacao_pior_classe": 0.865,
+        "pior_classe": "bpfo_0.3mm",
+        "snr_bpfi_db": 11.08,
+        "snr_bpfo_db": 10.6,
+        "acc_diagnostica": 1.0,
+        "inteiro": false,
+        "na_faixa": true,
+        "ok_pres": false,
+        "ok_alias": true
+      },
+      {
+        "fs_hz": 6400,
+        "preservacao_pior_classe": 0.8218,
+        "pior_classe": "bpfi_0.3mm",
+        "snr_bpfi_db": 8.38,
+        "snr_bpfo_db": 0.7,
+        "acc_diagnostica": 1.0,
+        "inteiro": true,
+        "na_faixa": false,
+        "ok_pres": false,
+        "ok_alias": true
+      }
+    ]
+  }
+}
