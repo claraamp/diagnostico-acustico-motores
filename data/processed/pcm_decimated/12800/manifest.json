@@ -1,56 +1,60 @@
 {
-  "fs_hz": 12800,
-  "fonte": "data/processed/pcm_raw",
-  "decimacao": {
-    "numtaps": 147,
-    "cutoff_hz": 5760.0,
-    "transition_hz": 640.0,
-    "stopband_atten_db": 60.3567081548315,
-    "passband_ripple_db": 0.05984802392387691,
-    "integer_factor": true,
-    "up": 1,
-    "down": 4
+  "normal": {
+    "arquivo_origem": "0Nm_Normal.mat",
+    "rotulo_binario": "normal",
+    "arquivo_pcm": "data/processed/pcm_decimated/12800/normal.bin",
+    "fs_hz": 12800,
+    "n_amostras": 767982,
+    "duracao_s": 59.9986,
+    "pico_pcm": 8038
   },
-  "files": [
-    {
-      "bin": "normal.bin",
-      "label": "normal",
-      "binary": "normal",
-      "fs_hz": 12800,
-      "n_amostras": 767982,
-      "pico_pcm": 8038
-    },
-    {
-      "bin": "bpfi_0.3mm.bin",
-      "label": "bpfi_0.3mm",
-      "binary": "falha",
-      "fs_hz": 12800,
-      "n_amostras": 767982,
-      "pico_pcm": 15813
-    },
-    {
-      "bin": "bpfi_1.0mm.bin",
-      "label": "bpfi_1.0mm",
-      "binary": "falha",
-      "fs_hz": 12800,
-      "n_amostras": 767982,
-      "pico_pcm": 31268
-    },
-    {
-      "bin": "bpfo_0.3mm.bin",
-      "label": "bpfo_0.3mm",
-      "binary": "falha",
-      "fs_hz": 12800,
-      "n_amostras": 767982,
-      "pico_pcm": 6843
-    },
-    {
-      "bin": "bpfo_1.0mm.bin",
-      "label": "bpfo_1.0mm",
-      "binary": "falha",
-      "fs_hz": 12800,
-      "n_amostras": 767982,
-      "pico_pcm": 28028
+  "bpfi_0.3mm": {
+    "arquivo_origem": "0Nm_BPFI_03.mat",
+    "rotulo_binario": "falha",
+    "arquivo_pcm": "data/processed/pcm_decimated/12800/bpfi_0.3mm.bin",
+    "fs_hz": 12800,
+    "n_amostras": 767982,
+    "duracao_s": 59.9986,
+    "pico_pcm": 15813
+  },
+  "bpfi_1.0mm": {
+    "arquivo_origem": "0Nm_BPFI_10.mat",
+    "rotulo_binario": "falha",
+    "arquivo_pcm": "data/processed/pcm_decimated/12800/bpfi_1.0mm.bin",
+    "fs_hz": 12800,
+    "n_amostras": 767982,
+    "duracao_s": 59.9986,
+    "pico_pcm": 31268
+  },
+  "bpfo_0.3mm": {
+    "arquivo_origem": "0Nm_BPFO_03.mat",
+    "rotulo_binario": "falha",
+    "arquivo_pcm": "data/processed/pcm_decimated/12800/bpfo_0.3mm.bin",
+    "fs_hz": 12800,
+    "n_amostras": 767982,
+    "duracao_s": 59.9986,
+    "pico_pcm": 6843
+  },
+  "bpfo_1.0mm": {
+    "arquivo_origem": "0Nm_BPFO_10.mat",
+    "rotulo_binario": "falha",
+    "arquivo_pcm": "data/processed/pcm_decimated/12800/bpfo_1.0mm.bin",
+    "fs_hz": 12800,
+    "n_amostras": 767982,
+    "duracao_s": 59.9986,
+    "pico_pcm": 28028
+  },
+  "_conjunto": {
+    "fonte": "data/processed/pcm_raw",
+    "decimacao": {
+      "numtaps": 147,
+      "cutoff_hz": 5760.0,
+      "transition_hz": 640.0,
+      "stopband_atten_db": 60.3567081548315,
+      "passband_ripple_db": 0.05984802392387691,
+      "integer_factor": true,
+      "up": 1,
+      "down": 4
     }
-  ]
+  }
 }

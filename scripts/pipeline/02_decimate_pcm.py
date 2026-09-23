@@ -64,6 +64,11 @@ from dataclasses import dataclass, asdict
 from fractions import Fraction
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))   # scripts/
+
+import config
+import pcm_io
+
 import numpy as np
 import matplotlib
 
@@ -75,11 +80,14 @@ from scipy.fft import dct, rfft, rfftfreq
 # --------------------------------------------------------------------------- #
 # Constantes físicas do dataset (Jung et al., 2023 — DOI 10.17632/ztmf3m7h5x.6)
 # --------------------------------------------------------------------------- #
-FS_ORIG = 51_200.0          # Hz
+# Aliases locais das constantes centralizadas. Mantidos com os nomes antigos
+# para não espalhar `config.` pelo arquivo inteiro; a fonte única é o config.py.
+FS_ORIG = float(config.FS_ORIGINAL)
+INT16_FULL = config.INT16_FULL
+
 F_SHAFT = 50.0              # Hz — rotação do eixo
 F_BPFO = 179.0              # Hz — Ball Pass Frequency, Outer race
 F_BPFI = 272.0              # Hz — Ball Pass Frequency, Inner race
-INT16_FULL = 32767.0
 
 # Taxas candidatas. 51200/M inteiro: 25600 (M=2), 12800 (M=4), 6400 (M=8).
 # 8000 e 16000 entram como L/M para quantificar o que se ganha/perde ao insistir
@@ -87,11 +95,11 @@ INT16_FULL = 32767.0
 DEFAULT_RATES = [25_600, 16_000, 12_800, 8_000, 6_400]
 
 # Parâmetros de MFCC (os mesmos que serão portados para o STM32)
-FRAME_MS = 25.0
-HOP_MS = 10.0
-N_MELS = 20
-N_MFCC = 13
-SEGMENT_S = 1.0             # unidade de classificação
+FRAME_MS = float(config.MFCC_WINDOW_MS)
+HOP_MS = float(config.MFCC_HOP_MS)
+N_MELS = config.MFCC_N_MELS
+N_MFCC = config.MFCC_N_COEFS
+SEGMENT_S = float(config.SEGMENTO_S)    # unidade de classificação
 TRAIN_FRACTION = 0.70       # split temporal contíguo, sem embaralhar
 
 # Alvos de pico no espectro de envelope
@@ -106,21 +114,12 @@ ENV_TARGETS = {
 }
 
 SNR_ACCEPT_DB = 6.0         # critério: pico 6 dB acima do piso local conta como presente
-STOPBAND_TARGET_DB = 60.0   # atenuação mínima exigida do anti-aliasing
+STOPBAND_TARGET_DB = float(config.FIR_ATTENUATION)   # atenuação mínima do anti-aliasing
 
 
 # --------------------------------------------------------------------------- #
 # Estruturas
 # --------------------------------------------------------------------------- #
-@dataclass
-class Clip:
-    name: str               # nome do arquivo .bin
-    label: str              # classe original (normal, bpfi_0.3mm, ...)
-    binary: str             # normal | falha
-    x: np.ndarray           # float64 em [-1, 1]
-    fs: float
-
-
 @dataclass
 class FirSpec:
     numtaps: int
@@ -136,57 +135,10 @@ class FirSpec:
 # --------------------------------------------------------------------------- #
 # Carga dos dados
 # --------------------------------------------------------------------------- #
-def load_clips(pcm_dir: Path, manifest_path: Path, seconds: float | None) -> list[Clip]:
-    """
-    Lê o manifest.json de 01_convert_mat_to_pcm.py e carrega os .bin.
-
-    Formato do manifest — dicionário plano, classe → metadados:
-        {"normal": {"arquivo_origem": "0Nm_Normal.mat",
-                    "rotulo_binario": "normal",
-                    "arquivo_pcm": "data/processed/pcm_raw/normal.bin",
-                    "fs_hz": 51200, "n_amostras": 3072000, "duracao_s": 60.0,
-                    "pico_original_pa": ..., "pico_pcm": 8505}, ...}
-    """
-    with manifest_path.open(encoding="utf-8") as fh:
-        manifest = json.load(fh)
-
-    clips: list[Clip] = []
-    for label, meta in manifest.items():
-        if not isinstance(meta, dict):
-            continue
-        # caminho do manifest é relativo à raiz do repositório
-        path = Path(meta.get("arquivo_pcm", ""))
-        if not path.exists():
-            path = pcm_dir / path.name
-        if not path.exists():
-            raise FileNotFoundError(
-                f"não achei {path} (classe '{label}' do manifest). Os .bin não são "
-                "versionados: rode 01_convert_mat_to_pcm.py depois de clonar.")
-
-        fs = float(meta.get("fs_hz", FS_ORIG))
-        if fs != FS_ORIG:
-            raise ValueError(f"{label}: manifest diz fs = {fs} Hz, esperado {FS_ORIG:.0f} Hz")
-
-        raw = np.fromfile(path, dtype="<i2")
-        n_esperado = meta.get("n_amostras")
-        if n_esperado is not None and raw.size != n_esperado:
-            print(f"[aviso] {label}: {raw.size} amostras no arquivo contra {n_esperado} "
-                  "no manifest versionado — a conversão do 01 não reproduziu")
-        if seconds is not None:
-            raw = raw[: int(seconds * FS_ORIG)]
-        x = raw.astype(np.float64) / INT16_FULL
-        clips.append(Clip(name=path.name, label=str(label),
-                          binary=str(meta.get("rotulo_binario", "falha")), x=x, fs=FS_ORIG))
-
-    if not clips:
-        raise RuntimeError(f"nenhuma classe lida de {manifest_path}")
-    return clips
-
-
 # --------------------------------------------------------------------------- #
 # Dataset sintético (auto-teste do pipeline, sem os dados reais)
 # --------------------------------------------------------------------------- #
-def synthetic_clips(seconds: float, seed: int = 7) -> list[Clip]:
+def synthetic_clips(seconds: float, seed: int = 7) -> list["pcm_io.Clip"]:
     """
     Gera 5 clipes com a mesma estrutura física do caso real: ruído de fundo +
     ressonância de 4,2 kHz excitada por um trem de impulsos na frequência de
@@ -226,7 +178,7 @@ def synthetic_clips(seconds: float, seed: int = 7) -> list[Clip]:
             r = ring(f_fault, sev)
             x = x + r / (np.max(np.abs(r)) + 1e-12) * (0.25 * sev + 0.05)
         x = x / (np.max(np.abs(x)) * 1.02)
-        clips.append(Clip(name=name, label=label, binary=binary, x=x, fs=FS_ORIG))
+        clips.append(pcm_io.Clip(rotulo=label, binario=binary, fs=FS_ORIG, x_float=x))
     return clips
 
 
@@ -238,7 +190,7 @@ def psd(x: np.ndarray, fs: float, nperseg: int = 8192) -> tuple[np.ndarray, np.n
     return f, p
 
 
-def discriminative_curves(clips: list[Clip], nperseg: int = 16384) -> tuple[np.ndarray, dict]:
+def discriminative_curves(clips: list[pcm_io.Clip], nperseg: int = 16384) -> tuple[np.ndarray, dict]:
     """
     Curva acumulada da energia discriminante de cada classe de falha.
 
@@ -255,8 +207,8 @@ def discriminative_curves(clips: list[Clip], nperseg: int = 16384) -> tuple[np.n
     envelope, nesse caso, mediria a preservação de uma estrutura que o sinal
     não tem.
     """
-    normais = [c for c in clips if c.binary == "normal"]
-    falhas = [c for c in clips if c.binary != "normal"]
+    normais = [c for c in clips if c.binario == "normal"]
+    falhas = [c for c in clips if c.binario != "normal"]
     if not normais or not falhas:
         return np.array([0.0]), {}
 
@@ -273,7 +225,7 @@ def discriminative_curves(clips: list[Clip], nperseg: int = 16384) -> tuple[np.n
         if total <= 0:
             continue
         acum = np.concatenate([[0.0], np.cumsum(np.diff(f) * (d[:-1] + d[1:]) / 2)]) / total
-        curvas[c.label] = acum
+        curvas[c.rotulo] = acum
     return f, curvas
 
 
@@ -283,10 +235,10 @@ def preservacao_em(freq: np.ndarray, curvas: dict, corte_hz: float) -> dict:
             for lab, acum in curvas.items()}
 
 
-def energy_sweep(clips: list[Clip], band_hz: float = 1000.0) -> list[dict]:
+def energy_sweep(clips: list[pcm_io.Clip], band_hz: float = 1000.0) -> list[dict]:
     """Varredura de energia por sub-banda — material de diagnóstico para o relatório."""
-    f, p_norm = psd(np.concatenate([c.x for c in clips if c.binary == "normal"]), FS_ORIG)
-    _, p_fault = psd(np.concatenate([c.x for c in clips if c.binary == "falha"]), FS_ORIG)
+    f, p_norm = psd(np.concatenate([c.x for c in clips if c.binario == "normal"]), FS_ORIG)
+    _, p_fault = psd(np.concatenate([c.x for c in clips if c.binario == "falha"]), FS_ORIG)
 
     rows, nyq, lo = [], FS_ORIG / 2, 200.0
     while lo + band_hz <= nyq:
@@ -300,16 +252,16 @@ def energy_sweep(clips: list[Clip], band_hz: float = 1000.0) -> list[dict]:
     return rows
 
 
-def ref_clip(clips: list[Clip], kind: str) -> Clip | None:
+def ref_clip(clips: list[pcm_io.Clip], kind: str) -> "pcm_io.Clip | None":
     """Clipe de referência de um tipo de falha — prefere a severidade maior."""
-    cands = [c for c in clips if kind in c.label.lower()]
+    cands = [c for c in clips if kind in c.rotulo.lower()]
     if not cands:
         return None
-    return sorted(cands, key=lambda c: ("1.0" not in c.label, c.label))[0]
+    return sorted(cands, key=lambda c: ("1.0" not in c.rotulo, c.rotulo))[0]
 
 
 def select_demod_band(
-    clips: list[Clip], energia: list[dict], piso_energia: float = 0.01,
+    clips: list[pcm_io.Clip], energia: list[dict], piso_energia: float = 0.01,
     excerpt_s: float = 15.0,
 ) -> tuple[tuple[float, float], list[dict]]:
     """
@@ -350,7 +302,7 @@ def select_demod_band(
                 for c, f_alvo in refs:
                     fr, mg = envelope_spectrum(c.x[:n_exc], FS_ORIG, (lo, hi), seg_s=4.0)
                     r = peak_snr(fr, mg, f_alvo)
-                    notas[c.label] = r["snr_db"] if r["snr_db"] is not None else -99.0
+                    notas[c.rotulo] = r["snr_db"] if r["snr_db"] is not None else -99.0
                 ranking.append({"lo_hz": lo, "hi_hz": hi, "largura_hz": largura,
                                 "fracao_energia": round(frac, 4),
                                 "snr_por_clipe": notas,
@@ -554,7 +506,7 @@ def mfcc(x: np.ndarray, fs: float) -> np.ndarray:
     return dct(logmel, type=2, axis=1, norm="ortho")[:, :N_MFCC]
 
 
-def segment_features(clips: list[Clip], fs: float) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+def segment_features(clips: list[pcm_io.Clip], fs: float) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Features de 1 s: média e desvio dos MFCC. Retorna (X, y_binário, t_início)."""
     X, y, t0 = [], [], []
     n_seg = int(SEGMENT_S * fs)
@@ -566,7 +518,7 @@ def segment_features(clips: list[Clip], fs: float) -> tuple[np.ndarray, np.ndarr
             if m.shape[0] == 0:
                 continue
             X.append(np.concatenate([m.mean(axis=0), m.std(axis=0)]))
-            y.append(0 if c.binary == "normal" else 1)
+            y.append(0 if c.binario == "normal" else 1)
             t0.append(k * SEGMENT_S)
     return np.asarray(X), np.asarray(y), np.asarray(t0)
 
@@ -637,11 +589,11 @@ def embedded_cost(fs: float, spec: FirSpec | None) -> dict:
 # --------------------------------------------------------------------------- #
 # Figuras
 # --------------------------------------------------------------------------- #
-def fig_psd(clips: list[Clip], band: tuple[float, float], out: Path) -> None:
+def fig_psd(clips: list[pcm_io.Clip], band: tuple[float, float], out: Path) -> None:
     plt.figure(figsize=(9, 5))
     for c in clips:
         f, p = psd(c.x, FS_ORIG)
-        plt.semilogy(f / 1000, p, lw=0.9, label=c.label)
+        plt.semilogy(f / 1000, p, lw=0.9, label=c.rotulo)
     plt.axvspan(band[0] / 1000, band[1] / 1000, color="0.85", zorder=0,
                 label=f"banda ressonante {band[0]:.0f}–{band[1]:.0f} Hz")
     plt.xlabel("frequência (kHz)")
@@ -693,7 +645,7 @@ def fig_fir(specs: dict, out: Path) -> None:
     # é irrelevante: ali o sinal interpolado não tem conteúdo.
     plt.xlim(0, FS_ORIG / 2000)
     plt.ylim(-120, 5)
-    plt.xlabel("frequência (kHz)")
+    plt.xlabel("frequência (kHz) — eixo até o Nyquist da taxa original (25,6 kHz)")
     plt.ylabel("|H(f)| (dB)")
     plt.title("Filtros anti-aliasing projetados (Kaiser)")
     plt.legend(fontsize=7)
@@ -1113,8 +1065,11 @@ def main(argv=None) -> int:
         print(f"[synthetic] gerando 5 clipes de {secs:.0f} s com assinatura conhecida")
         clips = synthetic_clips(secs)
     else:
-        manifest = args.manifest or (args.pcm_dir / "manifest.json")
-        clips = load_clips(args.pcm_dir, manifest, args.seconds)
+        clips = pcm_io.carregar_clipes(args.pcm_dir, args.manifest, args.seconds,
+                                       fs_esperado=FS_ORIG)
+        # com --seconds o tamanho não bate com o manifest de propósito
+        pcm_io.relatar_integridade(
+            pcm_io.verificar_integridade(clips, truncado=args.seconds is not None))
     print(f"[load] {len(clips)} clipes, {len(clips[0].x)/FS_ORIG:.1f} s cada, fs = {FS_ORIG:.0f} Hz")
 
     # --- Etapa A: onde demodular ------------------------------------------ #
@@ -1130,7 +1085,7 @@ def main(argv=None) -> int:
     fig_psd(clips, (lo, hi), fig1)
 
     # --- Baseline --------------------------------------------------------- #
-    def picos_para(cs: list[Clip], fs: float, band: tuple[float, float]) -> dict:
+    def picos_para(cs: list["pcm_io.Clip"], fs: float, band: tuple[float, float]) -> dict:
         """
         SNR por alvo, clipe a clipe. Não faz média entre severidades: misturar
         um 0,3 mm quase indetectável com um 1,0 mm forte produz um número que
@@ -1141,15 +1096,15 @@ def main(argv=None) -> int:
         for name, ft in ENV_TARGETS.items():
             por_clipe = {}
             for c in cs:
-                if "BPFI" in name and "bpfi" not in c.label.lower():
+                if "BPFI" in name and "bpfi" not in c.rotulo.lower():
                     continue
-                if "BPFO" in name and "bpfo" not in c.label.lower():
+                if "BPFO" in name and "bpfo" not in c.rotulo.lower():
                     continue
-                if "eixo" in name and c.binary == "normal":
+                if "eixo" in name and c.binario == "normal":
                     continue
                 f, m = envelope_spectrum(c.x, fs, band)
                 r = peak_snr(f, m, ft)
-                por_clipe[c.label] = {"snr_db": r["snr_db"], "f_pico_hz": r.get("f_pico_hz")}
+                por_clipe[c.rotulo] = {"snr_db": r["snr_db"], "f_pico_hz": r.get("f_pico_hz")}
             if not por_clipe:
                 out[name] = {"presente": False, "melhor_snr_db": None,
                              "melhor_clipe": None, "f_pico_hz": None, "por_clipe": {}}
@@ -1206,7 +1161,7 @@ def main(argv=None) -> int:
         "duracao_s": len(clips[0].x) / FS_ORIG,
         "sintetico": bool(args.synthetic),
         "condicao": args.condicao,
-        "classes": {c.label: c.binary for c in clips},
+        "classes": {c.rotulo: c.binario for c in clips},
         "min_preservacao_exigida": args.min_preservacao,
         "energia_discriminante_f95_hz": {
             lab: round(float(np.interp(0.95, acum, freq_disc)), 1)
@@ -1232,8 +1187,8 @@ def main(argv=None) -> int:
     # --- Etapas C/D/E por taxa -------------------------------------------- #
     specs: dict[int, FirSpec] = {}
     env_example: dict[float, tuple[np.ndarray, np.ndarray]] = {}
-    ref_label = next((c.label for c in clips if "bpfi_1.0" in c.label), clips[-1].label)
-    ref_clip = next(c for c in clips if c.label == ref_label)
+    ref_label = next((c.rotulo for c in clips if "bpfi_1.0" in c.rotulo), clips[-1].rotulo)
+    ref_clip = next(c for c in clips if c.rotulo == ref_label)
     fe, me = envelope_spectrum(ref_clip.x, FS_ORIG, (lo, hi))
     env_example[FS_ORIG] = (fe, me)
 
@@ -1247,7 +1202,7 @@ def main(argv=None) -> int:
         dec_clips, alias = [], []
         for c in clips:
             y = resample_clip(c.x, FS_ORIG, float(rate), spec)
-            dec_clips.append(Clip(c.name, c.label, c.binary, y, float(rate)))
+            dec_clips.append(c.derivado(y, float(rate)))
             alias.append(aliasing_energy_db(c.x, FS_ORIG, y, float(rate)))
 
         band_dec, truncada, substituta = usable_band(lo, hi, float(rate))
@@ -1293,23 +1248,13 @@ def main(argv=None) -> int:
             "custo": embedded_cost(float(rate), spec),
         }
 
-        dref = next(c for c in dec_clips if c.label == ref_label)
+        dref = next(c for c in dec_clips if c.rotulo == ref_label)
         env_example[float(rate)] = envelope_spectrum(dref.x, float(rate), band_dec)
 
         if not args.no_write_bin:
-            d = args.out_dir / f"{rate}"
-            d.mkdir(parents=True, exist_ok=True)
-            entries = []
-            for c in dec_clips:
-                q = np.clip(np.round(c.x * INT16_FULL), -32768, 32767).astype("<i2")
-                q.tofile(d / c.name)
-                entries.append({"bin": c.name, "label": c.label, "binary": c.binary,
-                                "fs_hz": rate, "n_amostras": int(q.size),
-                                "pico_pcm": int(np.max(np.abs(q)))})
-            (d / "manifest.json").write_text(
-                json.dumps({"fs_hz": rate, "fonte": str(args.pcm_dir),
-                            "decimacao": asdict(spec), "files": entries},
-                           ensure_ascii=False, indent=2), encoding="utf-8")
+            pcm_io.gravar_clipes(dec_clips, args.out_dir / f"{rate}", float(rate),
+                                 extras={"fonte": str(args.pcm_dir),
+                                         "decimacao": asdict(spec)})
 
     # --- Figuras e recomendação ------------------------------------------- #
     fig2 = args.report_dir / "fig2_envelope_por_taxa.png"

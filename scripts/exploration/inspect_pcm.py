@@ -57,8 +57,11 @@ ou comente a normalização da figura para ver as amplitudes absolutas.
 from __future__ import annotations
 
 import argparse
-import json
+import sys
 from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # scripts/
+
+import pcm_io
 
 import numpy as np
 import matplotlib
@@ -66,80 +69,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-FS = 51_200.0        # Hz — taxa do dataset Jung et al.
-INT16_FULL = 32767.0
 EXCERPT_MS = 120.0   # trecho mostrado na figura
-
-
-def carregar(pcm_dir: Path, manifest_path: Path):
-    """
-    Lê o manifest.json do 01 e carrega os .bin como float em [-1, 1].
-
-    Formato do manifest (um dicionário plano, classe → metadados):
-        {"normal": {"arquivo_origem": "0Nm_Normal.mat",
-                    "rotulo_binario": "normal",
-                    "arquivo_pcm": "data/processed/pcm_raw/normal.bin",
-                    "fs_hz": 51200, "n_amostras": 3072000, "duracao_s": 60.0,
-                    "pico_original_pa": ..., "pico_pcm": 8505}, ...}
-
-    O manifest É versionado e os .bin NÃO (CONVENTIONS.md, seção 1). Isso faz
-    dele a referência para conferir se uma reconversão reproduziu a anterior —
-    daí a checagem de `n_amostras` e `pico_pcm` abaixo.
-    """
-    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-
-    clipes, divergencias = [], []
-    for rotulo, meta in manifest.items():
-        if not isinstance(meta, dict):
-            continue
-        # o caminho no manifest é relativo à raiz do repositório; se o script
-        # for chamado de outro lugar, cai para <pcm_dir>/<nome do arquivo>
-        caminho = Path(meta.get("arquivo_pcm", ""))
-        if not caminho.exists():
-            caminho = pcm_dir / caminho.name
-        if not caminho.exists():
-            raise FileNotFoundError(
-                f"não achei {caminho}.\n"
-                "Os .bin não são versionados: depois de clonar o repositório é preciso "
-                "rodar 01_convert_mat_to_pcm.py de novo.")
-
-        fs = float(meta.get("fs_hz", FS))
-        if fs != FS:
-            raise ValueError(f"{rotulo}: manifest diz fs = {fs} Hz, esperado {FS:.0f} Hz")
-
-        # int16 little-endian, sem cabeçalho — é assim que o 01 grava
-        cru = np.fromfile(caminho, dtype="<i2")
-
-        n_esperado = meta.get("n_amostras")
-        if n_esperado is not None and cru.size != n_esperado:
-            divergencias.append(
-                f"{rotulo}: {cru.size} amostras no arquivo, {n_esperado} no manifest")
-        p_esperado = meta.get("pico_pcm")
-        p_real = int(np.max(np.abs(cru))) if cru.size else 0
-        if p_esperado is not None and p_real != p_esperado:
-            divergencias.append(
-                f"{rotulo}: pico PCM {p_real}, manifest diz {p_esperado}")
-
-        clipes.append({
-            "rotulo": str(rotulo),
-            "binario": str(meta.get("rotulo_binario", "falha")),
-            "origem": meta.get("arquivo_origem"),
-            "pcm": cru,                                  # inteiro, como no arquivo
-            "x": cru.astype(np.float64) / INT16_FULL,    # float, para as contas
-        })
-
-    if divergencias:
-        print("\n  ATENÇÃO — os .bin não batem com o manifest versionado:")
-        for d in divergencias:
-            print(f"    - {d}")
-        print("  A conversão do 01 deveria ser determinística. Entenda a diferença antes")
-        print("  de seguir: números gerados a partir daqui não serão comparáveis com os")
-        print("  das rodadas anteriores.\n")
-    else:
-        print("  .bin conferem com o manifest versionado (amostras e pico PCM).")
-
-    return clipes
-
 
 # Limiares de "indistinguível" na pergunta 1. Deliberadamente frouxos: o papel
 # deles é sinalizar um caso para inspeção, não decidir nada.
@@ -177,8 +107,8 @@ def main() -> int:
     ap.add_argument("--out-dir", type=Path, default=Path("reports/exploration"))
     args = ap.parse_args()
 
-    manifest = args.manifest or (args.pcm_dir / "manifest.json")
-    clipes = carregar(args.pcm_dir, manifest)
+    clipes = pcm_io.carregar_clipes(args.pcm_dir, args.manifest)
+    pcm_io.relatar_integridade(pcm_io.verificar_integridade(clipes))
     args.out_dir.mkdir(parents=True, exist_ok=True)
 
     # ---------------------------------------------------------------- #
@@ -188,12 +118,12 @@ def main() -> int:
 
     med = {}
     for c in clipes:
-        x = c["x"]
-        med[c["rotulo"]] = {
-            "tipo": c["binario"],
-            "n": c["pcm"].size,
-            "dur": c["pcm"].size / FS,
-            "pico_pcm": int(np.max(np.abs(c["pcm"]))),
+        x = c.x
+        med[c.rotulo] = {
+            "tipo": c.binario,
+            "n": c.n,
+            "dur": c.duracao_s,
+            "pico_pcm": int(np.max(np.abs(c.pcm))),
             "rms": float(np.sqrt(np.mean(x**2))),
             "crista": float(np.max(np.abs(x)) / (np.sqrt(np.mean(x**2)) + 1e-30)),
             "curtose": curtose(x),
@@ -275,20 +205,31 @@ def main() -> int:
     # ---------------------------------------------------------------- #
     # 3 — figura: mesmo trecho, mesma escala, uma classe por linha
     # ---------------------------------------------------------------- #
-    n_exc = int(EXCERPT_MS / 1000 * FS)
-    ini = int(5.0 * FS)                      # pula os 5 s iniciais (transiente de partida)
-    ymax = max(float(np.max(np.abs(c["x"][ini:ini + n_exc]))) for c in clipes) * 1.1
+    fs = clipes[0].fs
+    n_exc = int(EXCERPT_MS / 1000 * fs)
+    ini = int(5.0 * fs)          # pula os 5 s iniciais (transiente de partida)
+
+    # com clipes curtos (dados truncados ou de teste) o trecho pediria amostras
+    # que não existem, e o max() abaixo quebraria num array vazio
+    n_min = min(c.n for c in clipes)
+    if ini + n_exc > n_min:
+        ini = max(0, n_min - n_exc)
+        n_exc = min(n_exc, n_min)
+        print(f"\n  (clipes curtos: trecho da figura deslocado para t = {ini/fs:.2f} s)")
+
+    ymax = max(float(np.max(np.abs(c.x[ini:ini + n_exc]))) for c in clipes) * 1.1
 
     fig, axes = plt.subplots(len(clipes), 1, figsize=(10, 1.6 * len(clipes)), sharex=True)
-    t = np.arange(n_exc) / FS * 1000
+    t = np.arange(n_exc) / fs * 1000
     for ax, c in zip(np.atleast_1d(axes), clipes):
-        ax.plot(t, c["x"][ini:ini + n_exc], lw=0.6, color="#1f4e79")
+        ax.plot(t, c.x[ini:ini + n_exc], lw=0.6, color="#1f4e79")
         ax.set_ylim(-ymax, ymax)             # MESMA escala em todos: comparação honesta
-        ax.set_ylabel(c["rotulo"], fontsize=7)
+        ax.set_ylabel(c.rotulo, fontsize=7)
         ax.grid(alpha=0.25)
     np.atleast_1d(axes)[-1].set_xlabel("tempo (ms)")
     np.atleast_1d(axes)[0].set_title(
-        f"Formas de onda — {EXCERPT_MS:.0f} ms a partir de t = 5 s (mesma escala vertical)")
+        f"Formas de onda — {n_exc/fs*1000:.0f} ms a partir de t = {ini/fs:.1f} s "
+        "(mesma escala vertical)")
     plt.tight_layout()
     saida = args.out_dir / "fig_formas_de_onda.png"
     plt.savefig(saida, dpi=140)
