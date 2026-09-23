@@ -686,7 +686,12 @@ def fig_fir(specs: dict, out: Path) -> None:
         plt.plot(w / 1000, 20 * np.log10(np.abs(h) + 1e-12), lw=1.0,
                  label=f"{fs_out/1000:.1f} kHz ({spec.numtaps} taps, L={spec.up}/M={spec.down})")
     plt.axhline(-STOPBAND_TARGET_DB, color="k", ls=":", lw=0.8, label=f"-{STOPBAND_TARGET_DB:.0f} dB")
-    plt.xlim(0, 30)
+    # Eixo limitado ao Nyquist da taxa ORIGINAL. Os filtros de fator inteiro operam
+    # a 51,2 kHz e só têm resposta definida até 25,6 kHz; os de fator racional operam
+    # a 256 kHz (interpolação por 5) e teriam resposta até 128 kHz. Mostrar além de
+    # 25,6 kHz faria as curvas de fator inteiro parecerem truncadas, e a região extra
+    # é irrelevante: ali o sinal interpolado não tem conteúdo.
+    plt.xlim(0, FS_ORIG / 2000)
     plt.ylim(-120, 5)
     plt.xlabel("frequência (kHz)")
     plt.ylabel("|H(f)| (dB)")
