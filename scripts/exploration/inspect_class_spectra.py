@@ -45,8 +45,11 @@ Uso
 from __future__ import annotations
 
 import argparse
-import json
+import sys
 from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # scripts/
+
+import pcm_io
 
 import numpy as np
 import matplotlib
@@ -55,33 +58,8 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from scipy import signal as sg
 
-FS = 51_200.0
-INT16_FULL = 32767.0
-
 # Taxas candidatas → o Nyquist de cada uma é o limite do que sobrevive
 CANDIDATAS = [6_400, 8_000, 12_800, 16_000, 25_600]
-
-
-def carregar(pcm_dir: Path, manifest_path: Path):
-    """Mesmo formato de manifest do 01: dicionário classe → metadados."""
-    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    clipes = []
-    for rotulo, meta in manifest.items():
-        if not isinstance(meta, dict):
-            continue
-        caminho = Path(meta.get("arquivo_pcm", ""))
-        if not caminho.exists():
-            caminho = pcm_dir / caminho.name
-        if not caminho.exists():
-            raise FileNotFoundError(f"não achei {caminho} — rode 01_convert_mat_to_pcm.py")
-        cru = np.fromfile(caminho, dtype="<i2")
-        clipes.append({
-            "rotulo": str(rotulo),
-            "binario": str(meta.get("rotulo_binario", "falha")),
-            "x": cru.astype(np.float64) / INT16_FULL,
-        })
-    return clipes
-
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
@@ -93,22 +71,26 @@ def main() -> int:
                     help="tamanho do segmento de Welch (resolução = FS/nperseg)")
     args = ap.parse_args()
 
-    manifest = args.manifest or (args.pcm_dir / "manifest.json")
-    clipes = carregar(args.pcm_dir, manifest)
+    clipes = pcm_io.carregar_clipes(args.pcm_dir, args.manifest)
     args.out_dir.mkdir(parents=True, exist_ok=True)
-    print(f"{len(clipes)} clipes | resolução espectral = {FS/args.nperseg:.2f} Hz\n")
+
+    # a taxa vem do manifest, não de uma constante: assim o script também serve
+    # para inspecionar um conjunto já decimado
+    fs = clipes[0].fs
+    print(f"{len(clipes)} clipes a {fs:.0f} Hz | "
+          f"resolução espectral = {fs/args.nperseg:.2f} Hz\n")
 
     # ------------------------------------------------------------------ #
     # PSD de cada classe
     # ------------------------------------------------------------------ #
     psds = {}
     for c in clipes:
-        f, p = sg.welch(c["x"], fs=FS, nperseg=args.nperseg, window="hann")
-        psds[c["rotulo"]] = p
+        f, p = sg.welch(c.x, fs=fs, nperseg=args.nperseg, window="hann")
+        psds[c.rotulo] = p
     freq = f
 
-    normais = [c["rotulo"] for c in clipes if c["binario"] == "normal"]
-    falhas = [c["rotulo"] for c in clipes if c["binario"] != "normal"]
+    normais = [c.rotulo for c in clipes if c.binario == "normal"]
+    falhas = [c.rotulo for c in clipes if c.binario != "normal"]
     if not normais:
         raise RuntimeError("nenhuma classe normal no manifest")
     p_normal = np.mean([psds[r] for r in normais], axis=0)
@@ -152,8 +134,8 @@ def main() -> int:
     # ------------------------------------------------------------------ #
     plt.figure(figsize=(10, 5.5))
     for c in clipes:
-        estilo = dict(lw=1.4, color="k") if c["binario"] == "normal" else dict(lw=0.9)
-        plt.semilogy(freq / 1000, psds[c["rotulo"]], label=c["rotulo"], **estilo)
+        estilo = dict(lw=1.4, color="k") if c.binario == "normal" else dict(lw=0.9)
+        plt.semilogy(freq / 1000, psds[c.rotulo], label=c.rotulo, **estilo)
     for taxa in CANDIDATAS:
         plt.axvline(taxa / 2000, color="0.6", ls=":", lw=0.8)
         plt.text(taxa / 2000, plt.ylim()[1], f" {taxa/1000:.1f}k", fontsize=6,
