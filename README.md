@@ -58,7 +58,8 @@ diagnostico-acustico-motores/
 │   │   └── inspect_class_spectra.py  # PSD por classe e banda necessária por classe
 │   └── pipeline/             # pipeline reprodutível, numerado pela ordem de execução
 │       ├── 01_convert_mat_to_pcm.py
-│       └── 02_decimate_pcm.py
+│       ├── 02_decimate_pcm.py
+│       └── config.py
 │
 ├── notebooks/                # notebooks de análise/visualização
 │
