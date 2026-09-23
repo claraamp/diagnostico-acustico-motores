@@ -51,14 +51,19 @@ diagnostico-acustico-motores/
 │       └── pcm_decimated/    # saída do 02, um subdiretório por taxa (ex.: 12800/)
 │
 ├── scripts/
-│   ├── exploration/          # scripts exploratórios, sem numeração
+│   ├── config.py             # parâmetros compartilhados entre etapas
+│   ├── dsp.py                # blocos de processamento de sinais (PSD, MFCC, decimação)
+│   ├── pcm_io.py             # leitura e escrita dos PCM e dos manifests
+│   ├── experimentos.py       # escrita do registro de experimentos
+│   ├── exploration/          # estudos e inspeções, sem numeração
 │   │   ├── inspect_mat_keys.py
 │   │   ├── inspect_signal_data.py
-│   │   ├── inspect_pcm.py            # sanidade da conversão + caráter do sinal por classe
-│   │   └── inspect_class_spectra.py  # PSD por classe e banda necessária por classe
+│   │   ├── inspect_pcm.py                 # sanidade da conversão + caráter do sinal
+│   │   ├── inspect_class_spectra.py       # PSD por classe e banda necessária
+│   │   └── compare_decimation_rates.py    # estudo que definiu a taxa de trabalho
 │   └── pipeline/             # pipeline reprodutível, numerado pela ordem de execução
 │       ├── 01_convert_mat_to_pcm.py
-│       └── 02_decimate_pcm.py
+│       └── 02_decimate_pcm.py             # aplica a taxa definida em config.py
 │
 ├── notebooks/                # notebooks de análise/visualização
 │
@@ -74,7 +79,6 @@ diagnostico-acustico-motores/
 │   └── exploration/          # figuras dos scripts exploratórios
 │
 └── docs/                     # proposta, documentação técnica complementar
-    └── proposta-trabalho.pdf/
 ```
 
 Ver [`CONVENTIONS.md`](./CONVENTIONS.md) para as convenções de nomenclatura de scripts, classes e commits, e para o formato do registro de experimentos.
@@ -91,7 +95,7 @@ Baixe os 5 arquivos `.mat` do Mendeley e coloque em `data/raw/`. Depois, o pipel
 
 ```bash
 python scripts/pipeline/01_convert_mat_to_pcm.py   # .mat → PCM int16 a 51,2 kHz
-python scripts/pipeline/02_decimate_pcm.py         # decima, valida e grava os PCM de trabalho
+python scripts/pipeline/02_decimate_pcm.py         # decima para a taxa de trabalho
 ```
 
 Para conferir que a reconversão reproduziu a original — o `manifest.json` é versionado e a conversão é determinística, então número de amostras e pico PCM devem bater:
@@ -99,6 +103,14 @@ Para conferir que a reconversão reproduziu a original — o `manifest.json` é 
 ```bash
 python scripts/exploration/inspect_pcm.py
 ```
+
+O pipeline **aplica** decisões, não as toma. A comparação entre taxas candidatas, que definiu os 12.800 Hz, é um estudo pontual e está em `scripts/exploration/`; ele fica versionado para a decisão continuar auditável, mas não precisa ser reexecutado a cada rodada:
+ 
+```bash
+python scripts/exploration/compare_decimation_rates.py --condicao 0Nm
+```
+ 
+Os scripts de `scripts/exploration/` não escrevem em `data/`. Os módulos em `scripts/` (`config`, `dsp`, `pcm_io`, `experimentos`) não são executáveis: são importados pelas etapas e pelos estudos, para que todos usem a mesma implementação e os mesmos parâmetros.
 
 ## Fluxo de trabalho
  
