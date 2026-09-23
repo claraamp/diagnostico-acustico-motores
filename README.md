@@ -74,6 +74,7 @@ diagnostico-acustico-motores/
 │   └── exploration/          # figuras dos scripts exploratórios
 │
 └── docs/                     # proposta, documentação técnica complementar
+    └── proposta-trabalho.pdf/
 ```
 
 Ver [`CONVENTIONS.md`](./CONVENTIONS.md) para as convenções de nomenclatura de scripts, classes e commits, e para o formato do registro de experimentos.
@@ -99,8 +100,6 @@ Para conferir que a reconversão reproduziu a original — o `manifest.json` é 
 python scripts/exploration/inspect_pcm.py
 ```
 
-## Fluxo de branches
-
-Trabalho de cada tarefa em uma branch própria (`feature/<nome-da-tarefa>`), aberta a partir de `main`. Merge para `main` ao concluir a tarefa, para que `main` reflita sempre o estado real e comparável do projeto — importante para os marcos de entrega (1º parcial, 2º parcial, final).
-
-Quando uma tarefa depende de outra cujo PR ainda não foi aprovado, a branch é aberta a partir da branch anterior em vez de `main`, e isso fica registrado na descrição do PR — senão o trabalho parte de um estado que não contém a dependência.
+## Fluxo de trabalho
+ 
+Cada tarefa em uma branch própria a partir de `main`, com prefixo por tipo de trabalho (`feature/`, `fix/`, `refactor/`), e merge para `main` ao concluir. As regras completas — branches, mensagens de commit e títulos de PR — estão em [`CONVENTIONS.md`](./CONVENTIONS.md), seção 6.
