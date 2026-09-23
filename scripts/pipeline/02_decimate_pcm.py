@@ -53,12 +53,9 @@ Dependências: numpy, scipy, matplotlib, scikit-learn
 from __future__ import annotations
 
 import argparse
-import csv
 import datetime as _dt
 import json
 import math
-import re
-import subprocess
 import sys
 from dataclasses import dataclass, asdict
 from pathlib import Path
@@ -67,6 +64,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))   # scripts/
 
 import config
 import pcm_io
+from experimentos import (REGISTRY_COLUMNS, append_registry, git_short_hash,
+                          kv, next_exp_number)
 from dsp import (FirSpec, aliasing_energy_db, design_decimation,
                  envelope_spectrum, mfcc, peak_snr, psd, resample_clip, usable_band)
 
@@ -497,36 +496,6 @@ def fig_summary(metrics: dict, out: Path) -> None:
 # --------------------------------------------------------------------------- #
 # Registro de experimentos — CONVENTIONS.md, seção 4
 # --------------------------------------------------------------------------- #
-REGISTRY_COLUMNS = ["id", "data", "etapa", "script", "git_commit", "parametros",
-                    "dataset", "metricas", "responsavel", "notas"]
-
-
-def git_short_hash() -> str:
-    try:
-        r = subprocess.run(["git", "rev-parse", "--short", "HEAD"],
-                           capture_output=True, text=True, timeout=10)
-        return r.stdout.strip() or "sem-git"
-    except Exception:
-        return "sem-git"
-
-
-def next_exp_number(path: Path) -> int:
-    """Continua a numeração sequencial do registry (exp001, exp002, ...)."""
-    if not path.exists():
-        return 1
-    n = 0
-    with path.open(encoding="utf-8", newline="") as fh:
-        for row in csv.DictReader(fh):
-            m = re.fullmatch(r"exp(\d+)", (row.get("id") or "").strip())
-            if m:
-                n = max(n, int(m.group(1)))
-    return n + 1
-
-
-def kv(pairs: dict) -> str:
-    """Formato chave=valor;chave=valor exigido pelas colunas parametros/metricas."""
-    return ";".join(f"{k}={v}" for k, v in pairs.items() if v is not None)
-
 
 def build_registry_rows(metrics: dict, args, start_n: int, commit: str) -> list[dict]:
     hoje = _dt.date.today().isoformat()
@@ -604,16 +573,6 @@ def build_registry_rows(metrics: dict, args, start_n: int, commit: str) -> list[
         ))
         n += 1
     return rows
-
-
-def append_registry(path: Path, rows: list[dict]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    novo = not path.exists()
-    with path.open("a", encoding="utf-8", newline="") as fh:
-        w = csv.DictWriter(fh, fieldnames=REGISTRY_COLUMNS)
-        if novo:
-            w.writeheader()
-        w.writerows(rows)
 
 
 # --------------------------------------------------------------------------- #
