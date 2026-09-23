@@ -12,30 +12,36 @@ diagnostico-acustico-motores/
 ├── requirements.txt
 │
 ├── data/
-│   ├── raw/                  # .mat originais do dataset Jung et al. — NÃO versionado (ver .gitignore)
+│   ├── raw/                  # .mat originais (baixados manualmente, não versionados)
 │   └── processed/
-│       ├── pcm_raw/          # saída do 01_convert_mat_to_pcm.py — .bin NÃO versionados, manifest.json É versionado
-│       └── pcm_decimated/    # saída do 02_decimate_pcm.py, um subdiretório por taxa (ex.: 12800/)
-│                             # mesma regra: .bin fora do Git, manifest.json de cada taxa versionado
+│       ├── pcm_raw/          # saída do 01 — .bin não versionados, manifest.json versionado
+│       └── pcm_decimated/    # saída do 02, um subdiretório por taxa (ex.: 12800/)
 │
 ├── scripts/
-│   ├── exploration/          # scripts exploratórios, um-off, sem numeração
+│   ├── exploration/          # scripts exploratórios, sem numeração
+│   │   ├── inspect_mat_keys.py
+│   │   ├── inspect_signal_data.py
+│   │   ├── inspect_pcm.py            # sanidade da conversão + caráter do sinal por classe
+│   │   └── inspect_class_spectra.py  # PSD por classe e banda necessária por classe
 │   └── pipeline/             # pipeline reprodutível, numerado pela ordem de execução
+│       ├── 01_convert_mat_to_pcm.py
+│       └── 02_decimate_pcm.py
 │
-├── notebooks/                # notebooks de análise/visualização (se usados)
+├── notebooks/                # notebooks de análise/visualização
 │
-├── firmware/                 # Fase 2 em diante — porte para STM32F411CEU6
+├── firmware/                 # Fase 2 — porte para o STM32F411CEU6
 │   ├── Core/
 │   └── Drivers/
 │
 ├── experiments/
-│   └── registry.csv          # registro estruturado de cada rodada de experimento (ver seção 4)
+│   └── registry.csv          # registro estruturado de cada rodada de experimento
 │
-├── reports/                  # figuras, tabelas e outputs usados nos relatórios
-│   ├── decimation/           # saída do 02: métricas, figuras e relatório da escolha da taxa
-│   └── exploration/          # figuras dos scripts de scripts/exploration/
+├── reports/                  # figuras, tabelas e outputs para os relatórios
+│   ├── decimation/           # métricas, figuras e relatório da escolha da taxa
+│   └── exploration/          # figuras dos scripts exploratórios
 │
-└── docs/                     # documentação técnica complementar (ex.: notas sobre o formato do .mat)
+└── docs/                     # proposta, documentação técnica complementar
+    └── proposta-trabalho.pdf/
 ```
 
 **Por que `data/raw/` e os `.bin` de `data/processed/` não são versionados:** os 5 arquivos `.mat` somam ~120 MB e os PCM outros ~60 MB — grande demais para um repositório Git normal e, além disso, redundante: o dataset já está publicado com DOI fixo (Mendeley `10.17632/ztmf3m7h5x.6`). O `README.md` deve trazer o link de download e o script `01_convert_mat_to_pcm.py` para qualquer um reconstruir `data/` do zero. O que **é** versionado é o código e os metadados leves (`manifest.json`, `registry.csv`), que são o que realmente precisa ter histórico rastreável.
@@ -56,7 +62,7 @@ Regra: se um script novo precisa rodar *entre* dois existentes, renumerar em vez
  
 **Arquivos de dados processados**: `<classe>.<extensão>` dentro do diretório da etapa do pipeline que os gerou (ex.: `data/processed/pcm_raw/bpfi_0.3mm.bin`, `data/processed/pcm_decimated/12800/bpfi_0.3mm.bin`).
  
-**Commits Git**: mensagens no imperativo prefixadas pela frente de trabalho quando ajudar a rastrear: `dsp: converte .mat para PCM int16`, `firmware: implementa FFT em Q15`, `docs: atualiza convenções`.
+Para branches e mensagens de commit, ver a seção 6.
 
 ## 3. Ambiente Python
  
@@ -108,3 +114,30 @@ Parâmetros que atravessam mais de uma etapa do pipeline — taxa de amostragem 
 O motivo é concreto: a validação da taxa de decimação foi feita medindo o efeito sobre MFCC com uma configuração específica. Se a etapa de extração de features usar outra, a validação deixa de valer para as features que o classificador realmente consome — e a divergência não gera erro nenhum, só resultados incomparáveis. O mesmo vale para o porte em C da Fase 2: os valores do firmware têm que sair da mesma fonte, senão a comparação bloco a bloco entre C e Python não fecha.
  
 Esses valores também entram na coluna `parametros` do `registry.csv` de cada rodada.
+
+## 6. Fluxo de trabalho no Git
+ 
+Trabalho de cada tarefa em uma branch própria, aberta a partir de `main`. Merge para `main` ao concluir, para que `main` reflita sempre o estado real e comparável do projeto — importante para os marcos de entrega (1º parcial, 2º parcial, final).
+ 
+### Branches
+ 
+Prefixo pelo tipo de trabalho:
+ 
+- `feature/` — nova etapa do pipeline, nova funcionalidade, novo estudo.
+- `fix/` — correção de algo que já está na `main`.
+- `refactor/` — reorganização de código sem mudança de comportamento; os resultados numéricos antes e depois têm que ser idênticos.
+O que separa um `fix/` de um `feature/` é o estado de partida, não o tamanho: se o que está sendo corrigido já foi mergeado, é `fix/`. E um `fix/` carrega só a correção — mudanças aproveitadas "já que estou aqui" vão para branch própria, senão a revisão deixa de ser possível.
+ 
+Quando uma tarefa depende de outra cujo PR ainda não foi aprovado, a branch é aberta a partir da branch anterior em vez de `main`, e isso fica registrado na descrição do PR — senão o trabalho parte de um estado que não contém a dependência.
+ 
+Evite rebase em branch cujo trabalho já esteja registrado no `registry.csv`: o rebase reescreve os hashes dos commits, e a coluna `git_commit` passa a apontar para um commit que não existe mais. Prefira merge, ou atualize as linhas afetadas.
+ 
+### Commits
+ 
+Mensagens no imperativo, em português, prefixadas pela frente de trabalho quando ajudar a rastrear: `dsp: converte .mat para PCM int16`, `firmware: implementa FFT em Q15`, `docs: atualiza convenções`.
+ 
+Note que o prefixo do commit (frente de trabalho) e o prefixo da branch (tipo de trabalho) são eixos diferentes e não precisam coincidir: uma branch `fix/` pode perfeitamente conter um commit `dsp:`.
+ 
+### Títulos de PR
+ 
+Substantivos, descrevendo a entrega e o resultado quando couber — `Conversão .mat para PCM`, `Definição da taxa de decimação (12,8 kHz)`. Quem varre a lista de PRs meses depois precisa entender o que foi feito sem abrir cada um.
