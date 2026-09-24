@@ -43,6 +43,26 @@ class FirSpec:
     up: int
     down: int
 
+def normalizar_rms_clipe(x: np.ndarray) -> np.ndarray:
+    """
+    Normaliza o segmento temporal pelo seu valor RMS (sem estado).
+    Garante que a normalização ocorra isoladamente por clipe, sem vazar
+    informações de outros segmentos ou gravações (Protocolo de 24/09).
+    """
+    rms = np.sqrt(np.mean(x**2))
+    if rms > 0:
+        return x / rms
+    return x
+
+
+def aplicar_janela_hanning(x: np.ndarray) -> np.ndarray:
+    """
+    Aplica a janela de Hanning a um segmento no domínio do tempo.
+    Nota: A extração de MFCC já aplica sua própria janela em quadros
+    menores, esta função atende a pré-processamentos globais do clipe.
+    """
+    janela = np.hanning(len(x))
+    return x * janela
 
 def psd(x: np.ndarray, fs: float, nperseg: int = 8192) -> tuple[np.ndarray, np.ndarray]:
     f, p = sg.welch(x, fs=fs, nperseg=min(nperseg, len(x)), noverlap=None, window="hann")

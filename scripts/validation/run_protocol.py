@@ -33,6 +33,7 @@ Regras do protocolo que este script cumpre
 Controles
 ---------
 --sem-c0     descarta o coeficiente 0 (energia): ablação do ganho
+--sem-norm   desliga a normalização RMS por segmento (ablação)
 --permutar   embaralha os rótulos DE TREINO por bloco (gravação × bloco), com a
              semente do config, e avalia nos rótulos verdadeiros; o resultado
              deve cair para ~50 % — se não cair, há vazamento no pipeline
@@ -43,6 +44,7 @@ Uso
     python scripts/validation/run_protocol.py --protocolo A --tarefa multiclasse
     python scripts/validation/run_protocol.py --protocolo B
     python scripts/validation/run_protocol.py --protocolo B --sem-c0
+    python scripts/validation/run_protocol.py --protocolo B --sem-norm
     python scripts/validation/run_protocol.py --protocolo B --sem-registro   # teste
 """
 
@@ -74,13 +76,24 @@ FEATURES_ID = "mfcc_dsp_media_desvio_provisorio"
 # Features
 # --------------------------------------------------------------------------- #
 def extrair_features(clipes: list[pcm_io.Clip], segmentos: list[particao.Segmento],
-                     sem_c0: bool) -> np.ndarray:
+                     sem_c0: bool, sem_norm: bool) -> np.ndarray:
     """Uma linha por segmento: média e desvio de cada coeficiente MFCC."""
     por_rotulo = {c.rotulo: c for c in clipes}
     linhas = []
     for s in segmentos:
         c = por_rotulo[s.rotulo]
-        m = dsp.mfcc(c.x[s.inicio:s.fim], c.fs)
+        # Converter para float para cálculos seguros (o buffer de origem é int16)
+        trecho = c.x[s.inicio:s.fim].astype(np.float64)
+        
+        # 1. Normalização sem estado por clipe (se não for ablação)
+        if not sem_norm and getattr(config, "TIPO_NORMALIZACAO", None) == "clipe":
+            trecho = dsp.normalizar_rms_clipe(trecho)
+            
+        # 2. Janela de Hanning temporal
+        if getattr(config, "APLICAR_HANNING_TEMPO", False):
+            trecho = dsp.aplicar_janela_hanning(trecho)
+
+        m = dsp.mfcc(trecho, c.fs)
         if sem_c0:
             m = m[:, 1:]
         linhas.append(np.concatenate([m.mean(axis=0), m.std(axis=0)]))
@@ -216,6 +229,7 @@ def main() -> int:
                     help="rodada de teste: não escreve no registry")
     ap.add_argument("--responsavel", default="")
     ap.add_argument("--notas", default="")
+    ap.add_argument("--sem-norm", action="store_true", help="desliga a normalização RMS por segmento (ablação)")
     args = ap.parse_args()
 
     if args.protocolo == "B" and args.tarefa == "multiclasse":
@@ -246,7 +260,7 @@ def main() -> int:
 
     # ------------------------------------------------ features e rótulos
     print("Extraindo MFCC por segmento...")
-    X = extrair_features(clipes, segmentos, args.sem_c0)
+    X = extrair_features(clipes, segmentos, args.sem_c0, args.sem_norm)
     y = rotulos(segmentos, args.tarefa)
 
     # ------------------------------------------------ folds
@@ -259,7 +273,9 @@ def main() -> int:
     # ------------------------------------------------ gravação
     descricao = "_".join(p for p in (
         f"protocolo{args.protocolo}", args.tarefa, args.modelo,
-        "semc0" if args.sem_c0 else None, "permutado" if args.permutar else None,
+        "semc0" if args.sem_c0 else None, 
+        "semnorm" if args.sem_norm else None, 
+        "permutado" if args.permutar else None,
     ) if p)
     exp_id = "teste" if args.sem_registro else f"exp{experimentos.next_exp_number(args.registry):03d}"
     destino = args.out_dir / f"{exp_id}_{descricao}"
@@ -271,6 +287,7 @@ def main() -> int:
         "modelo": args.modelo,
         "features": FEATURES_ID,
         "sem_c0": args.sem_c0,
+        "sem_norm": args.sem_norm,
         "permutado": args.permutar,
         "splits": hash_splits,
         "fs_hz": config.FS_TRABALHO,
