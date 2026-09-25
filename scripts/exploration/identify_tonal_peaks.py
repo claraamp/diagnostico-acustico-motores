@@ -25,11 +25,21 @@ Cinemática da bancada (Jung et al., 2023, seção 3.1)
   eixo do motor, a alimentação precisa estar perto de 49 Hz: há um inversor, e
   não a rede de 60 Hz. f_e = 2·f_motor / (1 − s), com escorregamento s de alguns %.
   (Inferência pela rotação; o artigo não descreve o acionamento.)
-- BPFI ≈ 272 Hz e BPFO ≈ 179 Hz a 50,17 Hz, ou seja, 5,42× e 3,57× o eixo.
+- O artigo informa BPFI ≈ 272 Hz e BPFO ≈ 179 Hz a 50,17 Hz. Na primeira rodada
+  (25/09) os dados mostraram outros valores: BPFI ≈ 268,3 Hz e BPFO ≈ 182,7–183,4 Hz
+  (−1,4 % e +2 %). Por isso o script NÃO usa os valores do artigo para rotular:
+  ele ESTIMA BPFI e BPFO a partir dos picos de cada gravação (ver item 4).
 
-Nenhuma dessas frequências é tomada como exata: o script ESTIMA f_eixo, f_motor e
-f_e em cada gravação, por busca de pente harmônico na PSD de alta resolução. Isso
-já é um resultado: se as gravações não rodaram na mesma velocidade, aparece aqui.
+Nenhuma frequência é tomada como exata: f_eixo, f_motor e f_e também são
+estimados em cada gravação, por busca de pente harmônico na PSD de alta
+resolução. Se as gravações não rodaram na mesma velocidade, aparece aqui.
+
+Armadilha do pente (corrigida em 25/09): todo harmônico do eixo também é
+harmônico da METADE do eixo, então um pente em ~25 Hz "acerta" todos os picos do
+eixo e ganha a busca pelo motor. A busca agora ignora os harmônicos que coincidem
+com os do eixo e descarta candidatos colados em f_eixo/2 e em f_eixo. Quando o
+pente não encontra harmônicos suficientes, a frequência sai como "não
+identificada" (nan) em vez de um número qualquer.
 
 O que é medido
 --------------
@@ -39,11 +49,17 @@ O que é medido
 3. Picos que diferem: para cada falha, união dos picos dela com os da normal;
    Δ = nível na falha − nível na normal, na mesma frequência. Ficam os com
    |Δ| ≥ `--delta-min` dB.
-4. Rótulo de cada pico: harmônico n de qual família (eixo, motor, f_e, BPFI,
-   BPFO), com tolerância. Ambíguo quando cabe em mais de uma; "?" quando em
-   nenhuma — que é o caso da portadora do inversor e do engrenamento, cujas
-   frequências não são conhecidas.
-5. Espaçamento: entre os picos que diferem acima de 1 kHz, os espaçamentos mais
+4. BPFI e BPFO medidos: para cada gravação de falha, procura-se o f0 que melhor
+   explica os 40 maiores picos que SOBEM em relação à normal como n·f0 ± k·f_eixo
+   (n até 40, k de −2 a 2: harmônicos e bandas laterais a ± o eixo). Faz-se isso
+   nas duas faixas (BPFI: 255–285 Hz; BPFO: 170–195 Hz) e compara-se com f0
+   sorteados ao acaso, que dão a linha de base. A tabela cruzada é a evidência:
+   gravação de pista interna deve encaixar só na série da BPFI, e de pista
+   externa, só na da BPFO.
+5. Rótulo de cada pico: harmônico n de qual família (eixo, motor, f_e, BPFI,
+   BPFO), ou banda lateral "BPFI×n±k·eixo". Ambíguo quando cabe em mais de uma;
+   "?" quando em nenhuma.
+6. Espaçamento: entre os picos que diferem acima de 1 kHz, os espaçamentos mais
    frequentes. Bandas laterais a ±f_eixo sugerem engrenamento ou modulação pelo
    eixo; a ±2·f_e, portadora do inversor.
 
@@ -86,14 +102,20 @@ FALHAS = [c for c in config.CLASSES if config.BINARIO[c] == "falha"]
 F_EIXO_NOMINAL = 3010 / 60          # Hz
 RAZAO_CAIXA_NOMINAL = 2.07
 PARES_POLOS = 2
-RAZAO_BPFI = 272.0 / F_EIXO_NOMINAL  # ≈ 5,42 × eixo
-RAZAO_BPFO = 179.0 / F_EIXO_NOMINAL  # ≈ 3,57 × eixo
+# BPFI/BPFO do artigo (272 e 179 Hz) NÃO são usadas: ver BPF_FAIXAS e ajustar_bpf.
 
 NPERSEG = 1 << 18                   # 0,195 Hz a 51,2 kHz; ~22 médias em 60 s com 50 %
 PISO_HZ = 25.0                      # janela da mediana móvel do piso, em Hz
 N_PENTE = 10                        # harmônicos no pente da estimação de velocidade
-BPF_N_MAX = 5                       # harmônicos de BPFI/BPFO considerados
-BPF_TOL_REL = 0.01                  # escorregamento dos elementos: ~1–2 % (Randall & Antoni)
+BPF_N_MAX = 40                      # ordens de BPFI/BPFO consideradas no ajuste e nos rótulos
+BPF_K_MAX = 2                       # bandas laterais a ±k·f_eixo
+BPF_FAIXAS = {"BPFI": (255.0, 285.0), "BPFO": (170.0, 195.0)}   # Hz, busca do f0
+BPF_TOP = 40                        # picos que sobem, usados no ajuste
+BPF_TOL_HZ = 0.3                    # tolerância do ajuste
+BPF_MIN_ACERTOS = 10                # abaixo disto a série não é considerada encontrada
+N_BASE = 200                        # f0 sorteados para a linha de base
+VISIVEL_DB = 6.0                    # harmônico "visível" no pente: excesso sobre o piso
+MIN_VISIVEIS = 0.3                  # fração mínima de harmônicos visíveis para aceitar o pente
 FAIXA_ESPACAMENTO = (5.0, 300.0)    # Hz
 
 
@@ -132,7 +154,10 @@ def nivel_em(db: np.ndarray, i: int, raio: int = 2) -> float:
 # Velocidades
 # --------------------------------------------------------------------------- #
 def pente(f, excesso, candidatos, n_harm, excluir=None, tol_excl=0.3) -> float:
-    """Frequência do pente harmônico de maior soma de excesso sobre o piso."""
+    """
+    Frequência do pente harmônico de maior soma de excesso sobre o piso.
+    Harmônicos a menos de `tol_excl` de uma frequência em `excluir` não contam.
+    """
     df = f[1] - f[0]
     melhor, f_melhor = -np.inf, float("nan")
     for f0 in candidatos:
@@ -179,52 +204,170 @@ def refinar(f, db, exc, f0, n_harm, excluir=None, tol_excl=0.3) -> float:
     return num / den if den > 0 else f0
 
 
+def fracao_visivel(f, exc, f0, n_harm, excluir=None, tol_excl=0.3) -> float:
+    """Fração dos harmônicos (fora dos excluídos) com excesso ≥ VISIVEL_DB sobre o piso."""
+    df = f[1] - f[0]
+    vis = tot = 0
+    for k in range(1, n_harm + 1):
+        fk = k * f0
+        if excluir is not None and np.any(np.abs(fk - excluir) < tol_excl):
+            continue
+        i = int(round(fk / df))
+        if i + 1 >= f.size:
+            break
+        tot += 1
+        vis += exc[i - 1:i + 2].max() >= VISIVEL_DB
+    return vis / tot if tot else 0.0
+
+
 def estimar_velocidades(f, db, piso) -> dict:
     exc = db - piso
     f_eixo = pente(f, exc, np.arange(49.0, 51.5, 0.005), N_PENTE)
     f_eixo = refinar(f, db, exc, f_eixo, N_PENTE)
-    f_motor = pente(f, exc, np.arange(f_eixo / 2.2, f_eixo / 1.95, 0.005), N_PENTE)
-    f_motor = refinar(f, db, exc, f_motor, N_PENTE, excluir=f_eixo * np.arange(1, 6))
-    harm_eixo = f_eixo * np.arange(1, 8)
-    lo = PARES_POLOS * f_motor
-    f_e = pente(f, exc, np.arange(lo * 1.002, lo * 1.06, 0.005), 6, excluir=harm_eixo)
-    f_e = refinar(f, db, exc, f_e, 6, excluir=harm_eixo)
-    s = 1 - PARES_POLOS * f_motor / f_e
+    harm_eixo = f_eixo * np.arange(1, 4 * N_PENTE + 1)
+
+    # motor: sem os harmônicos que coincidem com os do eixo e longe de f_eixo/2,
+    # senão o pente em f_eixo/2 "acerta" todos os picos do eixo (armadilha de 25/09)
+    cand = np.arange(f_eixo / 2.2, f_eixo / 1.95, 0.005)
+    cand = cand[np.abs(cand - f_eixo / 2) > 0.5]
+    f_motor = pente(f, exc, cand, N_PENTE, excluir=harm_eixo)
+    f_motor = refinar(f, db, exc, f_motor, N_PENTE, excluir=harm_eixo)
+    vis_motor = fracao_visivel(f, exc, f_motor, N_PENTE, excluir=harm_eixo)
+    if vis_motor < MIN_VISIVEIS:
+        f_motor = float("nan")
+
+    f_e, vis_fe = float("nan"), 0.0
+    if np.isfinite(f_motor):
+        lo = PARES_POLOS * f_motor
+        cand = np.arange(lo * 1.002, lo * 1.06, 0.005)
+        cand = cand[np.abs(cand - f_eixo) > 0.5]
+        f_e = pente(f, exc, cand, 6, excluir=harm_eixo)
+        f_e = refinar(f, db, exc, f_e, 6, excluir=harm_eixo)
+        vis_fe = fracao_visivel(f, exc, f_e, 6, excluir=harm_eixo)
+        if vis_fe < MIN_VISIVEIS or abs(f_e - f_eixo) < 0.5:
+            f_e = float("nan")
+    s = 1 - PARES_POLOS * f_motor / f_e if np.isfinite(f_e) else float("nan")
     return {"f_eixo": f_eixo, "f_motor": f_motor, "razao_caixa": f_eixo / f_motor,
-            "f_e": f_e, "escorregamento": s, "rpm_eixo": 60 * f_eixo}
+            "f_e": f_e, "escorregamento": s, "rpm_eixo": 60 * f_eixo,
+            "visiveis_motor": vis_motor, "visiveis_f_e": vis_fe}
 
 
-def familias(v: dict) -> dict[str, tuple[float, int, str]]:
-    """nome → (f0, n máximo, tipo de tolerância)."""
-    return {
-        "eixo": (v["f_eixo"], 10_000, "abs"),
-        "motor": (v["f_motor"], 10_000, "abs"),
-        "f_e": (v["f_e"], 10_000, "abs"),
-        "BPFI": (RAZAO_BPFI * v["f_eixo"], BPF_N_MAX, "rel"),
-        "BPFO": (RAZAO_BPFO * v["f_eixo"], BPF_N_MAX, "rel"),
-    }
+# --------------------------------------------------------------------------- #
+# BPFI e BPFO medidos
+# --------------------------------------------------------------------------- #
+def cabe(fp: np.ndarray, f0: float, fr: float) -> np.ndarray:
+    """Máscara: quais picos cabem em n·f0 ± k·fr."""
+    ks = np.arange(-BPF_K_MAX, BPF_K_MAX + 1)
+    r = fp[:, None] - ks[None, :] * fr
+    n = np.clip(np.round(r / f0), 1, BPF_N_MAX)
+    return np.abs(r - n * f0).min(axis=1) < BPF_TOL_HZ
 
 
-def rotular(fp: float, fams: dict) -> list[str]:
-    """Famílias em que o pico cabe como harmônico, na forma 'eixo×12'."""
-    out = []
-    for nome, (f0, n_max, tipo) in fams.items():
-        n = int(round(fp / f0))
-        if n < 1 or n > n_max:
+def acertos(fp: np.ndarray, f0s: np.ndarray, fr: float) -> np.ndarray:
+    """Para cada f0, quantos picos cabem em n·f0 ± k·fr (n ≤ BPF_N_MAX, |k| ≤ BPF_K_MAX)."""
+    ks = np.arange(-BPF_K_MAX, BPF_K_MAX + 1)
+    r = fp[None, :, None] - ks[None, None, :] * fr              # [1, picos, k]
+    n = np.clip(np.round(r / f0s[:, None, None]), 1, BPF_N_MAX)  # [f0, picos, k]
+    dist = np.abs(r - n * f0s[:, None, None]).min(axis=2)       # [f0, picos]
+    return (dist < BPF_TOL_HZ).sum(axis=1)
+
+
+def ajustar_bpf(linhas: list[dict], fr: float, faixa: tuple[float, float],
+                rng: np.random.Generator) -> dict:
+    """Melhor f0 na faixa, refinado por mínimos quadrados, com a linha de base."""
+    sobem = sorted((r for r in linhas if r["delta_db"] > 0), key=lambda r: -r["delta_db"])
+    fp = np.array([r["f_hz"] for r in sobem[:BPF_TOP]])
+    if fp.size < BPF_MIN_ACERTOS:
+        return {"f0": float("nan"), "acertos": 0, "de": int(fp.size), "base": float("nan")}
+    grade = np.arange(faixa[0], faixa[1], 0.005)
+    ac = acertos(fp, grade, fr)
+    f0 = float(grade[int(np.argmax(ac))])
+    # refino: f_p − k·fr = n·f0 → f0 = Σ n·(f_p − k·fr) / Σ n²
+    num = den = 0.0
+    for x in fp:
+        best = min(((abs(x - k * fr - round((x - k * fr) / f0) * f0), k)
+                    for k in range(-BPF_K_MAX, BPF_K_MAX + 1)))
+        if best[0] < BPF_TOL_HZ:
+            k = best[1]
+            n = round((x - k * fr) / f0)
+            if 1 <= n <= BPF_N_MAX:
+                num += n * (x - k * fr)
+                den += n * n
+    if den:
+        f0 = num / den
+    base = float(acertos(fp, rng.uniform(150.0, 300.0, N_BASE), fr).mean())
+    n_ac = int(acertos(fp, np.array([f0]), fr)[0])
+    return {"f0": f0, "acertos": n_ac, "de": int(fp.size), "base": base,
+            "picos": fp.tolist()}
+
+
+def decidir_bpf(res: dict[str, dict], fr: float) -> None:
+    """
+    Aceita cada série só pelos picos que ela explica SOZINHA. Com bandas laterais
+    a ±eixo, séries de f0 comensuráveis (por exemplo 3·f0 ≈ 2·BPFI) acabam
+    "acertando" os mesmos picos; sem esta regra, uma gravação de pista interna
+    poderia ganhar uma BPFO fantasma feita das linhas da BPFI.
+    """
+    nomes = list(res)
+    for nome in nomes:
+        r = res[nome]
+        fp = np.array(r["picos"])
+        if fp.size == 0:
+            r.update(exclusivos=0, f0_medida=float("nan"))
             continue
-        # erro da frequência do pico (interpolada, ~0,1 Hz) + erro de f0 (poucos
-        # mHz depois do refino) multiplicado pela ordem. Em ordem alta a chance de
-        # coincidência cresce: rótulo como "motor×161" é candidato, não prova.
-        tol = 0.1 + 0.002 * n if tipo == "abs" else BPF_TOL_REL * fp
-        if abs(fp - n * f0) <= tol:
-            out.append(f"{nome}×{n}")
+        minha = cabe(fp, r["f0"], fr)
+        outras = np.zeros_like(minha)
+        for outro in nomes:
+            if outro != nome and res[outro]["acertos"] >= r["acertos"] and np.array(res[outro]["picos"]).size:
+                outras |= cabe(fp, res[outro]["f0"], fr)
+        r["exclusivos"] = int((minha & ~outras).sum())
+        r["f0_medida"] = r["f0"] if r["exclusivos"] >= BPF_MIN_ACERTOS else float("nan")
+    for r in res.values():
+        r.pop("picos", None)
+
+
+def familias(v: dict, bpf: dict) -> dict[str, tuple[float, int, bool]]:
+    """
+    nome → (f0, n máximo, admite bandas laterais a ±k·eixo). Frequências não
+    identificadas (nan) ficam de fora: não se rotula com o que não foi medido.
+    """
+    fams = {"eixo": (v["f_eixo"], 10_000, False),
+            "motor": (v["f_motor"], 10_000, False),
+            "f_e": (v["f_e"], 10_000, False),
+            "BPFI": (bpf.get("BPFI", float("nan")), BPF_N_MAX, True),
+            "BPFO": (bpf.get("BPFO", float("nan")), BPF_N_MAX, True)}
+    return {k: t for k, t in fams.items() if np.isfinite(t[0])}
+
+
+def rotular(fp: float, fams: dict, fr: float) -> list[str]:
+    """Famílias em que o pico cabe, na forma 'eixo×12' ou 'BPFO×4+1·eixo'."""
+    out = []
+    for nome, (f0, n_max, laterais) in fams.items():
+        ks = range(-BPF_K_MAX, BPF_K_MAX + 1) if laterais else (0,)
+        for k in ks:
+            n = int(round((fp - k * fr) / f0))
+            if n < 1 or n > n_max:
+                continue
+            # erro da frequência do pico (interpolada, ~0,1 Hz) + erro de f0
+            # multiplicado pela ordem. Em ordem alta a chance de coincidência
+            # cresce: rótulo como "motor×161" é candidato, não prova.
+            tol = 0.1 + 0.002 * n if not laterais else 0.15 + 0.005 * n
+            if abs(fp - k * fr - n * f0) <= tol:
+                out.append(f"{nome}×{n}" + (f"{k:+d}·eixo" if k else ""))
+                break
     return out
+
+
+def familia_de(rotulo: str) -> str:
+    """'BPFO×4' → 'BPFO'; 'BPFI×3+1·eixo' → 'BPFI±eixo'."""
+    nome = rotulo.split("×")[0]
+    return nome + "±eixo" if "·eixo" in rotulo else nome
 
 
 # --------------------------------------------------------------------------- #
 # Comparação
 # --------------------------------------------------------------------------- #
-def picos_diferentes(f, esp_f, esp_n, picos_f, picos_n, delta_min, fams) -> list[dict]:
+def picos_diferentes(f, esp_f, esp_n, picos_f, picos_n, delta_min, fams, fr) -> list[dict]:
     db_f, piso_f = esp_f
     db_n, piso_n = esp_n
     linhas, vistos = [], set()
@@ -238,7 +381,7 @@ def picos_diferentes(f, esp_f, esp_n, picos_f, picos_n, delta_min, fams) -> list
                 continue
             vistos.add(i)
             fp = freq_interpolada(f, db_f if origem == "falha" else db_n, i)
-            rot = rotular(fp, fams)
+            rot = rotular(fp, fams, fr)
             linhas.append({
                 "f_hz": fp, "origem": origem, "delta_db": delta,
                 "nivel_falha_db": nf, "nivel_normal_db": nn,
@@ -246,7 +389,7 @@ def picos_diferentes(f, esp_f, esp_n, picos_f, picos_n, delta_min, fams) -> list
                 "potencia_excesso": max(0.0, 10 ** (nf / 10) - 10 ** (nn / 10)),
                 "potencia_deficit": max(0.0, 10 ** (nn / 10) - 10 ** (nf / 10)),
                 "rotulos": ";".join(rot) if rot else "?",
-                "familia": (rot[0].split("×")[0] if len(rot) == 1 else
+                "familia": (familia_de(rot[0]) if len(rot) == 1 else
                             "ambiguo" if rot else "?"),
             })
     return sorted(linhas, key=lambda r: r["f_hz"])
@@ -289,26 +432,29 @@ def espacamentos(linhas: list[dict], f_acima: float = 1000.0, top: int = 5,
 # Figuras
 # --------------------------------------------------------------------------- #
 CORES = {"eixo": "tab:blue", "motor": "tab:cyan", "f_e": "tab:purple", "BPFI": "tab:red",
-         "BPFO": "tab:orange", "ambiguo": "0.55", "?": "k"}
+         "BPFI±eixo": "salmon", "BPFO": "tab:orange", "BPFO±eixo": "gold",
+         "ambiguo": "0.55", "?": "k"}
 
 
-def fig_zoom(f, esp: dict, vel: dict, caminho: Path, fmax: float = 700.0) -> None:
+def fig_zoom(f, esp: dict, vel: dict, bpf: dict, caminho: Path, fmax: float = 1500.0) -> None:
+    """PSD até `fmax`, com os harmônicos do eixo e da BPFI/BPFO MEDIDAS em cada gravação."""
     sel = f <= fmax
     fig, axes = plt.subplots(len(FALHAS), 1, figsize=(11, 2.4 * len(FALHAS)), sharex=True)
-    v = vel["normal"]
     for ax, falha in zip(axes, FALHAS):
         ax.plot(f[sel], esp["normal"][0][sel], color="k", lw=0.6, label="normal")
         ax.plot(f[sel], esp[falha][0][sel], color="tab:green" if falha == ALVO else "tab:red",
                 lw=0.6, alpha=0.8, label=falha)
-        for nome, f0 in (("eixo", v["f_eixo"]), ("BPFO", RAZAO_BPFO * v["f_eixo"]),
-                         ("BPFI", RAZAO_BPFI * v["f_eixo"])):
+        marcas = [("eixo", vel[falha]["f_eixo"])] + [
+            (nome, bpf[falha][nome]["f0_medida"]) for nome in BPF_FAIXAS
+            if np.isfinite(bpf[falha][nome]["f0_medida"])]
+        for nome, f0 in marcas:
             for k in range(1, int(fmax / f0) + 1):
                 ax.axvline(k * f0, color=CORES[nome], lw=0.5, ls=":", alpha=0.8)
         ax.set_ylabel("dB")
         ax.legend(fontsize=7, loc="upper right")
         ax.grid(alpha=0.25)
-    axes[-1].set_xlabel("frequência (Hz) — pontilhado: harmônicos do eixo (azul), "
-                        "BPFO (laranja), BPFI (vermelho)")
+    axes[-1].set_xlabel("frequência (Hz) — pontilhado: harmônicos do eixo (azul) e da "
+                        "BPFO (laranja) / BPFI (vermelho) medidas na gravação")
     fig.tight_layout()
     fig.savefig(caminho, dpi=150)
     plt.close(fig)
@@ -336,12 +482,17 @@ def fig_picos(res: dict, caminho: Path, fmax: float) -> None:
 # --------------------------------------------------------------------------- #
 # Dados sintéticos
 # --------------------------------------------------------------------------- #
+SINT_BPFI, SINT_BPFO = 5.345, 3.653     # × eixo, os valores medidos em 25/09
+
+
 def sintetico(seed: int = 0) -> list[pcm_io.Clip]:
     """
     Resposta conhecida: eixo 50,17 Hz, motor 50,17/2,07, f_e com 1,5 % de
-    escorregamento; BPFO nas classes bpfo_*; uma "portadora" a 4 kHz com bandas
-    laterais a ±2·f_e só na bpfo_0.3mm. O script tem que estimar as velocidades,
-    rotular BPFO e deixar a portadora como "?", com espaçamento ≈ 2·f_e.
+    escorregamento. BPFI e BPFO DIFERENTES das do artigo, como nos dados reais:
+    5,345× e 3,653× o eixo. BPFI com bandas laterais a ±eixo. Uma "portadora" a
+    4 kHz com bandas a ±2·f_e só na bpfo_0.3mm. O script tem que estimar
+    velocidades, BPFI e BPFO, fechar a tabela cruzada na diagonal e deixar a
+    portadora como "?".
     """
     rng = np.random.default_rng(seed)
     fs, dur = config.FS_ORIGINAL, 60.0
@@ -356,10 +507,14 @@ def sintetico(seed: int = 0) -> list[pcm_io.Clip]:
     for c in config.CLASSES:
         x = 0.002 * rng.standard_normal(t.size) + tons(fe_, 12, 0.02) + tons(fm, 8, 0.01) \
             + tons(fel, 4, 0.01)
+        g = 1.0 if c.endswith("1.0mm") else 0.3
         if c.startswith("bpfo"):
-            x += tons(RAZAO_BPFO * fe_, 3, 0.02 if c.endswith("1.0mm") else 0.004)
+            x += g * tons(SINT_BPFO * fe_, 14, 0.02)
         if c.startswith("bpfi"):
-            x += tons(RAZAO_BPFI * fe_, 3, 0.02)
+            fb = SINT_BPFI * fe_
+            for n in range(1, 13):
+                for k, a in ((0, 0.02), (-1, 0.01), (1, 0.01)):
+                    x += g * a / n * np.sin(2 * np.pi * (n * fb + k * fe_) * t + rng.uniform(0, 6.28))
         if c == ALVO:
             for m in range(-3, 4):
                 x += 0.003 / (1 + abs(m)) * np.sin(2 * np.pi * (4000 + 2 * m * fel) * t)
@@ -390,8 +545,9 @@ def main() -> None:
         args.sem_registro = True
         args.out_dir = args.out_dir / "sintetico"
         clipes = sintetico()
-        print(f"Modo sintético: esperado f_eixo 50,17 · f_motor {50.17 / RAZAO_CAIXA_NOMINAL:.3f} · "
-              f"f_e {2 * 50.17 / RAZAO_CAIXA_NOMINAL / 0.985:.3f} Hz; "
+        print(f"Modo sintético: esperado f_eixo 50,170 · f_motor {50.17 / RAZAO_CAIXA_NOMINAL:.3f} · "
+              f"f_e {2 * 50.17 / RAZAO_CAIXA_NOMINAL / 0.985:.3f} Hz · "
+              f"BPFI {SINT_BPFI * 50.17:.2f} · BPFO {SINT_BPFO * 50.17:.2f} Hz; "
               f"portadora em 4 kHz com espaçamento {2 * 2 * 50.17 / RAZAO_CAIXA_NOMINAL / 0.985:.2f} Hz.")
     else:
         clipes = pcm_io.carregar_clipes(args.pcm_raw, fs_esperado=config.FS_ORIGINAL)
@@ -406,26 +562,54 @@ def main() -> None:
         picos[c.rotulo] = achar_picos(f, db, piso, args.proeminencia, args.fmin, args.fmax)
     df = f[1] - f[0]
 
-    print(f"\n1. Velocidades estimadas (resolução da PSD: {df:.3f} Hz)")
+    def fmt(x, casas=3):
+        return f"{x:.{casas}f}" if np.isfinite(x) else "n/id"
+
+    print(f"\n1. Velocidades estimadas (resolução da PSD: {df:.3f} Hz; n/id = não identificada)")
     print(f"  {'classe':<12}{'f_eixo':>9}{'rpm':>8}{'f_motor':>9}{'caixa':>8}{'f_e':>9}{'escorr.':>9}"
           f"{'picos':>7}")
     for c in config.CLASSES:
         v = vel[c]
-        print(f"  {c:<12}{v['f_eixo']:>9.3f}{v['rpm_eixo']:>8.0f}{v['f_motor']:>9.3f}"
-              f"{v['razao_caixa']:>8.3f}{v['f_e']:>9.3f}{v['escorregamento']:>9.1%}"
-              f"{len(picos[c]):>7d}")
+        esc = f"{v['escorregamento']:.1%}" if np.isfinite(v["escorregamento"]) else "n/id"
+        print(f"  {c:<12}{v['f_eixo']:>9.3f}{v['rpm_eixo']:>8.0f}{fmt(v['f_motor']):>9}"
+              f"{fmt(v['razao_caixa']):>8}{fmt(v['f_e']):>9}{esc:>9}{len(picos[c]):>7d}")
     spread = max(v["f_eixo"] for v in vel.values()) - min(v["f_eixo"] for v in vel.values())
     print(f"  variação de f_eixo entre gravações: {spread:.3f} Hz ({spread / F_EIXO_NOMINAL:.2%})")
 
+    # BPFI/BPFO medidas: ajuste sobre os picos que sobem, antes de rotular
+    rng = np.random.default_rng(config.SEMENTE)
+    bpf: dict[str, dict] = {}
+    for falha in FALHAS:
+        brutas = picos_diferentes(f, esp[falha], esp["normal"], picos[falha], picos["normal"],
+                                  args.delta_min, {}, vel[falha]["f_eixo"])
+        bpf[falha] = {nome: ajustar_bpf(brutas, vel[falha]["f_eixo"], faixa, rng)
+                      for nome, faixa in BPF_FAIXAS.items()}
+        decidir_bpf(bpf[falha], vel[falha]["f_eixo"])
+
+    print(f"\n2. BPFI e BPFO medidas: dos {BPF_TOP} maiores picos que sobem, quantos cabem em "
+          f"n·f0 ± k·eixo (tolerância {BPF_TOL_HZ} Hz; linha de base = f0 ao acaso)")
+    print(f"  {'':<12}{'---------- BPFI ----------':>28}{'---------- BPFO ----------':>30}")
+    print(f"  {'classe':<12}{'f0 (Hz)':>9}{'acertos':>9}{'só dela':>8}{'base':>6}"
+          f"{'f0 (Hz)':>11}{'acertos':>9}{'só dela':>8}{'base':>6}")
+    for falha in FALHAS:
+        bi, bo = bpf[falha]["BPFI"], bpf[falha]["BPFO"]
+        print(f"  {falha:<12}{fmt(bi['f0_medida'], 2):>9}{bi['acertos']:>6}/{bi['de']:<2}"
+              f"{bi['exclusivos']:>8}{bi['base']:>6.1f}"
+              f"{fmt(bo['f0_medida'], 2):>11}{bo['acertos']:>6}/{bo['de']:<2}"
+              f"{bo['exclusivos']:>8}{bo['base']:>6.1f}")
+    print(f"  Uma série só é aceita (f0 ≠ n/id) com ≥ {BPF_MIN_ACERTOS} picos que só ela explica.")
+    print("  Esperado se a assinatura for do rolamento: pista interna só na coluna BPFI,")
+    print("  pista externa só na BPFO. Referência do artigo: BPFI 272, BPFO 179 Hz.")
+
     res, resumo = {}, {}
-    fams_n = familias(vel["normal"])
-    print(f"\n2. Picos que diferem da normal (|Δ| ≥ {args.delta_min:g} dB, "
+    print(f"\n3. Picos que diferem da normal (|Δ| ≥ {args.delta_min:g} dB, "
           f"{args.fmin:g}–{args.fmax:g} Hz)")
     for falha in FALHAS:
-        # rótulos pela velocidade da própria gravação de falha
-        fams = familias(vel[falha])
+        # rótulos pela velocidade e pelas BPFI/BPFO medidas na própria gravação de falha
+        medidas = {nome: bpf[falha][nome]["f0_medida"] for nome in BPF_FAIXAS}
+        fams = familias(vel[falha], medidas)
         linhas = picos_diferentes(f, esp[falha], esp["normal"], picos[falha], picos["normal"],
-                                  args.delta_min, fams)
+                                  args.delta_min, fams, vel[falha]["f_eixo"])
         res[falha] = linhas
         exc, dfc = atribuir(linhas, "potencia_excesso"), atribuir(linhas, "potencia_deficit")
         esp_top = espacamentos(linhas)
@@ -446,22 +630,27 @@ def main() -> None:
         for r in top:
             print(f"      {r['f_hz']:>9.2f} Hz  Δ {r['delta_db']:+6.1f} dB  ({r['origem']})  {r['rotulos']}")
         if esp_top:
-            ref = {"eixo": vel[falha]["f_eixo"], "motor": vel[falha]["f_motor"],
-                   "f_e": vel[falha]["f_e"], "2·f_e": 2 * vel[falha]["f_e"]}
+            ref = {"eixo": vel[falha]["f_eixo"], "2·eixo": 2 * vel[falha]["f_eixo"],
+                   "motor": vel[falha]["f_motor"], "f_e": vel[falha]["f_e"],
+                   "2·f_e": 2 * vel[falha]["f_e"],
+                   **{nome: bpf[falha][nome]["f0_medida"] for nome in BPF_FAIXAS}}
+            ref = {k: v for k, v in ref.items() if np.isfinite(v)}
             txt = []
             for d, n in esp_top:
                 perto = [k for k, v in ref.items() if abs(d - v) < 0.5]
                 txt.append(f"{d:.2f} Hz (×{n}{', ≈ ' + perto[0] if perto else ''})")
             print("    espaçamentos mais frequentes acima de 1 kHz: " + "; ".join(txt))
 
-    fig_zoom(f, esp, vel, args.out_dir / "fig_picos_zoom_baixa_freq.png")
+    fig_zoom(f, esp, vel, bpf, args.out_dir / "fig_picos_zoom_baixa_freq.png")
     fig_picos(res, args.out_dir / "fig_picos_diferentes_por_familia.png", args.fmax)
 
     with (args.out_dir / "velocidades.csv").open("w", encoding="utf-8", newline="") as fh:
-        w = csv.DictWriter(fh, fieldnames=["classe", *vel["normal"].keys()])
+        w = csv.DictWriter(fh, fieldnames=["classe", *vel["normal"].keys(), "bpfi_hz", "bpfo_hz"])
         w.writeheader()
         for c in config.CLASSES:
-            w.writerow({"classe": c, **{k: f"{v:.4f}" for k, v in vel[c].items()}})
+            extra = ({"bpfi_hz": fmt(bpf[c]["BPFI"]["f0_medida"]), "bpfo_hz": fmt(bpf[c]["BPFO"]["f0_medida"])}
+                     if c in bpf else {"bpfi_hz": "", "bpfo_hz": ""})
+            w.writerow({"classe": c, **{k: f"{v:.4f}" for k, v in vel[c].items()}, **extra})
     with (args.out_dir / "picos_diferentes.csv").open("w", encoding="utf-8", newline="") as fh:
         campos = ["classe", "f_hz", "origem", "delta_db", "nivel_falha_db", "nivel_normal_db",
                   "acima_piso_db", "familia", "rotulos"]
@@ -471,11 +660,21 @@ def main() -> None:
             for r in res[falha]:
                 w.writerow({"classe": falha, **{k: (f"{v:.3f}" if isinstance(v, float) else v)
                                                 for k, v in r.items()}})
-    (args.out_dir / "picos_metrics.json").write_text(json.dumps(
+    def sem_nan(o):
+        if isinstance(o, dict):
+            return {k: sem_nan(v) for k, v in o.items()}
+        if isinstance(o, (list, tuple)):
+            return [sem_nan(v) for v in o]
+        if isinstance(o, float) and not np.isfinite(o):
+            return None
+        return o
+
+    (args.out_dir / "picos_metrics.json").write_text(json.dumps(sem_nan(
         {"data": date.today().isoformat(), "resolucao_hz": df, "velocidades": vel,
+         "bpf_medidas": bpf,
          "parametros": {"proeminencia_db": args.proeminencia, "delta_min_db": args.delta_min,
                         "fmin": args.fmin, "fmax": args.fmax},
-         "por_falha": resumo}, indent=2, ensure_ascii=False), encoding="utf-8")
+         "por_falha": resumo}), indent=2, ensure_ascii=False), encoding="utf-8")
     print(f"\nSaída em {args.out_dir}/")
 
     if args.sem_registro:
@@ -494,11 +693,15 @@ def main() -> None:
         "dataset": "jung2023_acustico_0Nm",
         "metricas": experimentos.kv({
             **{f"f_eixo_{c}": f"{vel[c]['f_eixo']:.3f}" for c in config.CLASSES},
+            **{f"{nome.lower()}_{fa}": fmt(bpf[fa][nome]["f0_medida"], 2)
+               for fa in FALHAS for nome in BPF_FAIXAS},
+            **{f"acertos_{nome.lower()}_{fa}": bpf[fa][nome]["acertos"]
+               for fa in FALHAS for nome in BPF_FAIXAS},
             **{f"npicos_{fa}": resumo[fa]["n_picos"] for fa in FALHAS},
             **{f"exc_sem_rotulo_{fa}": f"{resumo[fa]['excesso_por_familia'].get('?', 0.0):.3f}"
                for fa in FALHAS}}),
         "responsavel": args.responsavel,
-        "notas": args.notas or "identificação de tons; velocidades estimadas por pente harmônico",
+        "notas": args.notas or "identificação de tons; BPFI/BPFO medidas por ajuste de série harmônica",
     }
     experimentos.append_registry(args.registry, [linha])
     print(f"registrado como {linha['id']}")
