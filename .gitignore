@@ -21,3 +21,6 @@ firmware/**/*.bin
 # Editor / SO
 .vscode/
 .DS_Store
+
+# Saídas dos auto-testes com sinais sintéticos (--sintetico)
+reports/**/sintetico/
