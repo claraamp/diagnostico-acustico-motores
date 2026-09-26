@@ -5,7 +5,7 @@ run_protocol.py — roda o Protocolo A ou B sobre a partição do splits.json
 =========================================================================
 
 Treina e avalia um classificador em cada fold da partição gerada pelo
-`pipeline/04_make_splits.py`, e grava o resultado em
+`pipeline/03_make_splits.py`, e grava o resultado em
 `reports/validation/<id>_<descrição>/` e no `experiments/registry.csv`.
 
 Leitura dos resultados (Registro de Decisões, 24/09):
@@ -17,16 +17,16 @@ Leitura dos resultados (Registro de Decisões, 24/09):
 
 Features
 --------
-`dsp.mfcc` com os parâmetros do `config.py`, calculado dentro de cada segmento
-de 1 s, e resumido em média e desvio de cada coeficiente ao longo dos quadros
-(13 + 13 = 26 valores por segmento). O resumo é PROVISÓRIO: a representação
-oficial sai do `03_extract_features.py`. O MFCC em si é o mesmo do `dsp.py`,
-compartilhado com o resto do pipeline.
+Carrega a matriz pré-calculada pelo `04_extract_features.py` (média e desvio
+dos coeficientes MFCC por segmento).
 
 Regras do protocolo que este script cumpre
 ------------------------------------------
 - Lê a partição do splits.json; não sorteia nada. Aborta se o arquivo violar
   o protocolo ou não corresponder aos dados carregados.
+- Aborta se o `manifest_features.json` faltar, se as features vierem de outra
+  partição ou de outros parâmetros de MFCC, ou se o número de linhas do `.npz`
+  não bater com o de segmentos. Os parâmetros gravados são os do manifesto.
 - O escalonamento (`StandardScaler`) é ajustado só no treino de cada fold.
 - Sem aumento de dados nesta versão.
 
@@ -62,31 +62,16 @@ from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
 
 import config
-import dsp
 import experimentos
 import pcm_io
 from validation import metricas, particao
 
-FEATURES_ID = "mfcc_dsp_media_desvio_provisorio"
+FEATURES_ID = "mfcc_dsp_media_desvio"
 
 
 # --------------------------------------------------------------------------- #
-# Features
+# Features e Rótulos
 # --------------------------------------------------------------------------- #
-def extrair_features(clipes: list[pcm_io.Clip], segmentos: list[particao.Segmento],
-                     sem_c0: bool) -> np.ndarray:
-    """Uma linha por segmento: média e desvio de cada coeficiente MFCC."""
-    por_rotulo = {c.rotulo: c for c in clipes}
-    linhas = []
-    for s in segmentos:
-        c = por_rotulo[s.rotulo]
-        m = dsp.mfcc(c.x[s.inicio:s.fim], c.fs)
-        if sem_c0:
-            m = m[:, 1:]
-        linhas.append(np.concatenate([m.mean(axis=0), m.std(axis=0)]))
-    return np.vstack(linhas)
-
-
 def rotulos(segmentos: list[particao.Segmento], tarefa: str) -> np.ndarray:
     return np.array([s.binario if tarefa == "binario" else s.rotulo for s in segmentos])
 
@@ -197,7 +182,6 @@ def metricas_registry(resumo: dict) -> dict:
         m[f"acc_bal_{falha}"] = f"{t['acuracia_balanceada']:.4f}"
     return m
 
-
 # --------------------------------------------------------------------------- #
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
@@ -208,6 +192,7 @@ def main() -> int:
     ap.add_argument("--sem-c0", action="store_true", help="ablação do ganho")
     ap.add_argument("--permutar", action="store_true", help="controle de permutação por bloco")
     ap.add_argument("--splits", type=Path, default=Path("data/processed/splits/splits.json"))
+    ap.add_argument("--features", type=Path, default=Path("data/processed/features/mfcc_features.npz"))
     ap.add_argument("--pcm-dir", type=Path,
                     default=Path(f"data/processed/pcm_decimated/{config.FS_TRABALHO}"))
     ap.add_argument("--out-dir", type=Path, default=Path("reports/validation"))
@@ -222,7 +207,6 @@ def main() -> int:
         ap.error("o Protocolo B é binário: cada falha testada não aparece no treino, "
                  "então não há como acertar a classe dela")
 
-    # ------------------------------------------------ dados e partição
     clipes = pcm_io.carregar_clipes(args.pcm_dir, fs_esperado=config.FS_TRABALHO)
     divergencias = pcm_io.verificar_integridade(clipes)
     pcm_io.relatar_integridade(divergencias)
@@ -245,8 +229,36 @@ def main() -> int:
           f"(splits {hash_splits})")
 
     # ------------------------------------------------ features e rótulos
-    print("Extraindo MFCC por segmento...")
-    X = extrair_features(clipes, segmentos, args.sem_c0)
+    manifesto_path = args.features.with_name("manifest_features.json")
+    for caminho in (args.features, manifesto_path):
+        if not caminho.exists():
+            print(f"Abortado: {caminho} não encontrado; rode o 04_extract_features.py.")
+            return 1
+    manifesto_features = json.loads(manifesto_path.read_text(encoding="utf-8"))
+
+    esperado = {
+        "splits_hash": hash_splits,
+        "fs_hz": config.FS_TRABALHO,
+        "mfcc_janela_ms": config.MFCC_WINDOW_MS,
+        "mfcc_hop_ms": config.MFCC_HOP_MS,
+        "mfcc_n_mels": config.MFCC_N_MELS,
+        "mfcc_n_coefs": config.MFCC_N_COEFS,
+    }
+    divergentes = [f"{k}: features={manifesto_features.get(k)}, atual={v}"
+                   for k, v in esperado.items() if manifesto_features.get(k) != v]
+    if divergentes:
+        print("Abortado: features extraídas com outra configuração; rode o 04 de novo.\n  "
+              + "\n  ".join(divergentes))
+        return 1
+
+    norm_clipe = bool(manifesto_features.get("norm_clipe", False))
+    X = np.load(args.features)["X"]
+    if len(X) != len(segmentos):
+        print(f"Abortado: o .npz tem {len(X)} linhas e a partição tem {len(segmentos)} segmentos.")
+        return 1
+    if args.sem_c0:
+        # colunas da média e do desvio do c0
+        X = np.delete(X, [0, config.MFCC_N_COEFS], axis=1)
     y = rotulos(segmentos, args.tarefa)
 
     # ------------------------------------------------ folds
@@ -259,6 +271,7 @@ def main() -> int:
     # ------------------------------------------------ gravação
     descricao = "_".join(p for p in (
         f"protocolo{args.protocolo}", args.tarefa, args.modelo,
+        "normclipe" if norm_clipe else None,
         "semc0" if args.sem_c0 else None, "permutado" if args.permutar else None,
     ) if p)
     exp_id = "teste" if args.sem_registro else f"exp{experimentos.next_exp_number(args.registry):03d}"
@@ -269,18 +282,20 @@ def main() -> int:
         "protocolo": args.protocolo,
         "tarefa": args.tarefa,
         "modelo": args.modelo,
-        "features": FEATURES_ID,
+        "features": FEATURES_ID + ("_normclipe" if norm_clipe else ""),
+        "norm_clipe": norm_clipe,
         "sem_c0": args.sem_c0,
         "permutado": args.permutar,
         "splits": hash_splits,
-        "fs_hz": config.FS_TRABALHO,
+        "fs_hz": manifesto_features["fs_hz"],
         "segmento_s": config.SEGMENTO_S,
         "segmentos_por_bloco": config.SEGMENTOS_POR_BLOCO,
         "segmentos_descarte": config.SEGMENTOS_DESCARTE,
-        "mfcc_janela_ms": config.MFCC_WINDOW_MS,
-        "mfcc_hop_ms": config.MFCC_HOP_MS,
-        "mfcc_n_mels": config.MFCC_N_MELS,
-        "mfcc_n_coefs": config.MFCC_N_COEFS,
+        "mfcc_janela_ms": manifesto_features["mfcc_janela_ms"],
+        "mfcc_hop_ms": manifesto_features["mfcc_hop_ms"],
+        "mfcc_n_mels": manifesto_features["mfcc_n_mels"],
+        "mfcc_n_coefs": manifesto_features["mfcc_n_coefs"],
+        "features_commit": manifesto_features.get("git_commit"),
         "semente": config.SEMENTE if args.permutar else None,
     }
     (destino / "metrics.json").write_text(json.dumps(
