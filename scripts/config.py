@@ -72,11 +72,28 @@ BINARIO = {
     "bpfo_1.0mm": "falha",
 }
 
-# A partição treino/teste NÃO é definida aqui. Com uma única gravação contínua
-# por classe, qualquer split interno vaza identidade de registro — ver a tarefa
-# "Definir o protocolo de validação do classificador". Enquanto o protocolo não
-# estiver fechado, nenhuma acurácia deste pipeline deve ser reportada como
-# desempenho.
+# =====================================================
+# Protocolo de validação (Registro de Decisões, 24/09)
+# =====================================================
+# Com uma única gravação contínua por classe, qualquer divisão dentro dela deixa
+# treino e teste no mesmo registro. O protocolo que contorna isso — blocos
+# temporais (A) e gravação de falha deixada de fora (B) — está implementado em
+# validation/particao.py. A partição é gerada UMA vez pelo
+# pipeline/04_make_splits.py e gravada em data/processed/splits/splits.json;
+# todo experimento lê esse arquivo. A meta de 85 % é a acurácia balanceada
+# média do Protocolo B.
+SEGMENTOS_POR_BLOCO = 10   # segmentos de SEGMENTO_S por bloco temporal
+SEGMENTOS_DESCARTE = 1     # faixa de descarte: segmentos de treino vizinhos a um
+                           # bloco de teste, na mesma gravação, saem daquele fold
+SEMENTE = 20260925         # só para controles aleatórios (permutação de rótulos)
+                           # e treino de modelos; a partição é determinística
+
+# Derivado (não editar)
+AMOSTRAS_POR_SEGMENTO = int(round(FS_TRABALHO * SEGMENTO_S))   # 12800
+
+# A sobra do fim de cada gravação que não completa um segmento é descartada.
+# Com a decimação atual, cada gravação tem 767.982 amostras: 59 segmentos
+# completos, blocos de 10, 10, 10, 10, 10 e 9.
 
 # ==========================================
 # Formato dos dados

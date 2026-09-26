@@ -15,8 +15,10 @@ diagnostico-acustico-motores/
 │   ├── raw/                  # .mat originais do dataset Jung et al. — NÃO versionado (ver .gitignore)
 │   └── processed/
 │       ├── pcm_raw/          # saída do 01_convert_mat_to_pcm.py — .bin NÃO versionados, manifest.json É versionado
-│       └── pcm_decimated/    # saída do 02_decimate_pcm.py, subdiretório pela taxa de trabalho (12800/)
-│                             # mesma regra: .bin fora do Git, manifest.json versionado
+│       ├── pcm_decimated/    # saída do 02_decimate_pcm.py, subdiretório pela taxa de trabalho (12800/)
+│       │                     # mesma regra: .bin fora do Git, manifest.json versionado
+│       └── splits/
+│           └── splits.json   # saída do 03_make_splits.py — partição dos protocolos A e B, VERSIONADA
 │
 ├── scripts/
 │   ├── config.py             # parâmetros compartilhados (ver seção 5)
@@ -24,7 +26,10 @@ diagnostico-acustico-motores/
 │   ├── pcm_io.py             # leitura e escrita de PCM e manifests
 │   ├── experimentos.py       # escrita do registry (ver seção 4)
 │   ├── exploration/          # estudos e inspeções, um-off, sem numeração
-│   └── pipeline/             # pipeline reprodutível, numerado pela ordem de execução
+│   ├── pipeline/             # pipeline reprodutível, numerado pela ordem de execução
+│   └── validation/           # pasta por assunto: protocolo de validação do classificador (ver seção 5)
+│
+├── tests/                    # testes automáticos (pytest), espelhando scripts/ (ver seção 7)
 │
 ├── notebooks/                # notebooks de análise/visualização (se usados)
 │
@@ -37,12 +42,15 @@ diagnostico-acustico-motores/
 │
 ├── reports/                  # figuras, tabelas e outputs usados nos relatórios
 │   ├── decimation/           # saída do estudo de taxas: métricas, figuras e relatório
-│   └── exploration/          # figuras dos scripts de scripts/exploration/
+│   ├── exploration/          # figuras dos scripts de scripts/exploration/
+│   └── validation/           # uma pasta por rodada dos protocolos: metrics.json e folds.csv
 │
 └── docs/                     # documentação técnica complementar (ex.: notas sobre o formato do .mat)
 ```
 
 **Por que `data/raw/` e os `.bin` de `data/processed/` não são versionados:** os 5 arquivos `.mat` somam ~120 MB e os PCM outros ~60 MB — grande demais para um repositório Git normal e, além disso, redundante: o dataset já está publicado com DOI fixo (Mendeley `10.17632/ztmf3m7h5x.6`). O `README.md` deve trazer o link de download e o script `01_convert_mat_to_pcm.py` para qualquer um reconstruir `data/` do zero. O que **é** versionado é o código e os metadados leves (`manifest.json`, `registry.csv`), que são o que realmente precisa ter histórico rastreável.
+
+O `splits.json` é versionado pelo mesmo motivo que o `manifest.json`, e por mais um: ele **define** quais segmentos são treino e quais são teste em cada fold. Se cada integrante gerasse a própria partição, os números de rodadas diferentes deixariam de ser comparáveis. Por isso ele é gerado uma única vez, e o `03_make_splits.py` se recusa a sobrescrever um arquivo diferente. Uma partição nova invalida a comparação com todas as rodadas já registradas: só se usa `--sobrescrever` depois de registrar essa decisão no Notion.
 
 Consequência prática dessa escolha, aprendida na marra: **depois de clonar o repositório, `data/` vem vazio**. É preciso baixar o dataset e rodar o `01` de novo antes de qualquer análise. Como o `manifest.json` é versionado e a conversão é determinística, ele serve de referência para conferir se a reconversão reproduziu a original — o `inspect_pcm.py` compara número de amostras e pico PCM de cada `.bin` com o manifest e avisa se divergir.
 
@@ -54,8 +62,14 @@ Exemplos já usados: `inspect_mat_keys.py`, `inspect_signal_data.py`, `inspect_p
 A linha entre as duas pastas é o que o script **faz**, não o seu tamanho: `pipeline/` é transformação que roda de novo toda vez que o dado muda; `exploration/` responde uma pergunta uma vez. O caso que fixou a regra: a escolha da taxa de decimação nasceu misturada com a decimação em si, num arquivo de 1.200 linhas. O estudo — varredura de cinco taxas, métricas, figuras e relatório — foi para `exploration/compare_decimation_rates.py`, e a etapa que aplica a taxa escolhida ficou em `pipeline/02_decimate_pcm.py`, com 105 linhas. Um estudo fica versionado para a decisão continuar auditável, não para ser reexecutado.
 
 **Scripts de pipeline** (`scripts/pipeline/`): prefixo numérico de duas casas indicando a ordem de execução, seguido do verbo da ação em `snake_case`.
-Exemplos: `01_convert_mat_to_pcm.py`, `02_decimate_pcm.py`, `03_extract_features.py`, `04_train_classifier.py`.
-Regra: se um script novo precisa rodar *entre* dois existentes, renumerar em vez de usar sufixos como `01b_`.
+Sequência atual: `01_convert_mat_to_pcm.py`, `02_decimate_pcm.py`, `03_make_splits.py`, `04_extract_features.py`, `05_train_classifier.py`.
+Regra: se um script novo precisa rodar *entre* dois existentes, renumerar em vez de usar sufixos como `01b_`. Foi o que aconteceu com a partição: ela entrou como `03` porque a extração de features opera sobre os segmentos que ela define, e a extração e o treino passaram a `04` e `05`.
+
+O `05_train_classifier.py` produz o modelo que vai para o firmware; ele **não** mede desempenho. Medir desempenho é papel de `scripts/validation/run_protocol.py`, que treina e descarta um modelo por fold. As duas coisas ficam em scripts separados de propósito.
+
+**Pastas por assunto** (`scripts/validation/`, e as que vierem: `augmentation/`, `models/`): reúnem os módulos e os executáveis de um mesmo assunto. Cada uma tem um `__init__.py`, para poder ser importada (`from validation import particao`). Dentro delas, **executáveis começam com `run_`**; o resto é módulo importado e não roda sozinho. A raiz de `scripts/` fica reservada aos módulos que praticamente toda etapa usa (ver seção 5).
+
+**Terminologia**: no código, `pcm_io.Clip` é a **gravação** inteira de uma classe (~60 s). A unidade de classificação de 1 s se chama **segmento** (`config.SEGMENTO_S`). Não chamar segmentos de "clipes", para os dois conceitos não se confundirem.
 
 **Classes/rótulos**: sempre em `snake_case`, minúsculo, consistente entre código, nomes de arquivo e Notion:
 `normal`, `bpfi_0.3mm`, `bpfi_1.0mm`, `bpfo_0.3mm`, `bpfo_1.0mm` (5 classes) — e `normal` / `falha` (binário).
@@ -90,7 +104,7 @@ Cada rodada de um experimento (extração de features, treino de classificador, 
 |---|---|
 | `id` | identificador curto e sequencial, ex. `exp001` |
 | `data` | data da rodada (AAAA-MM-DD) |
-| `etapa` | qual etapa do pipeline foi exercitada, ex. `decimacao`, `extracao_features`, `treino_classificador` |
+| `etapa` | qual etapa do pipeline foi exercitada, ex. `decimacao`, `extracao_features`, `validacao_classificador`, `treino_classificador` |
 | `script` | script executado, ex. `02_decimate_pcm.py` |
 | `git_commit` | hash curto do commit em que o script estava (`git rev-parse --short HEAD`) — garante que dá pra reproduzir exatamente aquela rodada |
 | `parametros` | parâmetros relevantes da rodada, em formato `chave=valor;chave=valor` (ex. `fator_decimacao=4;filtro=fir_lowpass_order8`) |
@@ -105,20 +119,26 @@ Três regras práticas, fixadas depois da primeira rodada real:
 
 - **O script escreve a própria linha.** Preencher à mão depende de alguém lembrar, e foi por isso que a coluna `git_commit` existe: o script lê `git rev-parse --short HEAD` sozinho. Rodadas de teste (trechos curtos, verificação de ambiente) usam a flag que desliga o registro, para não sujar o arquivo.
 - **Uma varredura de parâmetro gera uma linha por ponto**, todas com o mesmo `git_commit` e a mesma data. A rodada de decimação, por exemplo, gerou seis linhas: o baseline de 51,2 kHz e uma para cada taxa candidata. É isso que permite plotar métrica × parâmetro, que é a justificativa do formato.
+- **Rodada de classificação registra protocolo e partição.** Toda linha de `validacao_classificador` traz em `parametros` o `protocolo` (A ou B), o `splits` (hash do `splits.json` usado) e as `features`. É o que permite saber, meses depois, se duas rodadas são comparáveis: com hash diferente, não são. E o número que vale para a meta é o do Protocolo B — o A é limite otimista e não deve ser citado como desempenho.
+- **Commit antes de rodar.** O `git_commit` só serve se o código daquele commit for o que rodou. Rodada registrada com mudanças não commitadas aponta para um estado que não existe.
 - **Resultado negativo se registra; medição inválida se descarta.** As duas coisas não são iguais. Uma taxa que preserva pouco da assinatura é resultado e entra no arquivo. Uma rodada cujo método estava errado — banda de análise mal escolhida, critério que não se aplica ao sinal — não mede o que diz medir, e manter a linha só contamina comparações futuras. Nesse caso a rodada é refeita e a linha inválida não entra.
 
 ## 5. Código compartilhado entre etapas
 
-Módulos importáveis ficam na raiz de `scripts/`, e nenhum script de etapa reimplementa o que eles oferecem:
+Módulos importáveis ficam na raiz de `scripts/` quando praticamente toda etapa os usa, e numa pasta por assunto quando pertencem a um assunto só. Nenhum script reimplementa o que eles oferecem:
 
 | módulo | responsabilidade |
 |---|---|
-| `config.py` | parâmetros que atravessam etapas: taxa de trabalho, janela, hop, banco de Mel, rótulos |
+| `config.py` | parâmetros que atravessam etapas: taxa de trabalho, janela, hop, banco de Mel, rótulos, segmentação e partição |
 | `dsp.py` | blocos de sinal: PSD, espectro de envelope, banco de Mel, MFCC, projeto de decimação |
 | `pcm_io.py` | leitura e escrita dos `.bin` e dos `manifest.json` |
 | `experimentos.py` | numeração, hash do commit e escrita do `registry.csv` |
+| `validation/particao.py` | segmentação das gravações, folds dos protocolos A e B, verificação das garantias, leitura e escrita do `splits.json` |
+| `validation/metricas.py` | sensibilidade, especificidade, acurácia balanceada e resumos dos protocolos |
 
-Como os scripts de pipeline têm prefixo numérico, eles não podem ser importados como módulo (nome de módulo não começa com dígito) e o `python -m` não se aplica. Cada script, de pipeline ou de exploração, abre com:
+A regra vale em particular para a segmentação: qualquer etapa que opere sobre segmentos — extração de features, aumento de dados, treino — obtém os segmentos de `particao.segmentos_de(particao.carregar(...))`, nunca recorta o sinal por conta própria. Uma segunda segmentação poderia divergir da partição sem erro nenhum, e o teste deixaria de estar separado do treino.
+
+Como os scripts de pipeline têm prefixo numérico, eles não podem ser importados como módulo (nome de módulo não começa com dígito) e o `python -m` não se aplica. Cada script — de pipeline, de exploração ou executável de uma pasta por assunto — abre com:
 
 ```python
 import sys
@@ -126,7 +146,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))   # scripts/
 ```
 
-Sem isso, `import config` falha quando o script é chamado da raiz do repositório.
+Sem isso, `import config` falha quando o script é chamado da raiz do repositório. Como as três pastas estão no mesmo nível, `parents[1]` aponta para `scripts/` em todas, e daí `from validation import particao` também funciona.
 
 No `config.py` ficam **escolhas**, não **resultados**: valores que são consequência de uma escolha — número de coeficientes do FIR, tamanho da FFT — são calculados a partir dela, nunca copiados como literal. Congelados, viram mentira silenciosa no dia em que alguém mudar a taxa de trabalho.
 
@@ -165,3 +185,20 @@ Note que o prefixo do commit (frente de trabalho) e o prefixo da branch (tipo de
 ### Títulos de PR
 
 Substantivos, descrevendo a entrega e o resultado quando couber — `Conversão .mat para PCM`, `Definição da taxa de decimação (12,8 kHz)`. Quem varre a lista de PRs meses depois precisa entender o que foi feito sem abrir cada um.
+## 7. Testes
+
+Testes automáticos ficam em `tests/`, com a mesma estrutura de `scripts/` (`tests/validation/` testa `scripts/validation/`), e rodam com:
+
+```bash
+pytest tests/
+```
+
+O `tests/conftest.py` coloca `scripts/` no caminho de importação, do mesmo jeito que os scripts fazem, então os testes importam `config`, `pcm_io` e `validation.particao` diretamente.
+
+Três regras:
+
+- **Testes não dependem de `data/`.** Eles usam dados sintéticos com o mesmo formato dos reais (por exemplo, gravações de 767.982 amostras a 12,8 kHz), para rodar num clone recém-feito, antes de qualquer download.
+- **Rodar antes de commitar** qualquer mudança em módulo importado, e antes de abrir PR. Um teste que falha é motivo para não mergear.
+- **O que um teste protege é uma garantia, não um número.** Os testes da partição conferem que nenhum segmento está em treino e teste no mesmo fold, que a faixa de descarte é respeitada e que a falha deixada de fora não aparece no treino — as condições sem as quais os resultados de classificação não valem. Resultados numéricos vão para o `registry.csv`, não para os testes.
+
+Se `pytest` falhar ao iniciar com erro de importação vindo de fora do projeto (um caminho como `/opt/ros/...`), é o `PYTHONPATH` do sistema trazendo plugins de pytest de outro ambiente. Limpe-o no terminal do projeto (`unset PYTHONPATH`) ou acrescente essa linha ao final de `.venv/bin/activate`. É a mesma contaminação que o `--local` evita no `pip freeze` (seção 3).

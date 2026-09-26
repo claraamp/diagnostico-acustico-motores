@@ -13,7 +13,7 @@ Sistema embarcado que classifica, em tempo real e a partir de sinal acústico, o
 
 ## Status
 
-Fase 1 — Protótipo em Python (em andamento). Ver o quadro de tarefas no Notion para o estado detalhado de cada etapa.
+Fase 1 — Protótipo em Python (em andamento). Conversão, decimação e protocolo de validação concluídos; extração oficial de features e escolha do classificador em andamento. Ver o quadro de tarefas no Notion para o estado detalhado de cada etapa.
 
 ## Decisões técnicas fixadas
  
@@ -23,15 +23,22 @@ Fase 1 — Protótipo em Python (em andamento). Ver o quadro de tarefas no Notio
 | Anti-aliasing | FIR Kaiser, 147 taps, corte em 5.760 Hz, 60 dB de atenuação | idem |
 | Representação de features | MFCC (25 ms, hop 10 ms, 20 mels, 13 coeficientes) | proposta, seção de Metodologia |
 | Plataforma | STM32F411CEU6 (Cortex-M4F, CMSIS-DSP, X-CUBE-AI) | proposta, seção de Infraestrutura |
+| Unidade de classificação | segmento de 1 s (12.800 amostras); 59 por gravação, em blocos de 10, 10, 10, 10, 10 e 9 | Notion, Registro de Decisões (protocolo de validação) |
+| Protocolo de validação | **A** — blocos temporais (limite otimista); **B** — gravação de falha deixada de fora (resultado principal) | idem; implementação em `scripts/validation/particao.py` |
+| Meta de desempenho | acurácia balanceada média do Protocolo B ≥ 85 %, sempre com sensibilidade, especificidade e pior caso | idem; resultados em `reports/validation/` |
  
 A escolha de 12.800 Hz é a única taxa com fator de decimação inteiro dentro da faixa de 8–16 kHz — requisito de `arm_fir_decimate_f32` do CMSIS-DSP — e preserva 96,1 % da energia discriminante no pior caso (classes de defeito incipiente, 0,3 mm). O registro completo da comparação está em `experiments/registry.csv` (`exp001`–`exp006`).
 
+O protocolo de validação existe porque o dataset tem **uma única gravação por classe**: qualquer divisão treino/teste dentro de uma gravação deixa os dois no mesmo registro, e o classificador pode separar as classes pela identidade da gravação em vez da falha (foi o que deu acurácia 1,0 no estudo de decimação). O Protocolo B testa cada gravação de falha sem que ela apareça no treino; é o único resultado que conta para a meta. A primeira rodada, provisória, está em `exp007`–`exp012`.
+
 ## Dataset
 
-Jung, W.; Kim, J.; Park, Y.-H. et al. (2023), subconjunto acústico (microfone), 5 classes — `0Nm_Normal`, `0Nm_BPFI_03`, `0Nm_BPFI_10`, `0Nm_BPFO_03`, `0Nm_BPFO_10` — 60 s cada, 51,2 kHz, formato `.mat`.
+Jung, W.; Kim, S.-H.; Yun, S.-H.; Bae, J.; Park, Y.-H. (2023), *Data in Brief* 48, 109049. Subconjunto acústico (microfone), 5 classes — `0Nm_Normal`, `0Nm_BPFI_03`, `0Nm_BPFI_10`, `0Nm_BPFO_03`, `0Nm_BPFO_10` — 60 s cada, 51,2 kHz, formato `.mat`.
 Mendeley Data, DOI [`10.17632/ztmf3m7h5x.6`](https://doi.org/10.17632/ztmf3m7h5x.6).
 
-Os arquivos `.mat` **não são versionados** neste repositório (ver `.gitignore`) — são grandes e já têm DOI fixo. O mesmo vale para os `.bin` gerados a partir deles; apenas os `manifest.json` entram no Git.
+Esses cinco arquivos são **todo o áudio do dataset**. Os ensaios com carga (2 e 4 Nm), os defeitos de 3,0 mm e as falhas de desbalanceamento e desalinhamento têm só vibração, corrente e temperatura: os autores não gravaram o microfone com carga porque o freio, resfriado a ar, contaminaria o canal acústico (seção 3.1 do artigo).
+
+Os arquivos `.mat` **não são versionados** neste repositório (ver `.gitignore`) — são grandes e já têm DOI fixo. O mesmo vale para os `.bin` gerados a partir deles; apenas os `manifest.json` e o `splits.json` (a partição dos protocolos de validação) entram no Git.
 
 Isso significa que **um clone novo vem com `data/` vazio**. Para reconstruir, ver "Como rodar" abaixo.
 
@@ -48,7 +55,9 @@ diagnostico-acustico-motores/
 │   ├── raw/                  # .mat originais (baixados manualmente, não versionados)
 │   └── processed/
 │       ├── pcm_raw/          # saída do 01 — .bin não versionados, manifest.json versionado
-│       └── pcm_decimated/    # saída do 02, um subdiretório por taxa (ex.: 12800/)
+│       ├── pcm_decimated/    # saída do 02, um subdiretório por taxa (ex.: 12800/)
+│       └── splits/
+│           └── splits.json   # saída do 03 — partição dos protocolos A e B, VERSIONADA
 │
 ├── scripts/
 │   ├── config.py             # parâmetros compartilhados entre etapas
@@ -61,9 +70,21 @@ diagnostico-acustico-motores/
 │   │   ├── inspect_pcm.py                 # sanidade da conversão + caráter do sinal
 │   │   ├── inspect_class_spectra.py       # PSD por classe e banda necessária
 │   │   └── compare_decimation_rates.py    # estudo que definiu a taxa de trabalho
-│   └── pipeline/             # pipeline reprodutível, numerado pela ordem de execução
-│       ├── 01_convert_mat_to_pcm.py
-│       └── 02_decimate_pcm.py             # aplica a taxa definida em config.py
+│   ├── pipeline/             # pipeline reprodutível, numerado pela ordem de execução
+│   │   ├── 01_convert_mat_to_pcm.py
+│   │   ├── 02_decimate_pcm.py             # aplica a taxa definida em config.py
+│   │   ├── 03_make_splits.py              # segmenta e gera a partição, uma única vez
+│   │   ├── 04_extract_features.py         # (em andamento) MFCC por segmento
+│   │   └── 05_train_classifier.py         # (previsto) modelo final para o firmware
+│   └── validation/           # protocolo de validação do classificador
+│       ├── particao.py                    # segmentos, folds A e B, verificação
+│       ├── metricas.py                    # sensibilidade, especificidade, acurácia balanceada
+│       └── run_protocol.py                # executável: roda A ou B e registra o resultado
+│
+├── tests/                    # pytest; não dependem de data/
+│   ├── conftest.py
+│   └── validation/
+│       └── test_particao.py
 │
 ├── notebooks/                # notebooks de análise/visualização
 │
@@ -76,7 +97,8 @@ diagnostico-acustico-motores/
 │
 ├── reports/                  # figuras, tabelas e outputs para os relatórios
 │   ├── decimation/           # métricas, figuras e relatório da escolha da taxa
-│   └── exploration/          # figuras dos scripts exploratórios
+│   ├── exploration/          # figuras dos scripts exploratórios
+│   └── validation/           # uma pasta por rodada: metrics.json e folds.csv
 │
 └── docs/                     # proposta, documentação técnica complementar
 ```
@@ -96,7 +118,28 @@ Baixe os 5 arquivos `.mat` do Mendeley e coloque em `data/raw/`. Depois, o pipel
 ```bash
 python scripts/pipeline/01_convert_mat_to_pcm.py   # .mat → PCM int16 a 51,2 kHz
 python scripts/pipeline/02_decimate_pcm.py         # decima para a taxa de trabalho
+python scripts/pipeline/03_make_splits.py          # confere que a partição versionada bate
 ```
+
+O `03` é determinístico: num clone novo, ele reconstrói exatamente o `splits.json` versionado e avisa que "já existe e é idêntico". Se disser que o arquivo é **diferente**, os dados reconstruídos não são os mesmos das rodadas registradas — pare e investigue antes de seguir.
+
+Os testes não dependem de `data/` e devem passar logo depois de clonar:
+
+```bash
+pytest tests/
+```
+
+Para rodar os protocolos de validação:
+
+```bash
+python scripts/validation/run_protocol.py --protocolo B --responsavel <nome>
+python scripts/validation/run_protocol.py --protocolo A --tarefa multiclasse --responsavel <nome>
+python scripts/validation/run_protocol.py --protocolo B --sem-c0      # ablação do ganho
+python scripts/validation/run_protocol.py --protocolo B --permutar    # controle de permutação
+python scripts/validation/run_protocol.py --protocolo B --sem-registro   # teste, não registra
+```
+
+Commite o código **antes** de uma rodada registrada: o `registry.csv` grava o hash do commit, e uma rodada feita com código não commitado aponta para um estado que não existe.
 
 Para conferir que a reconversão reproduziu a original — o `manifest.json` é versionado e a conversão é determinística, então número de amostras e pico PCM devem bater:
 
@@ -110,7 +153,7 @@ O pipeline **aplica** decisões, não as toma. A comparação entre taxas candid
 python scripts/exploration/compare_decimation_rates.py --condicao 0Nm
 ```
  
-Os scripts de `scripts/exploration/` não escrevem em `data/`. Os módulos em `scripts/` (`config`, `dsp`, `pcm_io`, `experimentos`) não são executáveis: são importados pelas etapas e pelos estudos, para que todos usem a mesma implementação e os mesmos parâmetros.
+Os scripts de `scripts/exploration/` e `scripts/validation/` não escrevem em `data/`. Os módulos na raiz de `scripts/` (`config`, `dsp`, `pcm_io`, `experimentos`) não são executáveis: são importados pelas etapas e pelos estudos, para que todos usem a mesma implementação e os mesmos parâmetros. Nas pastas por assunto, como `validation/`, os executáveis começam com `run_` e o resto é importado.
 
 ## Fluxo de trabalho
  
