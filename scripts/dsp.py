@@ -170,23 +170,36 @@ def mfcc(x: np.ndarray, fs: float,
          frame_ms: float = float(config.MFCC_WINDOW_MS),
          hop_ms: float = float(config.MFCC_HOP_MS),
          n_mels: int = config.MFCC_N_MELS,
-         n_mfcc: int = config.MFCC_N_COEFS) -> np.ndarray:
+         n_mfcc: int = config.MFCC_N_COEFS,
+         norm_cepstral: bool = False) -> np.ndarray:
     """MFCC no formato que será portado: Hanning → FFT → mel → log → DCT-II."""
     n_frame = int(round(frame_ms / 1000 * fs))
     n_hop = int(round(hop_ms / 1000 * fs))
     n_fft = 1 << (n_frame - 1).bit_length()
+    
     if len(x) < n_frame:
         return np.zeros((0, n_mfcc))
+        
     win = np.hanning(n_frame)
     n_frames = 1 + (len(x) - n_frame) // n_hop
+    
+    # Fatiamento estrito dentro do segmento (sem vazar janelas)
     idx = np.arange(n_frame)[None, :] + n_hop * np.arange(n_frames)[:, None]
     frames = x[idx] * win
+    
     spec = np.abs(rfft(frames, n=n_fft, axis=1)) ** 2
     fb = mel_filterbank(fs, n_fft, n_mels)
     mel = spec @ fb.T
     logmel = np.log(mel + 1e-10)
-    return dct(logmel, type=2, axis=1, norm="ortho")[:, :n_mfcc]
-
+    
+    # DCT-II ortogonal
+    coefs = dct(logmel, type=2, axis=1, norm="ortho")[:, :n_mfcc]
+    
+    # Normalização cepstral por clipe (CMN)
+    if norm_cepstral:
+        coefs = coefs - np.mean(coefs, axis=0)
+        
+    return coefs
 
 def design_decimation(fs_in: float, fs_out: float,
                       atten_db: float = float(config.FIR_ATTENUATION)) -> FirSpec:

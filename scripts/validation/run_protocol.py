@@ -5,7 +5,7 @@ run_protocol.py — roda o Protocolo A ou B sobre a partição do splits.json
 =========================================================================
 
 Treina e avalia um classificador em cada fold da partição gerada pelo
-`pipeline/04_make_splits.py`, e grava o resultado em
+`pipeline/03_make_splits.py`, e grava o resultado em
 `reports/validation/<id>_<descrição>/` e no `experiments/registry.csv`.
 
 Leitura dos resultados (Registro de Decisões, 24/09):
@@ -17,11 +17,8 @@ Leitura dos resultados (Registro de Decisões, 24/09):
 
 Features
 --------
-`dsp.mfcc` com os parâmetros do `config.py`, calculado dentro de cada segmento
-de 1 s, e resumido em média e desvio de cada coeficiente ao longo dos quadros
-(13 + 13 = 26 valores por segmento). O resumo é PROVISÓRIO: a representação
-oficial sai do `03_extract_features.py`. O MFCC em si é o mesmo do `dsp.py`,
-compartilhado com o resto do pipeline.
+Carrega a matriz pré-calculada pelo `04_extract_features.py` (média e desvio
+dos coeficientes MFCC por segmento).
 
 Regras do protocolo que este script cumpre
 ------------------------------------------
@@ -33,7 +30,6 @@ Regras do protocolo que este script cumpre
 Controles
 ---------
 --sem-c0     descarta o coeficiente 0 (energia): ablação do ganho
---sem-norm   desliga a normalização RMS por segmento (ablação)
 --permutar   embaralha os rótulos DE TREINO por bloco (gravação × bloco), com a
              semente do config, e avalia nos rótulos verdadeiros; o resultado
              deve cair para ~50 % — se não cair, há vazamento no pipeline
@@ -44,7 +40,6 @@ Uso
     python scripts/validation/run_protocol.py --protocolo A --tarefa multiclasse
     python scripts/validation/run_protocol.py --protocolo B
     python scripts/validation/run_protocol.py --protocolo B --sem-c0
-    python scripts/validation/run_protocol.py --protocolo B --sem-norm
     python scripts/validation/run_protocol.py --protocolo B --sem-registro   # teste
 """
 
@@ -64,42 +59,16 @@ from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
 
 import config
-import dsp
 import experimentos
 import pcm_io
 from validation import metricas, particao
 
-FEATURES_ID = "mfcc_dsp_media_desvio_provisorio"
+FEATURES_ID = "mfcc_dsp_media_desvio"
 
 
 # --------------------------------------------------------------------------- #
-# Features
+# Features e Rótulos
 # --------------------------------------------------------------------------- #
-def extrair_features(clipes: list[pcm_io.Clip], segmentos: list[particao.Segmento],
-                     sem_c0: bool, sem_norm: bool) -> np.ndarray:
-    """Uma linha por segmento: média e desvio de cada coeficiente MFCC."""
-    por_rotulo = {c.rotulo: c for c in clipes}
-    linhas = []
-    for s in segmentos:
-        c = por_rotulo[s.rotulo]
-        # Converter para float para cálculos seguros (o buffer de origem é int16)
-        trecho = c.x[s.inicio:s.fim].astype(np.float64)
-        
-        # 1. Normalização sem estado por clipe (se não for ablação)
-        if not sem_norm and getattr(config, "TIPO_NORMALIZACAO", None) == "clipe":
-            trecho = dsp.normalizar_rms_clipe(trecho)
-            
-        # 2. Janela de Hanning temporal
-        if getattr(config, "APLICAR_HANNING_TEMPO", False):
-            trecho = dsp.aplicar_janela_hanning(trecho)
-
-        m = dsp.mfcc(trecho, c.fs)
-        if sem_c0:
-            m = m[:, 1:]
-        linhas.append(np.concatenate([m.mean(axis=0), m.std(axis=0)]))
-    return np.vstack(linhas)
-
-
 def rotulos(segmentos: list[particao.Segmento], tarefa: str) -> np.ndarray:
     return np.array([s.binario if tarefa == "binario" else s.rotulo for s in segmentos])
 
@@ -221,6 +190,7 @@ def main() -> int:
     ap.add_argument("--sem-c0", action="store_true", help="ablação do ganho")
     ap.add_argument("--permutar", action="store_true", help="controle de permutação por bloco")
     ap.add_argument("--splits", type=Path, default=Path("data/processed/splits/splits.json"))
+    ap.add_argument("--features", type=Path, default=Path("data/processed/features/mfcc_features.npz"))
     ap.add_argument("--pcm-dir", type=Path,
                     default=Path(f"data/processed/pcm_decimated/{config.FS_TRABALHO}"))
     ap.add_argument("--out-dir", type=Path, default=Path("reports/validation"))
@@ -229,7 +199,6 @@ def main() -> int:
                     help="rodada de teste: não escreve no registry")
     ap.add_argument("--responsavel", default="")
     ap.add_argument("--notas", default="")
-    ap.add_argument("--sem-norm", action="store_true", help="desliga a normalização RMS por segmento (ablação)")
     args = ap.parse_args()
 
     if args.protocolo == "B" and args.tarefa == "multiclasse":
@@ -237,6 +206,8 @@ def main() -> int:
                  "então não há como acertar a classe dela")
 
     # ------------------------------------------------ dados e partição
+    # O carregamento do PCM agora serve estritamente para manter a verificação de integridade
+    # do manifesto e a compatibilidade do splits.json.
     clipes = pcm_io.carregar_clipes(args.pcm_dir, fs_esperado=config.FS_TRABALHO)
     divergencias = pcm_io.verificar_integridade(clipes)
     pcm_io.relatar_integridade(divergencias)
@@ -259,8 +230,26 @@ def main() -> int:
           f"(splits {hash_splits})")
 
     # ------------------------------------------------ features e rótulos
-    print("Extraindo MFCC por segmento...")
-    X = extrair_features(clipes, segmentos, args.sem_c0, args.sem_norm)
+    print(f"Carregando features extraídas ({args.features.name})...")
+    if not args.features.exists():
+        print(f"Abortado: arquivo de features não encontrado em {args.features}")
+        print("Execute o 04_extract_features.py primeiro.")
+        return 1
+
+    dados_extraidos = np.load(args.features)
+    
+    linhas_X = []
+    for s in segmentos:
+        idx = s.inicio // config.AMOSTRAS_POR_SEGMENTO
+        resumo = dados_extraidos[s.rotulo][idx].copy()
+        
+        # Ablação do ganho: remove o coeficiente de energia c0 da média e do desvio[cite: 7]
+        if args.sem_c0:
+            resumo = np.delete(resumo, [0, config.MFCC_N_COEFS])
+            
+        linhas_X.append(resumo)
+        
+    X = np.vstack(linhas_X)
     y = rotulos(segmentos, args.tarefa)
 
     # ------------------------------------------------ folds
@@ -273,9 +262,7 @@ def main() -> int:
     # ------------------------------------------------ gravação
     descricao = "_".join(p for p in (
         f"protocolo{args.protocolo}", args.tarefa, args.modelo,
-        "semc0" if args.sem_c0 else None, 
-        "semnorm" if args.sem_norm else None, 
-        "permutado" if args.permutar else None,
+        "semc0" if args.sem_c0 else None, "permutado" if args.permutar else None,
     ) if p)
     exp_id = "teste" if args.sem_registro else f"exp{experimentos.next_exp_number(args.registry):03d}"
     destino = args.out_dir / f"{exp_id}_{descricao}"
@@ -287,7 +274,6 @@ def main() -> int:
         "modelo": args.modelo,
         "features": FEATURES_ID,
         "sem_c0": args.sem_c0,
-        "sem_norm": args.sem_norm,
         "permutado": args.permutar,
         "splits": hash_splits,
         "fs_hz": config.FS_TRABALHO,
