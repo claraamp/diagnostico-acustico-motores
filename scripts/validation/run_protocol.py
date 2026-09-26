@@ -28,14 +28,22 @@ Regras do protocolo que este script cumpre
   partição ou de outros parâmetros de MFCC, ou se o número de linhas do `.npz`
   não bater com o de segmentos. Os parâmetros gravados são os do manifesto.
 - O escalonamento (`StandardScaler`) é ajustado só no treino de cada fold.
-- Sem aumento de dados nesta versão.
+- Aumento de dados (`--aumento`) entra SÓ no treino. As variantes vêm do
+  `mfcc_aumento.npz` gerado pelo 04; em cada fold, uma variante só é aceita se
+  todas as amostras que ela lê caírem em segmentos de treino daquele fold
+  (`augmentation.variantes.mascara_fold`). Variante de um segmento de teste,
+  ou que encosta no teste ou na faixa de descarte, fica de fora. O teste é
+  sempre o segmento original.
 
 Controles
 ---------
 --sem-c0     descarta o coeficiente 0 (energia): ablação do ganho
 --permutar   embaralha os rótulos DE TREINO por bloco (gravação × bloco), com a
              semente do config, e avalia nos rótulos verdadeiros; o resultado
-             deve cair para ~50 % — se não cair, há vazamento no pipeline
+             deve cair para ~50 % — se não cair, há vazamento no pipeline.
+             Com --aumento, cada variante herda o rótulo embaralhado do seu
+             segmento de origem.
+--aumento    soma ao treino de cada fold as variantes aceitas do mfcc_aumento.npz
 
 Uso
 ---
@@ -43,6 +51,8 @@ Uso
     python scripts/validation/run_protocol.py --protocolo A --tarefa multiclasse
     python scripts/validation/run_protocol.py --protocolo B
     python scripts/validation/run_protocol.py --protocolo B --sem-c0
+    python scripts/validation/run_protocol.py --protocolo B --aumento
+    python scripts/validation/run_protocol.py --protocolo B --aumento --permutar
     python scripts/validation/run_protocol.py --protocolo B --sem-registro   # teste
 """
 
@@ -64,6 +74,7 @@ from sklearn.preprocessing import StandardScaler
 import config
 import experimentos
 import pcm_io
+from augmentation import variantes
 from validation import metricas, particao
 
 FEATURES_ID = "mfcc_dsp_media_desvio"
@@ -113,17 +124,34 @@ def novo_modelo(nome: str, n_classes: int):
     raise ValueError(f"modelo desconhecido: {nome}")
 
 
+def montar_treino(f, X: np.ndarray, y_tr: np.ndarray, aumento: dict | None):
+    """
+    Matriz e rótulos de treino do fold: os segmentos de treino e, com aumento,
+    as variantes aceitas neste fold. Cada variante recebe o rótulo de treino do
+    seu segmento de origem — o verdadeiro, ou o embaralhado no --permutar.
+    """
+    if aumento is None:
+        return X[f.treino], y_tr, 0
+    aceitas = variantes.mascara_fold(f.treino, aumento["lidos"])
+    posicao = {int(i): k for k, i in enumerate(f.treino)}
+    origem = [posicao[int(o)] for o in aumento["origem"][aceitas]]
+    X_fit = np.vstack([X[f.treino], aumento["X"][aceitas]])
+    y_fit = np.concatenate([y_tr, y_tr[origem]])
+    return X_fit, y_fit, int(aceitas.sum())
+
+
 def rodar_folds(folds, X, y, tarefa: str, modelo: str,
                 segmentos: list[particao.Segmento] | None = None,
-                permutar: bool = False) -> list[dict]:
+                permutar: bool = False, aumento: dict | None = None) -> list[dict]:
     classes = np.unique(y)
     rng = np.random.default_rng(config.SEMENTE)
     resultados = []
     for f in folds:
         y_tr = (permutar_treino_por_bloco(segmentos, f.treino, y, rng) if permutar
                 else y[f.treino])
+        X_fit, y_fit, n_aumento = montar_treino(f, X, y_tr, aumento)
         mdl = novo_modelo(modelo, len(classes))
-        mdl.fit(X[f.treino], y_tr)               # scaler ajustado só no treino
+        mdl.fit(X_fit, y_fit)                    # scaler ajustado só no treino
         pred = mdl.predict(X[f.teste])
         if tarefa == "binario":
             m = metricas.metricas_binarias(y[f.teste], pred)
@@ -131,7 +159,7 @@ def rodar_folds(folds, X, y, tarefa: str, modelo: str,
             m = {"acuracia_balanceada": metricas.acuracia_balanceada(y[f.teste], pred),
                  "recall_por_classe": metricas.recall_por_classe(y[f.teste], pred)}
         resultados.append({"nome": f.nome, "info": f.info, "n_treino": len(f.treino),
-                           "n_teste": len(f.teste), **m})
+                           "n_treino_aumento": n_aumento, "n_teste": len(f.teste), **m})
     return resultados
 
 
@@ -182,6 +210,28 @@ def metricas_registry(resumo: dict) -> dict:
         m[f"acc_bal_{falha}"] = f"{t['acuracia_balanceada']:.4f}"
     return m
 
+_SIGLAS = {"deslocamento": "desl", "estiramento": "estir", "ruido": "ruido"}
+
+
+def rotulo_aumento(info: dict) -> str:
+    """Trecho do nome da pasta da rodada, ex. `aum4-desl-estir-ruido`."""
+    return "-".join([f"aum{info['copias']}"] + [_SIGLAS[t] for t in info["tecnicas"]])
+
+
+def parametros_aumento(info: dict | None) -> dict:
+    """Colunas do aumento em `parametros` (registry e metrics.json)."""
+    if not info:
+        return {"aumento": "nenhum"}
+    return {
+        "aumento": "+".join(info["tecnicas"]),
+        "aumento_copias": info["copias"],
+        "aumento_modo_estir": info["modo_estiramento"],
+        "aumento_desloc_max_s": info["desloc_max_s"],
+        "aumento_estir_taxas": "-".join(str(t) for t in info["estir_taxas"]),
+        "aumento_snr_db": "-".join(str(t) for t in info["snr_db"]),
+    }
+
+
 # --------------------------------------------------------------------------- #
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
@@ -191,6 +241,8 @@ def main() -> int:
     ap.add_argument("--modelo", choices=["lda"], default="lda")
     ap.add_argument("--sem-c0", action="store_true", help="ablação do ganho")
     ap.add_argument("--permutar", action="store_true", help="controle de permutação por bloco")
+    ap.add_argument("--aumento", action="store_true",
+                    help="soma ao treino as variantes aceitas do mfcc_aumento.npz")
     ap.add_argument("--splits", type=Path, default=Path("data/processed/splits/splits.json"))
     ap.add_argument("--features", type=Path, default=Path("data/processed/features/mfcc_features.npz"))
     ap.add_argument("--pcm-dir", type=Path,
@@ -256,14 +308,34 @@ def main() -> int:
     if len(X) != len(segmentos):
         print(f"Abortado: o .npz tem {len(X)} linhas e a partição tem {len(segmentos)} segmentos.")
         return 1
+    info_aumento = manifesto_features.get("aumento")
+    aumento = None
+    if args.aumento:
+        caminho_aumento = args.features.with_name("mfcc_aumento.npz")
+        if not info_aumento or not caminho_aumento.exists():
+            print("Abortado: --aumento pedido, mas as features foram extraídas sem "
+                  "aumento; rode o 04 com --aumento N.")
+            return 1
+        dados = np.load(caminho_aumento)
+        if len(dados["X"]) != info_aumento["n_variantes"] or dados["origem"].max() >= len(segmentos):
+            print("Abortado: mfcc_aumento.npz não corresponde ao manifesto ou à partição.")
+            return 1
+        aumento = {"X": dados["X"], "origem": dados["origem"],
+                   "lidos": variantes.ids_lidos(segmentos, dados["origem"],
+                                                dados["inicio_lido"], dados["fim_lido"])}
+        print(f"Aumento: {info_aumento['n_variantes']} variantes "
+              f"({info_aumento['copias']} por segmento; {', '.join(info_aumento['tecnicas'])})")
+
     if args.sem_c0:
         # colunas da média e do desvio do c0
         X = np.delete(X, [0, config.MFCC_N_COEFS], axis=1)
+        if aumento:
+            aumento["X"] = np.delete(aumento["X"], [0, config.MFCC_N_COEFS], axis=1)
     y = rotulos(segmentos, args.tarefa)
 
     # ------------------------------------------------ folds
     resultados = rodar_folds(folds, X, y, args.tarefa, args.modelo,
-                             segmentos=segmentos, permutar=args.permutar)
+                             segmentos=segmentos, permutar=args.permutar, aumento=aumento)
     resumo = (metricas.resumo_protocolo_a(resultados) if args.protocolo == "A"
               else metricas.resumo_protocolo_b(resultados))
     imprimir(resumo, resultados)
@@ -272,6 +344,7 @@ def main() -> int:
     descricao = "_".join(p for p in (
         f"protocolo{args.protocolo}", args.tarefa, args.modelo,
         "normclipe" if norm_clipe else None,
+        rotulo_aumento(info_aumento) if aumento else None,
         "semc0" if args.sem_c0 else None, "permutado" if args.permutar else None,
     ) if p)
     exp_id = "teste" if args.sem_registro else f"exp{experimentos.next_exp_number(args.registry):03d}"
@@ -296,7 +369,8 @@ def main() -> int:
         "mfcc_n_mels": manifesto_features["mfcc_n_mels"],
         "mfcc_n_coefs": manifesto_features["mfcc_n_coefs"],
         "features_commit": manifesto_features.get("git_commit"),
-        "semente": config.SEMENTE if args.permutar else None,
+        "semente": config.SEMENTE if (args.permutar or aumento) else None,
+        **parametros_aumento(info_aumento if aumento else None),
     }
     (destino / "metrics.json").write_text(json.dumps(
         {"id": exp_id, "parametros": parametros, "resumo": resumo, "folds": resultados},

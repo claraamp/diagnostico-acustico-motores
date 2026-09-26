@@ -26,6 +26,7 @@ Fase 1 — Protótipo em Python (em andamento). Conversão, decimação e protoc
 | Unidade de classificação | segmento de 1 s (12.800 amostras); 59 por gravação, em blocos de 10, 10, 10, 10, 10 e 9 | Notion, Registro de Decisões (protocolo de validação) |
 | Protocolo de validação | **A** — blocos temporais (limite otimista); **B** — gravação de falha deixada de fora (resultado principal) | idem; implementação em `scripts/validation/particao.py` |
 | Meta de desempenho | acurácia balanceada média do Protocolo B ≥ 85 %, sempre com sensibilidade, especificidade e pior caso | idem; resultados em `reports/validation/` |
+| Aumento de dados | só no treino de cada fold: deslocamento de janela (±0,4 s), estiramento temporal (taxa 0,95–1,05, phase vocoder) e ruído branco (SNR 20–35 dB); variante só entra se ler apenas segmentos de treino do fold | proposta (Metodologia); `scripts/augmentation/` |
  
 A escolha de 12.800 Hz é a única taxa com fator de decimação inteiro dentro da faixa de 8–16 kHz — requisito de `arm_fir_decimate_f32` do CMSIS-DSP — e preserva 96,1 % da energia discriminante no pior caso (classes de defeito incipiente, 0,3 mm). O registro completo da comparação está em `experiments/registry.csv` (`exp001`–`exp006`).
 
@@ -65,6 +66,9 @@ diagnostico-acustico-motores/
 │   ├── dsp.py                # blocos de processamento de sinais (PSD, MFCC, decimação)
 │   ├── pcm_io.py             # leitura e escrita dos PCM e dos manifests
 │   ├── experimentos.py       # escrita do registro de experimentos
+│   ├── augmentation/         # aumento de dados do treino
+│   │   ├── transformacoes.py              # estiramento (phase vocoder / reamostragem), ruído, recorte
+│   │   └── variantes.py                   # sorteio reprodutível, janela lida e filtro por fold
 │   ├── exploration/          # estudos e inspeções, sem numeração
 │   │   ├── inspect_mat_keys.py
 │   │   ├── inspect_signal_data.py
@@ -75,7 +79,7 @@ diagnostico-acustico-motores/
 │   │   ├── 01_convert_mat_to_pcm.py
 │   │   ├── 02_decimate_pcm.py             # aplica a taxa definida em config.py
 │   │   ├── 03_make_splits.py              # segmenta e gera a partição, uma única vez
-│   │   ├── 04_extract_features.py         # MFCC por segmento da partição → .npz
+│   │   ├── 04_extract_features.py         # MFCC por segmento da partição (+ variantes do aumento) → .npz
 │   │   └── 05_train_classifier.py         # (previsto) modelo final para o firmware
 │   └── validation/           # protocolo de validação do classificador
 │       ├── particao.py                    # segmentos, folds A e B, verificação
@@ -85,6 +89,9 @@ diagnostico-acustico-motores/
 ├── tests/                    # pytest; não dependem de data/
 │   ├── conftest.py
 │   ├── test_dsp.py
+│   ├── augmentation/
+│   │   ├── test_transformacoes.py
+│   │   └── test_variantes.py              # inclui: variante aceita nunca lê teste/descarte
 │   └── validation/
 │       └── test_particao.py
 │
@@ -149,7 +156,18 @@ python scripts/pipeline/04_extract_features.py       # volta ao padrão (sem nor
 
 # referência para o porte em C (Fase 2)
 python scripts/pipeline/04_extract_features.py --ref-c
+
+# aumento de dados: o 04 gera N variantes de cada segmento e o run_protocol,
+# com --aumento, soma ao treino de cada fold só as que leem segmentos de treino
+python scripts/pipeline/04_extract_features.py --aumento 4
+python scripts/validation/run_protocol.py --protocolo B --aumento --responsavel <nome>
+python scripts/validation/run_protocol.py --protocolo B --aumento --permutar   # controle
+# ablação por técnica (deslocamento | estiramento | ruido) e modo do estiramento
+python scripts/pipeline/04_extract_features.py --aumento 4 --tecnicas ruido
+python scripts/pipeline/04_extract_features.py --aumento 4 --modo-estiramento velocidade
 ```
+
+O teste nunca é aumentado: todo fold é avaliado nos segmentos originais. Rodar o `04` sem `--aumento` apaga o `mfcc_aumento.npz` de uma rodada anterior, para que ele não seja lido como se fosse da extração atual.
 
 Commite o código **antes** de uma rodada registrada: o `registry.csv` grava o hash do commit, e uma rodada feita com código não commitado aponta para um estado que não existe.
 
