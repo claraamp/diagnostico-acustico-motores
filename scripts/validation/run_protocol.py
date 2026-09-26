@@ -230,28 +230,38 @@ def main() -> int:
         print(f"Abortado: arquivo de features não encontrado em {args.features}")
         return 1
 
-    # Carrega manifesto para garantir rastreabilidade (Ponto 1 do PR)
     manifesto_path = args.features.with_name("manifest_features.json")
-    norm_clipe = False
-    if manifesto_path.exists():
-        manifesto_features = json.loads(manifesto_path.read_text(encoding="utf-8"))
-        norm_clipe = manifesto_features.get("norm_clipe", False)
+    if not manifesto_path.exists():
+        print(f"Abortado: manifesto de features ausente em {manifesto_path}")
+        return 1
+        
+    manifesto_features = json.loads(manifesto_path.read_text(encoding="utf-8"))
+    
+    if manifesto_features.get("splits_hash") != hash_splits:
+        print("Abortado: O hash do splits.json extraído no manifesto diverge do atual.")
+        return 1
+
+    norm_clipe = manifesto_features.get("norm_clipe", False)
     
     print(f"Carregando features extraídas (norm_clipe={norm_clipe})...")
     dados_extraidos = np.load(args.features)
+    X_completo = dados_extraidos["X"]
     
-    linhas_X = []
-    for s in segmentos:
-        idx = s.inicio // config.AMOSTRAS_POR_SEGMENTO
-        resumo = dados_extraidos[s.rotulo][idx].copy()
-        
-        if args.sem_c0:
-            resumo = np.delete(resumo, [0, config.MFCC_N_COEFS])
-            
-        linhas_X.append(resumo)
-        
-    X = np.vstack(linhas_X)
+    if len(X_completo) != len(segmentos):
+        print("Abortado: O número de linhas do .npz não bate com o número de segmentos da partição.")
+        return 1
+    
+    # Deleta as colunas correspondentes à média e ao desvio do c0, caso seja ablação
+    if args.sem_c0:
+        X = np.delete(X_completo, [0, config.MFCC_N_COEFS], axis=1)
+    else:
+        X = X_completo
+
     y = rotulos(segmentos, args.tarefa)
+
+    # ------------------------------------------------ folds
+    resultados = rodar_folds(folds, X, y, args.tarefa, args.modelo,
+                             segmentos=segmentos, permutar=args.permutar)
 
     # ------------------------------------------------ folds
     resultados = rodar_folds(folds, X, y, args.tarefa, args.modelo,
