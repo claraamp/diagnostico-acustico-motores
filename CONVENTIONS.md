@@ -17,8 +17,9 @@ diagnostico-acustico-motores/
 │       ├── pcm_raw/          # saída do 01_convert_mat_to_pcm.py — .bin NÃO versionados, manifest.json É versionado
 │       ├── pcm_decimated/    # saída do 02_decimate_pcm.py, subdiretório pela taxa de trabalho (12800/)
 │       │                     # mesma regra: .bin fora do Git, manifest.json versionado
-│       └── splits/
-│           └── splits.json   # saída do 03_make_splits.py — partição dos protocolos A e B, VERSIONADA
+│       ├── splits/
+│       │   └── splits.json   # saída do 03_make_splits.py — partição dos protocolos A e B, VERSIONADA
+│       └── features/         # saída do 04_extract_features.py — .npz e manifest_features.json, NÃO versionados
 │
 ├── scripts/
 │   ├── config.py             # parâmetros compartilhados (ver seção 5)
@@ -43,6 +44,7 @@ diagnostico-acustico-motores/
 ├── reports/                  # figuras, tabelas e outputs usados nos relatórios
 │   ├── decimation/           # saída do estudo de taxas: métricas, figuras e relatório
 │   ├── exploration/          # figuras dos scripts de scripts/exploration/
+│   ├── c_reference/          # reference_data.h do 04 --ref-c, VERSIONADO (referência da Fase 2)
 │   └── validation/           # uma pasta por rodada dos protocolos: metrics.json e folds.csv
 │
 └── docs/                     # documentação técnica complementar (ex.: notas sobre o formato do .mat)
@@ -51,6 +53,8 @@ diagnostico-acustico-motores/
 **Por que `data/raw/` e os `.bin` de `data/processed/` não são versionados:** os 5 arquivos `.mat` somam ~120 MB e os PCM outros ~60 MB — grande demais para um repositório Git normal e, além disso, redundante: o dataset já está publicado com DOI fixo (Mendeley `10.17632/ztmf3m7h5x.6`). O `README.md` deve trazer o link de download e o script `01_convert_mat_to_pcm.py` para qualquer um reconstruir `data/` do zero. O que **é** versionado é o código e os metadados leves (`manifest.json`, `registry.csv`), que são o que realmente precisa ter histórico rastreável.
 
 O `splits.json` é versionado pelo mesmo motivo que o `manifest.json`, e por mais um: ele **define** quais segmentos são treino e quais são teste em cada fold. Se cada integrante gerasse a própria partição, os números de rodadas diferentes deixariam de ser comparáveis. Por isso ele é gerado uma única vez, e o `03_make_splits.py` se recusa a sobrescrever um arquivo diferente. Uma partição nova invalida a comparação com todas as rodadas já registradas: só se usa `--sobrescrever` depois de registrar essa decisão no Notion.
+
+As features do `04_extract_features.py` (`data/processed/features/`), ao contrário, **não** são versionadas: são reconstruíveis a partir dos `.bin` e do `splits.json`, e mudam a cada extração. O que garante a rastreabilidade é o `manifest_features.json` gravado ao lado do `.npz`, com o commit, o hash do `splits.json`, o `norm_clipe` e os parâmetros de MFCC usados. O `run_protocol.py` aborta se esse manifesto faltar ou divergir da partição e do `config.py` atuais, e grava no registry os valores do manifesto, não os do `config.py`. As pastas `reports/validation/teste_*`, geradas com `--sem-registro`, também ficam fora do Git.
 
 Consequência prática dessa escolha, aprendida na marra: **depois de clonar o repositório, `data/` vem vazio**. É preciso baixar o dataset e rodar o `01` de novo antes de qualquer análise. Como o `manifest.json` é versionado e a conversão é determinística, ele serve de referência para conferir se a reconversão reproduziu a original — o `inspect_pcm.py` compara número de amostras e pico PCM de cada `.bin` com o manifest e avisa se divergir.
 
