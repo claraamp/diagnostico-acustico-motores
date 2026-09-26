@@ -116,6 +116,8 @@ BPF_MIN_ACERTOS = 10                # abaixo disto a série não é considerada 
 N_BASE = 200                        # f0 sorteados para a linha de base
 VISIVEL_DB = 6.0                    # harmônico "visível" no pente: excesso sobre o piso
 MIN_VISIVEIS = 0.3                  # fração mínima de harmônicos visíveis para aceitar o pente
+ESCORREGAMENTO_MIN = 0.003         # abaixo disto a f_e não se separa de 2·f_motor (ver estimar_velocidades)
+TOL_EXCL_FE = 0.15                  # Hz: harmônico "coincidente" com eixo/motor no pente da f_e
 FAIXA_ESPACAMENTO = (5.0, 300.0)    # Hz
 
 
@@ -236,15 +238,26 @@ def estimar_velocidades(f, db, piso) -> dict:
     if vis_motor < MIN_VISIVEIS:
         f_motor = float("nan")
 
+    # f_e: a mesma armadilha do motor, um nível abaixo. Com escorregamento pequeno,
+    # f_e ≈ 2·f_motor, e o pente da f_e "acerta" os harmônicos pares do motor
+    # (rodada de 26/09: escorregamento de 0,0 %, fisicamente impossível). Então:
+    # (1) harmônicos que coincidem com os do eixo OU do motor não contam;
+    # (2) a busca começa em ESCORREGAMENTO_MIN;
+    # (3) o refino não pode levar a f_e para fora da faixa buscada.
+    # Limite físico: com 60 s e resolução de ~0,2 Hz, escorregamentos abaixo de
+    # ~0,3 % não se separam de 2·f_motor. Nesse caso a f_e sai n/id — que é a
+    # resposta honesta, e não "sem inversor".
     f_e, vis_fe = float("nan"), 0.0
     if np.isfinite(f_motor):
         lo = PARES_POLOS * f_motor
-        cand = np.arange(lo * 1.002, lo * 1.06, 0.005)
+        cand = np.arange(lo * (1 + ESCORREGAMENTO_MIN), lo * 1.06, 0.005)
         cand = cand[np.abs(cand - f_eixo) > 0.5]
-        f_e = pente(f, exc, cand, 6, excluir=harm_eixo)
-        f_e = refinar(f, db, exc, f_e, 6, excluir=harm_eixo)
-        vis_fe = fracao_visivel(f, exc, f_e, 6, excluir=harm_eixo)
-        if vis_fe < MIN_VISIVEIS or abs(f_e - f_eixo) < 0.5:
+        excl = np.concatenate([harm_eixo, f_motor * np.arange(1, 4 * N_PENTE + 1)])
+        f_e = pente(f, exc, cand, 6, excluir=excl, tol_excl=TOL_EXCL_FE)
+        f_e = refinar(f, db, exc, f_e, 6, excluir=excl, tol_excl=TOL_EXCL_FE)
+        vis_fe = fracao_visivel(f, exc, f_e, 6, excluir=excl, tol_excl=TOL_EXCL_FE)
+        fora = not (cand[0] - 0.05 <= f_e <= cand[-1] + 0.05)
+        if vis_fe < MIN_VISIVEIS or fora or abs(f_e - f_eixo) < 0.5:
             f_e = float("nan")
     s = 1 - PARES_POLOS * f_motor / f_e if np.isfinite(f_e) else float("nan")
     return {"f_eixo": f_eixo, "f_motor": f_motor, "razao_caixa": f_eixo / f_motor,
