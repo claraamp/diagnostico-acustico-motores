@@ -179,7 +179,6 @@ def metricas_registry(resumo: dict) -> dict:
         m[f"acc_bal_{falha}"] = f"{t['acuracia_balanceada']:.4f}"
     return m
 
-
 # --------------------------------------------------------------------------- #
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
@@ -205,9 +204,6 @@ def main() -> int:
         ap.error("o Protocolo B é binário: cada falha testada não aparece no treino, "
                  "então não há como acertar a classe dela")
 
-    # ------------------------------------------------ dados e partição
-    # O carregamento do PCM agora serve estritamente para manter a verificação de integridade
-    # do manifesto e a compatibilidade do splits.json.
     clipes = pcm_io.carregar_clipes(args.pcm_dir, fs_esperado=config.FS_TRABALHO)
     divergencias = pcm_io.verificar_integridade(clipes)
     pcm_io.relatar_integridade(divergencias)
@@ -230,12 +226,18 @@ def main() -> int:
           f"(splits {hash_splits})")
 
     # ------------------------------------------------ features e rótulos
-    print(f"Carregando features extraídas ({args.features.name})...")
     if not args.features.exists():
         print(f"Abortado: arquivo de features não encontrado em {args.features}")
-        print("Execute o 04_extract_features.py primeiro.")
         return 1
 
+    # Carrega manifesto para garantir rastreabilidade (Ponto 1 do PR)
+    manifesto_path = args.features.with_name("manifest_features.json")
+    norm_clipe = False
+    if manifesto_path.exists():
+        manifesto_features = json.loads(manifesto_path.read_text(encoding="utf-8"))
+        norm_clipe = manifesto_features.get("norm_clipe", False)
+    
+    print(f"Carregando features extraídas (norm_clipe={norm_clipe})...")
     dados_extraidos = np.load(args.features)
     
     linhas_X = []
@@ -243,7 +245,6 @@ def main() -> int:
         idx = s.inicio // config.AMOSTRAS_POR_SEGMENTO
         resumo = dados_extraidos[s.rotulo][idx].copy()
         
-        # Ablação do ganho: remove o coeficiente de energia c0 da média e do desvio[cite: 7]
         if args.sem_c0:
             resumo = np.delete(resumo, [0, config.MFCC_N_COEFS])
             
@@ -260,6 +261,9 @@ def main() -> int:
     imprimir(resumo, resultados)
 
     # ------------------------------------------------ gravação
+    # Modifica o FEATURES_ID dinamicamente conforme sugerido pelo revisor
+    features_id_final = FEATURES_ID + ("_norm_clipe" if norm_clipe else "")
+    
     descricao = "_".join(p for p in (
         f"protocolo{args.protocolo}", args.tarefa, args.modelo,
         "semc0" if args.sem_c0 else None, "permutado" if args.permutar else None,
@@ -272,7 +276,8 @@ def main() -> int:
         "protocolo": args.protocolo,
         "tarefa": args.tarefa,
         "modelo": args.modelo,
-        "features": FEATURES_ID,
+        "features": features_id_final,
+        "norm_clipe": norm_clipe,
         "sem_c0": args.sem_c0,
         "permutado": args.permutar,
         "splits": hash_splits,

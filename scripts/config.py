@@ -37,22 +37,6 @@ FIR_CUTOFF = 0.45 * FS_TRABALHO         # Hz — margem de 10% até Nyquist (576
 # transição. Para referência, a 12.800 Hz o projeto resulta em 147 taps.
 
 # ==========================================
-# Pré-processamento (Ajuste do Protocolo 24/09)
-# ==========================================
-# A normalização não pode ser calculada sobre o conjunto inteiro para não 
-# vazar informação do teste para o treino, o que invalidaria os protocolos A e B.
-# 
-# Opções suportadas:
-# - "clipe": normaliza cada segmento só com os próprios valores (ex.: por RMS).
-# - "fold": média e desvio calculados no treino e aplicados ao teste (com estado).
-# - None: normalização desligada (usado para a ablação do ganho do protocolo).
-TIPO_NORMALIZACAO = "clipe"
-
-# Aplicação de janela de Hanning no domínio do tempo sobre o segmento bruto.
-# Nota: O cálculo de espectro/MFCC já aplica sua própria janela (MFCC_JANELA).
-APLICAR_HANNING_TEMPO = False
-
-# ==========================================
 # Extração de features (MFCC)
 # ==========================================
 MFCC_WINDOW_MS = 25      # ms

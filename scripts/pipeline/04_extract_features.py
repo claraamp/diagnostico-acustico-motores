@@ -5,14 +5,14 @@
 ====================================================================
 
 Corta cada gravação decimada em clipes rígidos de 1 segundo sem sobreposição
-entre janelas e blocos vizinhos[cite: 7]. Aplica a normalização e extrai o 
-MFCC.
+entre janelas e blocos vizinhos. Extrai o MFCC e agrupa a média e desvio.
 
 Durante a extração, salva os coeficientes do primeiro segmento de um clipe 
-de referência para comparação e validação futura da versão em C[cite: 7].
+de referência para comparação e validação futura da versão em C.
 """
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
@@ -61,7 +61,7 @@ def main() -> int:
                     default=Path(f"data/processed/pcm_decimated/{config.FS_TRABALHO}"))
     ap.add_argument("--out-dir", type=Path, default=Path("data/processed/features"))
     ap.add_argument("--ref-dir", type=Path, default=Path("reports/c_reference"))
-    ap.add_argument("--sem-norm", action="store_true", help="desliga a normalização temporal (ablação)")
+    ap.add_argument("--norm-clipe", action="store_true", help="aplica normalização RMS isolada por segmento")
     args = ap.parse_args()
 
     args.out_dir.mkdir(parents=True, exist_ok=True)
@@ -78,7 +78,7 @@ def main() -> int:
     features = {}
     referencia_salva = False
     
-    print(f"Extraindo MFCC (1s por segmento, norm={'desligada' if args.sem_norm else config.TIPO_NORMALIZACAO})...")
+    print(f"Extraindo MFCC (1s por segmento, norm_clipe={args.norm_clipe})...")
     
     for clipe in clipes:
         n_segmentos = len(clipe.x) // amostras_por_seg
@@ -87,34 +87,36 @@ def main() -> int:
         for i in range(n_segmentos):
             inicio = i * amostras_por_seg
             fim = inicio + amostras_por_seg
+            # Clip.x já é float64 em [-1, 1], astype apenas assegura a cópia de segurança
             trecho = clipe.x[inicio:fim].astype(np.float64)
             
-            # Normalização por clipe, sem estado[cite: 7]
-            if not args.sem_norm and getattr(config, "TIPO_NORMALIZACAO", None) == "clipe":
+            if args.norm_clipe:
                 trecho = dsp.normalizar_rms_clipe(trecho)
                 
-            if getattr(config, "APLICAR_HANNING_TEMPO", False):
-                trecho = dsp.aplicar_janela_hanning(trecho)
-                
-            # Extração de MFCC isolada no trecho[cite: 7]
+            # Extração de MFCC isolada no trecho
             m = dsp.mfcc(trecho, clipe.fs, norm_cepstral=False)
             
-            # Guarda os coeficientes do primeiro clipe normal da iteração[cite: 7]
             if clipe.rotulo == "normal" and not referencia_salva:
                 exportar_referencia_c(trecho, m, args.ref_dir / "reference_data.h")
-                print(f"  [Ref] C reference exportada para: {args.ref_dir}/reference_data.h")
                 referencia_salva = True
                 
-            # Representação final para o classificador
             resumo = np.concatenate([m.mean(axis=0), m.std(axis=0)])
             matriz_segmentos.append(resumo)
             
         features[clipe.rotulo] = np.vstack(matriz_segmentos)
         print(f"  {clipe.rotulo:<12}: {n_segmentos} segmentos extraídos.")
 
-    destino = args.out_dir / "mfcc_features.npz"
-    np.savez_compressed(destino, **features)
-    print(f"\nFeatures salvas em: {destino}")
+    destino_features = args.out_dir / "mfcc_features.npz"
+    destino_manifesto = args.out_dir / "manifest_features.json"
+    
+    np.savez_compressed(destino_features, **features)
+    
+    # Salva o manifesto para rastreabilidade no run_protocol.py
+    manifesto = {"norm_clipe": args.norm_clipe}
+    destino_manifesto.write_text(json.dumps(manifesto, indent=2), encoding="utf-8")
+    
+    print(f"\nFeatures salvas em: {destino_features}")
+    print(f"Manifesto salvo em: {destino_manifesto}")
 
     return 0
 
