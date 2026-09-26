@@ -1,7 +1,0 @@
-nome,n_treino,n_teste,sensibilidade,especificidade,acuracia_balanceada,n_teste_falha,n_teste_normal,info
-A_bloco0,240,50,1.0,1.0,1.0,40,10,"{""bloco"": 0}"
-A_bloco1,235,50,1.0,1.0,1.0,40,10,"{""bloco"": 1}"
-A_bloco2,235,50,1.0,1.0,1.0,40,10,"{""bloco"": 2}"
-A_bloco3,235,50,1.0,1.0,1.0,40,10,"{""bloco"": 3}"
-A_bloco4,235,50,1.0,1.0,1.0,40,10,"{""bloco"": 4}"
-A_bloco5,245,45,1.0,1.0,1.0,36,9,"{""bloco"": 5}"

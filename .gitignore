@@ -21,3 +21,7 @@ firmware/**/*.bin
 # Editor / SO
 .vscode/
 .DS_Store
+
+# Arquivos gerados de features e testes locais
+data/processed/features/
+reports/validation/teste_*/

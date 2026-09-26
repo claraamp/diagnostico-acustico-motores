@@ -10,13 +10,13 @@ def test_normalizacao_silencio():
 def test_invariancia_ganho_sem_c0():
     """Confere se as features sem c0 são idênticas com ganho 1 e ganho 10."""
     np.random.seed(42)
-    x = np.random.randn(12800) 
-    
+    x = np.random.randn(12800)
+
     fs = 12800
     m1 = dsp.mfcc(x, fs)
     m10 = dsp.mfcc(x * 10.0, fs)
-    
+
     m1_sem_c0 = m1[:, 1:]
     m10_sem_c0 = m10[:, 1:]
-    
+
     np.testing.assert_allclose(m1_sem_c0, m10_sem_c0, atol=1e-5)

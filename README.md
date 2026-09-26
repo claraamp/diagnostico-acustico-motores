@@ -56,8 +56,9 @@ diagnostico-acustico-motores/
 │   └── processed/
 │       ├── pcm_raw/          # saída do 01 — .bin não versionados, manifest.json versionado
 │       ├── pcm_decimated/    # saída do 02, um subdiretório por taxa (ex.: 12800/)
-│       └── splits/
-│           └── splits.json   # saída do 03 — partição dos protocolos A e B, VERSIONADA
+│       ├── splits/
+│       │   └── splits.json   # saída do 03 — partição dos protocolos A e B, VERSIONADA
+│       └── features/         # saída do 04 — mfcc_features.npz + manifest_features.json, NÃO versionados
 │
 ├── scripts/
 │   ├── config.py             # parâmetros compartilhados entre etapas
@@ -74,7 +75,7 @@ diagnostico-acustico-motores/
 │   │   ├── 01_convert_mat_to_pcm.py
 │   │   ├── 02_decimate_pcm.py             # aplica a taxa definida em config.py
 │   │   ├── 03_make_splits.py              # segmenta e gera a partição, uma única vez
-│   │   ├── 04_extract_features.py         # (em andamento) MFCC por segmento
+│   │   ├── 04_extract_features.py         # MFCC por segmento da partição → .npz
 │   │   └── 05_train_classifier.py         # (previsto) modelo final para o firmware
 │   └── validation/           # protocolo de validação do classificador
 │       ├── particao.py                    # segmentos, folds A e B, verificação
@@ -83,6 +84,7 @@ diagnostico-acustico-motores/
 │
 ├── tests/                    # pytest; não dependem de data/
 │   ├── conftest.py
+│   ├── test_dsp.py
 │   └── validation/
 │       └── test_particao.py
 │
@@ -96,6 +98,7 @@ diagnostico-acustico-motores/
 │   └── registry.csv          # registro estruturado de cada rodada de experimento
 │
 ├── reports/                  # figuras, tabelas e outputs para os relatórios
+│   ├── c_reference/          # reference_data.h: entrada int16 + MFCC esperado, para o porte em C
 │   ├── decimation/           # métricas, figuras e relatório da escolha da taxa
 │   ├── exploration/          # figuras dos scripts exploratórios
 │   └── validation/           # uma pasta por rodada: metrics.json e folds.csv
@@ -119,6 +122,7 @@ Baixe os 5 arquivos `.mat` do Mendeley e coloque em `data/raw/`. Depois, o pipel
 python scripts/pipeline/01_convert_mat_to_pcm.py   # .mat → PCM int16 a 51,2 kHz
 python scripts/pipeline/02_decimate_pcm.py         # decima para a taxa de trabalho
 python scripts/pipeline/03_make_splits.py          # confere que a partição versionada bate
+python scripts/pipeline/04_extract_features.py     # MFCC de cada segmento → data/processed/features/
 ```
 
 O `03` é determinístico: num clone novo, ele reconstrói exatamente o `splits.json` versionado e avisa que "já existe e é idêntico". Se disser que o arquivo é **diferente**, os dados reconstruídos não são os mesmos das rodadas registradas — pare e investigue antes de seguir.
@@ -129,7 +133,7 @@ Os testes não dependem de `data/` e devem passar logo depois de clonar:
 pytest tests/
 ```
 
-Para rodar os protocolos de validação:
+Para rodar os protocolos de validação. O fluxo é `04` → `mfcc_features.npz` → `run_protocol`: o `run_protocol` não extrai features, lê as do `04` e aborta se o `manifest_features.json` faltar ou tiver sido gerado com outra partição ou outros parâmetros de MFCC — nesse caso, rode o `04` de novo.
 
 ```bash
 python scripts/validation/run_protocol.py --protocolo B --responsavel <nome>
@@ -137,6 +141,14 @@ python scripts/validation/run_protocol.py --protocolo A --tarefa multiclasse --r
 python scripts/validation/run_protocol.py --protocolo B --sem-c0      # ablação do ganho
 python scripts/validation/run_protocol.py --protocolo B --permutar    # controle de permutação
 python scripts/validation/run_protocol.py --protocolo B --sem-registro   # teste, não registra
+
+# ablação da normalização RMS por segmento: reextrai e roda de novo
+python scripts/pipeline/04_extract_features.py --norm-clipe
+python scripts/validation/run_protocol.py --protocolo B --responsavel <nome>
+python scripts/pipeline/04_extract_features.py       # volta ao padrão (sem normalização)
+
+# referência para o porte em C (Fase 2)
+python scripts/pipeline/04_extract_features.py --ref-c
 ```
 
 Commite o código **antes** de uma rodada registrada: o `registry.csv` grava o hash do commit, e uma rodada feita com código não commitado aponta para um estado que não existe.

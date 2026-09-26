@@ -1,8 +1,0 @@
-{
-  "norm_clipe": true,
-  "splits_hash": "772c8e1eb1",
-  "mfcc_janela_ms": 25,
-  "mfcc_hop_ms": 10,
-  "mfcc_n_mels": 20,
-  "mfcc_n_coefs": 13
-}

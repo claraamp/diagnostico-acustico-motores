@@ -24,6 +24,9 @@ Regras do protocolo que este script cumpre
 ------------------------------------------
 - Lê a partição do splits.json; não sorteia nada. Aborta se o arquivo violar
   o protocolo ou não corresponder aos dados carregados.
+- Aborta se o `manifest_features.json` faltar, se as features vierem de outra
+  partição ou de outros parâmetros de MFCC, ou se o número de linhas do `.npz`
+  não bater com o de segmentos. Os parâmetros gravados são os do manifesto.
 - O escalonamento (`StandardScaler`) é ajustado só no treino de cada fold.
 - Sem aumento de dados nesta versão.
 
@@ -226,42 +229,37 @@ def main() -> int:
           f"(splits {hash_splits})")
 
     # ------------------------------------------------ features e rótulos
-    if not args.features.exists():
-        print(f"Abortado: arquivo de features não encontrado em {args.features}")
-        return 1
-
     manifesto_path = args.features.with_name("manifest_features.json")
-    if not manifesto_path.exists():
-        print(f"Abortado: manifesto de features ausente em {manifesto_path}")
-        return 1
-        
+    for caminho in (args.features, manifesto_path):
+        if not caminho.exists():
+            print(f"Abortado: {caminho} não encontrado; rode o 04_extract_features.py.")
+            return 1
     manifesto_features = json.loads(manifesto_path.read_text(encoding="utf-8"))
-    
-    if manifesto_features.get("splits_hash") != hash_splits:
-        print("Abortado: O hash do splits.json extraído no manifesto diverge do atual.")
+
+    esperado = {
+        "splits_hash": hash_splits,
+        "fs_hz": config.FS_TRABALHO,
+        "mfcc_janela_ms": config.MFCC_WINDOW_MS,
+        "mfcc_hop_ms": config.MFCC_HOP_MS,
+        "mfcc_n_mels": config.MFCC_N_MELS,
+        "mfcc_n_coefs": config.MFCC_N_COEFS,
+    }
+    divergentes = [f"{k}: features={manifesto_features.get(k)}, atual={v}"
+                   for k, v in esperado.items() if manifesto_features.get(k) != v]
+    if divergentes:
+        print("Abortado: features extraídas com outra configuração; rode o 04 de novo.\n  "
+              + "\n  ".join(divergentes))
         return 1
 
-    norm_clipe = manifesto_features.get("norm_clipe", False)
-    
-    print(f"Carregando features extraídas (norm_clipe={norm_clipe})...")
-    dados_extraidos = np.load(args.features)
-    X_completo = dados_extraidos["X"]
-    
-    if len(X_completo) != len(segmentos):
-        print("Abortado: O número de linhas do .npz não bate com o número de segmentos da partição.")
+    norm_clipe = bool(manifesto_features.get("norm_clipe", False))
+    X = np.load(args.features)["X"]
+    if len(X) != len(segmentos):
+        print(f"Abortado: o .npz tem {len(X)} linhas e a partição tem {len(segmentos)} segmentos.")
         return 1
-    
-    # Deleta as colunas correspondentes à média e ao desvio do c0, caso seja ablação
     if args.sem_c0:
-        X = np.delete(X_completo, [0, config.MFCC_N_COEFS], axis=1)
-    else:
-        X = X_completo
-
+        # colunas da média e do desvio do c0
+        X = np.delete(X, [0, config.MFCC_N_COEFS], axis=1)
     y = rotulos(segmentos, args.tarefa)
-
-    # ------------------------------------------------ folds
-    resultados = rodar_folds(folds, X, y, args.tarefa, args.modelo,
-                             segmentos=segmentos, permutar=args.permutar)
 
     # ------------------------------------------------ folds
     resultados = rodar_folds(folds, X, y, args.tarefa, args.modelo,
@@ -271,11 +269,9 @@ def main() -> int:
     imprimir(resumo, resultados)
 
     # ------------------------------------------------ gravação
-    # Modifica o FEATURES_ID dinamicamente conforme sugerido pelo revisor
-    features_id_final = FEATURES_ID + ("_norm_clipe" if norm_clipe else "")
-    
     descricao = "_".join(p for p in (
         f"protocolo{args.protocolo}", args.tarefa, args.modelo,
+        "normclipe" if norm_clipe else None,
         "semc0" if args.sem_c0 else None, "permutado" if args.permutar else None,
     ) if p)
     exp_id = "teste" if args.sem_registro else f"exp{experimentos.next_exp_number(args.registry):03d}"
@@ -286,19 +282,20 @@ def main() -> int:
         "protocolo": args.protocolo,
         "tarefa": args.tarefa,
         "modelo": args.modelo,
-        "features": features_id_final,
+        "features": FEATURES_ID + ("_normclipe" if norm_clipe else ""),
         "norm_clipe": norm_clipe,
         "sem_c0": args.sem_c0,
         "permutado": args.permutar,
         "splits": hash_splits,
-        "fs_hz": config.FS_TRABALHO,
+        "fs_hz": manifesto_features["fs_hz"],
         "segmento_s": config.SEGMENTO_S,
         "segmentos_por_bloco": config.SEGMENTOS_POR_BLOCO,
         "segmentos_descarte": config.SEGMENTOS_DESCARTE,
-        "mfcc_janela_ms": config.MFCC_WINDOW_MS,
-        "mfcc_hop_ms": config.MFCC_HOP_MS,
-        "mfcc_n_mels": config.MFCC_N_MELS,
-        "mfcc_n_coefs": config.MFCC_N_COEFS,
+        "mfcc_janela_ms": manifesto_features["mfcc_janela_ms"],
+        "mfcc_hop_ms": manifesto_features["mfcc_hop_ms"],
+        "mfcc_n_mels": manifesto_features["mfcc_n_mels"],
+        "mfcc_n_coefs": manifesto_features["mfcc_n_coefs"],
+        "features_commit": manifesto_features.get("git_commit"),
         "semente": config.SEMENTE if args.permutar else None,
     }
     (destino / "metrics.json").write_text(json.dumps(

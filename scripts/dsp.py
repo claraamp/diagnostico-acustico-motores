@@ -49,6 +49,7 @@ def normalizar_rms_clipe(x: np.ndarray) -> np.ndarray:
     Garante que a normalização ocorra isoladamente por clipe.
     """
     rms = np.sqrt(np.mean(x**2))
+    # segmento quase silencioso: dividir pelo RMS só amplificaria ruído digital
     if rms > 1e-6:
         return x / rms
     return x
@@ -170,7 +171,7 @@ def log_mel(x: np.ndarray, fs: float,
     if len(x) < n_frame:
         return np.zeros((0, n_mels))
 
-    # A janela de Hanning é aplicada internamente em quadros pequenos (ex: 25ms), 
+    # A janela de Hanning é aplicada internamente em quadros pequenos (ex: 25ms),
     # nunca sobre o segmento de 1s inteiro.
     win = np.hanning(n_frame)
     n_frames = 1 + (len(x) - n_frame) // n_hop
@@ -182,7 +183,7 @@ def log_mel(x: np.ndarray, fs: float,
     spec = np.abs(rfft(frames, n=n_fft, axis=1)) ** 2
     fb = mel_filterbank(fs, n_fft, n_mels)
     mel = spec @ fb.T
-    
+
     # Logaritmo com proteção contra zeros
     return np.log(mel + 1e-10)
 
@@ -191,37 +192,13 @@ def mfcc(x: np.ndarray, fs: float,
          frame_ms: float = float(config.MFCC_WINDOW_MS),
          hop_ms: float = float(config.MFCC_HOP_MS),
          n_mels: int = config.MFCC_N_MELS,
-         n_mfcc: int = config.MFCC_N_COEFS,
-         norm_cepstral: bool = False) -> np.ndarray:
+         n_mfcc: int = config.MFCC_N_COEFS) -> np.ndarray:
     """MFCC no formato que será portado: Hanning → FFT → mel → log → DCT-II."""
-    
-    # 1. Obtém as energias (usando a nova função modularizada)
     lmel = log_mel(x, fs, frame_ms, hop_ms, n_mels)
-    
     if lmel.shape[0] == 0:
         return np.zeros((0, n_mfcc))
-        
-    # 2. Transformada Discreta de Cosseno (DCT-II ortogonal)
-    coefs = dct(lmel, type=2, axis=1, norm="ortho")[:, :n_mfcc]
-    
-    # 3. Normalização cepstral isolada por clipe (CMN)
-    if norm_cepstral:
-        coefs = coefs - np.mean(coefs, axis=0)
-        
-    return coefs
+    return dct(lmel, type=2, axis=1, norm="ortho")[:, :n_mfcc]
 
-
-def normalizar_rms_clipe(x: np.ndarray) -> np.ndarray:
-    """
-    Normaliza o segmento temporal pelo seu valor RMS (sem estado).
-    Garante que a normalização ocorra isoladamente por clipe.
-    """
-    rms = np.sqrt(np.mean(x**2))
-    # Alterado para 1e-6 conforme revisão, para evitar amplificar 
-    # ruído digital extremo se o segmento for quase zero.
-    if rms > 1e-6:
-        return x / rms
-    return x
 
 def design_decimation(fs_in: float, fs_out: float,
                       atten_db: float = float(config.FIR_ATTENUATION)) -> FirSpec:
