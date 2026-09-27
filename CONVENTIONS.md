@@ -139,6 +139,8 @@ Módulos importáveis ficam na raiz de `scripts/` quando praticamente toda etapa
 | `experimentos.py` | numeração, hash do commit e escrita do `registry.csv` |
 | `validation/particao.py` | segmentação das gravações, folds dos protocolos A e B, verificação das garantias, leitura e escrita do `splits.json` |
 | `validation/metricas.py` | sensibilidade, especificidade, acurácia balanceada e resumos dos protocolos |
+| `augmentation/transformacoes.py` | transformações de sinal do aumento: estiramento temporal (phase vocoder ou reamostragem), ruído com SNR fixada, recorte central |
+| `augmentation/variantes.py` | variantes por segmento (sorteio reprodutível por segmento e cópia), intervalo lido da gravação e filtro que aceita, em cada fold, só as variantes que leem segmentos de treino |
 
 A regra vale em particular para a segmentação: qualquer etapa que opere sobre segmentos — extração de features, aumento de dados, treino — obtém os segmentos de `particao.segmentos_de(particao.carregar(...))`, nunca recorta o sinal por conta própria. Uma segunda segmentação poderia divergir da partição sem erro nenhum, e o teste deixaria de estar separado do treino.
 

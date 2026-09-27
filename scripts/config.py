@@ -96,6 +96,29 @@ AMOSTRAS_POR_SEGMENTO = int(round(FS_TRABALHO * SEGMENTO_S))   # 12800
 # completos, blocos de 10, 10, 10, 10, 10 e 9.
 
 # ==========================================
+# Aumento de dados (só no treino de cada fold)
+# ==========================================
+# Implementado em augmentation/. Cada variante de um segmento de treino é uma
+# janela de 1 s tirada da mesma gravação, possivelmente deslocada, estirada no
+# tempo e com ruído somado. As variantes são geradas pelo 04 (--aumento N) e o
+# run_protocol só usa, em cada fold, as que leem EXCLUSIVAMENTE amostras de
+# segmentos de treino daquele fold — a faixa de descarte continua valendo.
+AUMENTO_DESLOC_MAX_S = 0.4          # s — deslocamento máximo da janela, para cada lado
+AUMENTO_ESTIR_TAXAS = (0.95, 1.05)  # taxa do estiramento (<1 alonga, >1 comprime)
+AUMENTO_ESTIR_MODO = "tempo"        # "tempo" (phase vocoder, preserva o espectro) ou
+                                    # "velocidade" (reamostragem, escala as frequências)
+                                    # — ver augmentation/transformacoes.py
+AUMENTO_SNR_DB = (20.0, 35.0)       # dB — faixa da relação sinal-ruído do ruído branco
+AUMENTO_PV_NFFT = 512               # amostras — quadro do phase vocoder (40 ms)
+AUMENTO_PV_HOP = 128                # amostras — passo do phase vocoder (10 ms)
+AUMENTO_TECNICAS = ("deslocamento", "estiramento", "ruido")
+
+assert AUMENTO_DESLOC_MAX_S < SEGMENTOS_DESCARTE * SEGMENTO_S, (
+    "o deslocamento máximo tem que ser menor que a faixa de descarte; senão "
+    "quase toda variante de borda do treino seria recusada pelo run_protocol"
+)
+
+# ==========================================
 # Formato dos dados
 # ==========================================
 INT16_FULL = 32767.0     # fundo de escala do PCM int16
