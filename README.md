@@ -74,7 +74,8 @@ diagnostico-acustico-motores/
 │   │   ├── inspect_signal_data.py
 │   │   ├── inspect_pcm.py                 # sanidade da conversão + caráter do sinal
 │   │   ├── inspect_class_spectra.py       # PSD por classe e banda necessária
-│   │   └── compare_decimation_rates.py    # estudo que definiu a taxa de trabalho
+│   │   ├── compare_decimation_rates.py    # estudo que definiu a taxa de trabalho
+│   │   └── inspect_left_out_fault.py      # posição da falha deixada de fora (Protocolo B)
 │   ├── pipeline/             # pipeline reprodutível, numerado pela ordem de execução
 │   │   ├── 01_convert_mat_to_pcm.py
 │   │   ├── 02_decimate_pcm.py             # aplica a taxa definida em config.py

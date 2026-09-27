@@ -1,0 +1,54 @@
+{
+  "falha_deixada_de_fora": "bpfi_0.3mm",
+  "features": "mfcc_features.npz",
+  "features_commit": "812a63a",
+  "splits": "772c8e1eb1",
+  "aumento": null,
+  "convencao": "0 = falhas de treino, 1 = normal",
+  "raio_medio_classe_dp": 1.9935962028763718,
+  "distancia_centroides_dp": {
+    "normal": 7.541361436451821,
+    "bpfi_1.0mm": 5.285309325989377,
+    "bpfo_0.3mm": 6.033041959760733,
+    "bpfo_1.0mm": 7.019035555934782
+  },
+  "posicao_reta_centroides": 0.18931490603361315,
+  "posicao_eixo_lda_media": 0.11989969509373843,
+  "posicao_eixo_lda_min_max": [
+    0.04667958829777918,
+    0.23825474740575853
+  ],
+  "fracao_no_lado_normal_media": 0.0,
+  "por_fold": [
+    {
+      "fold": "B_bpfi_0.3mm_bloco0",
+      "posicao_eixo_lda": 0.04667958829777918,
+      "fracao_no_lado_normal": 0.0
+    },
+    {
+      "fold": "B_bpfi_0.3mm_bloco1",
+      "posicao_eixo_lda": 0.06234447814609824,
+      "fracao_no_lado_normal": 0.0
+    },
+    {
+      "fold": "B_bpfi_0.3mm_bloco2",
+      "posicao_eixo_lda": 0.10919462075936252,
+      "fracao_no_lado_normal": 0.0
+    },
+    {
+      "fold": "B_bpfi_0.3mm_bloco3",
+      "posicao_eixo_lda": 0.23825474740575853,
+      "fracao_no_lado_normal": 0.0
+    },
+    {
+      "fold": "B_bpfi_0.3mm_bloco4",
+      "posicao_eixo_lda": 0.12390653612499007,
+      "fracao_no_lado_normal": 0.0
+    },
+    {
+      "fold": "B_bpfi_0.3mm_bloco5",
+      "posicao_eixo_lda": 0.13901819982844207,
+      "fracao_no_lado_normal": 0.0
+    }
+  ]
+}
