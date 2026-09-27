@@ -1,0 +1,287 @@
+{
+  "data": "2026-09-27",
+  "parametros": {
+    "fs_hz": 51200,
+    "nperseg": 8192,
+    "segmento_s": 1.0,
+    "z_limiar": 2.0
+  },
+  "psd": {
+    "bpfi_0.3mm": {
+      "delta_potencia_total_db": 9.710175199865706,
+      "fracao_deficit_total": 0.01627794561078139,
+      "faixas": [
+        {
+          "faixa_hz": "0-500",
+          "delta_potencia_db": 0.8858785438810307,
+          "excesso": 7.66950670390075e-05,
+          "deficit": 1.2818731379011751e-06,
+          "fracao_deficit": 0.016439131043010282,
+          "bins_z_pos": 0.1125,
+          "bins_z_neg": 0.0
+        },
+        {
+          "faixa_hz": "500-1000",
+          "delta_potencia_db": 8.760073059981032,
+          "excesso": 7.060792227713991e-05,
+          "deficit": 9.329949021344718e-07,
+          "fracao_deficit": 0.013041416561608793,
+          "bins_z_pos": 0.3125,
+          "bins_z_neg": 0.0375
+        },
+        {
+          "faixa_hz": "1000-2000",
+          "delta_potencia_db": 5.862026632093196,
+          "excesso": 0.001108572777229744,
+          "deficit": 0.0001184517604661269,
+          "fracao_deficit": 0.09653577155723209,
+          "bins_z_pos": 0.5,
+          "bins_z_neg": 0.03125
+        },
+        {
+          "faixa_hz": "2000-4000",
+          "delta_potencia_db": 13.71326277011587,
+          "excesso": 0.010953311096296083,
+          "deficit": 4.522469432483918e-05,
+          "fracao_deficit": 0.0041118831802506705,
+          "bins_z_pos": 0.7625,
+          "bins_z_neg": 0.01875
+        },
+        {
+          "faixa_hz": "4000-6400",
+          "delta_potencia_db": 5.268859023443243,
+          "excesso": 0.0009486588478055469,
+          "deficit": 4.8738909588590123e-05,
+          "fracao_deficit": 0.04886607096042446,
+          "bins_z_pos": 0.6640625,
+          "bins_z_neg": 0.036458333333333336
+        },
+        {
+          "faixa_hz": "6400-12800",
+          "delta_potencia_db": 9.701731396842126,
+          "excesso": 0.00045946210811884265,
+          "deficit": 1.1910102293320197e-05,
+          "fracao_deficit": 0.025266874097024366,
+          "bins_z_pos": 0.927734375,
+          "bins_z_neg": 0.0185546875
+        },
+        {
+          "faixa_hz": "12800-25600",
+          "delta_potencia_db": 14.600077926708156,
+          "excesso": 7.862764984023915e-05,
+          "deficit": 9.04472313415461e-08,
+          "fracao_deficit": 0.0011490017506304779,
+          "bins_z_pos": 0.98828125,
+          "bins_z_neg": 0.00048828125
+        }
+      ]
+    },
+    "bpfi_1.0mm": {
+      "delta_potencia_total_db": 17.557273759589332,
+      "fracao_deficit_total": 0.004205121308792154,
+      "faixas": [
+        {
+          "faixa_hz": "0-500",
+          "delta_potencia_db": 0.13096437895709545,
+          "excesso": 1.6096743343737953e-05,
+          "deficit": 5.893354908373652e-06,
+          "fracao_deficit": 0.26800039003044207,
+          "bins_z_pos": 0.2625,
+          "bins_z_neg": 0.0625
+        },
+        {
+          "faixa_hz": "500-1000",
+          "delta_potencia_db": 22.73602642104408,
+          "excesso": 0.0019973022128761822,
+          "deficit": 4.0738730818243864e-07,
+          "fracao_deficit": 0.00020392719149211761,
+          "bins_z_pos": 0.65,
+          "bins_z_neg": 0.0125
+        },
+        {
+          "faixa_hz": "1000-2000",
+          "delta_potencia_db": 12.75509006672478,
+          "excesso": 0.006345318093272026,
+          "deficit": 0.00015535013725754692,
+          "fracao_deficit": 0.02389756433468862,
+          "bins_z_pos": 0.84375,
+          "bins_z_neg": 0.025
+        },
+        {
+          "faixa_hz": "2000-4000",
+          "delta_potencia_db": 22.291495360407893,
+          "excesso": 0.08170092299604897,
+          "deficit": 6.604013127886985e-05,
+          "fracao_deficit": 0.0008076627619889943,
+          "bins_z_pos": 0.853125,
+          "bins_z_neg": 0.01875
+        },
+        {
+          "faixa_hz": "4000-6400",
+          "delta_potencia_db": 2.814156214874143,
+          "excesso": 0.00047865913686846886,
+          "deficit": 0.00013163702281552422,
+          "fracao_deficit": 0.2156936771217517,
+          "bins_z_pos": 0.6770833333333334,
+          "bins_z_neg": 0.0859375
+        },
+        {
+          "faixa_hz": "6400-12800",
+          "delta_potencia_db": 3.4568756099329323,
+          "excesso": 8.789519868833374e-05,
+          "deficit": 2.2579095696996038e-05,
+          "fracao_deficit": 0.2043832533407372,
+          "bins_z_pos": 0.8798828125,
+          "bins_z_neg": 0.0224609375
+        },
+        {
+          "faixa_hz": "12800-25600",
+          "delta_potencia_db": 6.4483213115853655,
+          "excesso": 1.047121455076748e-05,
+          "deficit": 8.40545220944315e-07,
+          "fracao_deficit": 0.07430720223093247,
+          "bins_z_pos": 0.919921875,
+          "bins_z_neg": 0.0263671875
+        }
+      ]
+    },
+    "bpfo_0.3mm": {
+      "delta_potencia_total_db": -0.3117359609198782,
+      "fracao_deficit_total": 0.546832233196523,
+      "faixas": [
+        {
+          "faixa_hz": "0-500",
+          "delta_potencia_db": -0.22175506072144444,
+          "excesso": 3.3636390980652148e-06,
+          "deficit": 1.995414093994009e-05,
+          "fracao_deficit": 0.8557478845506361,
+          "bins_z_pos": 0.1125,
+          "bins_z_neg": 0.0625
+        },
+        {
+          "faixa_hz": "500-1000",
+          "delta_potencia_db": 11.360937200815258,
+          "excesso": 0.00013705370810376474,
+          "deficit": 1.4725808013305311e-06,
+          "fracao_deficit": 0.01063033459547451,
+          "bins_z_pos": 0.325,
+          "bins_z_neg": 0.0125
+        },
+        {
+          "faixa_hz": "1000-2000",
+          "delta_potencia_db": -1.4632308830328464,
+          "excesso": 6.251951348891762e-05,
+          "deficit": 0.00016166219525720905,
+          "fracao_deficit": 0.7211212554378489,
+          "bins_z_pos": 0.13125,
+          "bins_z_neg": 0.14375
+        },
+        {
+          "faixa_hz": "2000-4000",
+          "delta_potencia_db": -0.028165680582816745,
+          "excesso": 0.0002689075633509447,
+          "deficit": 0.00027203958366702456,
+          "fracao_deficit": 0.5028949411539977,
+          "bins_z_pos": 0.34375,
+          "bins_z_neg": 0.128125
+        },
+        {
+          "faixa_hz": "4000-6400",
+          "delta_potencia_db": -1.7109257467315468,
+          "excesso": 4.782088250119128e-05,
+          "deficit": 0.000171763088848328,
+          "fracao_deficit": 0.7822205227125929,
+          "bins_z_pos": 0.140625,
+          "bins_z_neg": 0.3463541666666667
+        },
+        {
+          "faixa_hz": "6400-12800",
+          "delta_potencia_db": -0.25791265823059295,
+          "excesso": 2.0279350860244145e-05,
+          "deficit": 2.337483483967195e-05,
+          "fracao_deficit": 0.5354546068125806,
+          "bins_z_pos": 0.1591796875,
+          "bins_z_neg": 0.21484375
+        },
+        {
+          "faixa_hz": "12800-25600",
+          "delta_potencia_db": -2.823289401944514,
+          "excesso": 3.383670746044388e-07,
+          "deficit": 1.6867725237236961e-06,
+          "fracao_deficit": 0.8329166666417567,
+          "bins_z_pos": 0.16015625,
+          "bins_z_neg": 0.22998046875
+        }
+      ]
+    },
+    "bpfo_1.0mm": {
+      "delta_potencia_total_db": 16.381490190844886,
+      "fracao_deficit_total": 0.0046016086413594,
+      "faixas": [
+        {
+          "faixa_hz": "0-500",
+          "delta_potencia_db": 1.5178651284230043,
+          "excesso": 0.00014210330583971573,
+          "deficit": 2.671724744953911e-06,
+          "fracao_deficit": 0.018454320017507374,
+          "bins_z_pos": 0.3375,
+          "bins_z_neg": 0.0375
+        },
+        {
+          "faixa_hz": "500-1000",
+          "delta_potencia_db": 25.789527674893613,
+          "excesso": 0.004045763437417467,
+          "deficit": 1.1413447072233652e-06,
+          "fracao_deficit": 0.0002820290490314281,
+          "bins_z_pos": 0.575,
+          "bins_z_neg": 0.025
+        },
+        {
+          "faixa_hz": "1000-2000",
+          "delta_potencia_db": 20.714739559142934,
+          "excesso": 0.0406866463119851,
+          "deficit": 0.0001716523049143163,
+          "fracao_deficit": 0.004201161348488434,
+          "bins_z_pos": 0.90625,
+          "bins_z_neg": 0.01875
+        },
+        {
+          "faixa_hz": "2000-4000",
+          "delta_potencia_db": 16.809687426502617,
+          "excesso": 0.02282676501686952,
+          "deficit": 6.972786581728524e-05,
+          "fracao_deficit": 0.003045351363396357,
+          "bins_z_pos": 0.89375,
+          "bins_z_neg": 0.01875
+        },
+        {
+          "faixa_hz": "4000-6400",
+          "delta_potencia_db": 4.433477765589088,
+          "excesso": 0.000732314851468795,
+          "deficit": 5.647353154433601e-05,
+          "fracao_deficit": 0.07159528811594566,
+          "bins_z_pos": 0.7526041666666666,
+          "bins_z_neg": 0.059895833333333336
+        },
+        {
+          "faixa_hz": "6400-12800",
+          "delta_potencia_db": 8.00627702240555,
+          "excesso": 0.0003010142524200014,
+          "deficit": 1.5467329608166196e-05,
+          "fracao_deficit": 0.04887276380838354,
+          "bins_z_pos": 0.939453125,
+          "bins_z_neg": 0.0107421875
+        },
+        {
+          "faixa_hz": "12800-25600",
+          "delta_potencia_db": 12.518885834896903,
+          "excesso": 4.8403399932606445e-05,
+          "deficit": 8.41594450728749e-07,
+          "fracao_deficit": 0.01708994916676343,
+          "bins_z_pos": 0.95166015625,
+          "bins_z_neg": 0.02294921875
+        }
+      ]
+    }
+  }
+}
