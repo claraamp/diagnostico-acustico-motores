@@ -1,7 +1,7 @@
 {
   "data": "2026-09-27",
   "features": {
-    "git_commit": "f603a05",
+    "git_commit": "a3da1d8",
     "splits_hash": "772c8e1eb1",
     "n_segmentos": 295,
     "fs_hz": 12800,
@@ -13,10 +13,10 @@
     "aumento": null
   },
   "linhas_f0_hz": {
-    "bpfi_0.3mm": 268.33,
-    "bpfi_1.0mm": 268.25,
-    "bpfo_0.3mm": 182.65,
-    "bpfo_1.0mm": 183.39
+    "bpfi_0.3mm": 268.3301627209283,
+    "bpfi_1.0mm": 268.2500579312403,
+    "bpfo_0.3mm": 182.65343340018384,
+    "bpfo_1.0mm": 183.3938769497485
   },
   "diluicao": {
     "bpfi_0.3mm": {
@@ -38,14 +38,14 @@
       "delta_linha_mediana_db": 30.341886063283457,
       "delta_banda_mediana_db": 1.012955967758619,
       "diluicao_mediana_db": 28.763284748122963,
-      "fracao_linhas_mediana": 0.2407972412524642
+      "fracao_linhas_mediana": 0.2474759239657637
     },
     "bpfo_1.0mm": {
       "n_bandas_com_linha": 20,
       "delta_linha_mediana_db": 50.52574470178407,
       "delta_banda_mediana_db": 16.2688077452989,
       "diluicao_mediana_db": 35.73891527087279,
-      "fracao_linhas_mediana": 0.9145300246515699
+      "fracao_linhas_mediana": 0.91517057337057
     }
   },
   "mel": {
