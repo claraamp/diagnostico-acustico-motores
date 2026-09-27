@@ -204,7 +204,7 @@ def main() -> None:
     ap.add_argument("--sem-registro", action="store_true", help="não escreve no registry")
     ap.add_argument("--sintetico", action="store_true",
                     help="auto-teste com sinais artificiais (implica --sem-registro)")
-    ap.add_argument("--responsavel", default="Clara")
+    ap.add_argument("--responsavel", default="")
     ap.add_argument("--notas", default="")
     args = ap.parse_args()
 

@@ -17,10 +17,12 @@ calculadas pela geometria do NSK 6205 com ângulo de contato θ = 0° e sem
 escorregamento, são 272,07 e 179,43 Hz a 50,17 Hz (Jung et al., 2023, Tabela 1).
 
 Antes de pôr isso no relatório, é preciso uma segunda medição, com outro sensor.
-O dataset tem VIBRAÇÃO a 0 Nm, com os mesmos defeitos e o acelerômetro no mancal
-A, o do rolamento com defeito. Se o espectro de envelope da vibração mostrar a
-BPFO em ~182,7 Hz e a BPFI em ~268,3 Hz, e não em 179,5 e 272,3 Hz, o achado passa
-de inferência a constatação com dois sensores.
+O dataset tem VIBRAÇÃO a 0 Nm, com os mesmos defeitos: quatro acelerômetros,
+direções x e y dos mancais A e B (Jung et al., 2023, seção 2; o microfone fica
+perto do mancal A). O artigo não diz em qual mancal está o rolamento com defeito
+nos arquivos de 0 Nm. Se o espectro de envelope da vibração mostrar a BPFO em
+~182,7 Hz e a BPFI em ~268,3 Hz, e não em 179,5 e 272,3 Hz, o achado passa de
+inferência a constatação com dois sensores.
 
 Método (Randall & Antoni, 2011, seções 4.2 e 5)
 -----------------------------------------------
@@ -42,6 +44,20 @@ Para cada sensor e cada gravação:
    engolir a linha verdadeira, a 3–4 Hz do alvo.
 
 A gravação normal entra como controle: não deve ter pico em nenhuma das duas.
+
+Critério de confirmação (por sensor e gravação de falha)
+--------------------------------------------------------
+- f0 do envelope só é aceito com SNR no próprio f0 ≥ SNR_MIN_DB; abaixo disso
+  sai n/id, como no identify_tonal_peaks.py.
+- "sim": f0 aceito e a até TOL_CONFIRMA_HZ (2 × a resolução) da medida no áudio.
+- "parcial": há energia na medida do áudio (SNR ≥ SNR_MIN_DB), mas o f0 do
+  envelope não cai nela, ou não foi aceito.
+- "não": nem uma coisa nem outra.
+
+As frequências medidas no áudio NÃO estão escritas aqui: são lidas do
+`picos_metrics.json` do identify_tonal_peaks.py (a rodada registrada dele). Se
+o arquivo faltar, o script para. Só o modo --sintetico usa valores próprios,
+que definem o sinal de teste.
 
 Uso
 ---
@@ -89,11 +105,26 @@ ARQUIVOS = {                         # mesmos nomes do áudio, outra pasta
 
 # Geometria do NSK 6205 (Jung et al., 2023, Tabela 1 e texto): N, d, D, θ.
 N_ESFERAS, D_ESFERA_MM, D_PRIMITIVO_MM, THETA_DEG = 9, 7.90, 38.5, 0.0
-F_EIXO = 50.20       # Hz — medido no áudio em 25/09, igual nas 5 gravações (±0,01 %)
 
-# Medidas no ÁUDIO em 25/09 (identify_tonal_peaks.py v2), por gravação.
-MEDIDAS_AUDIO = {"bpfi_0.3mm": 268.33, "bpfi_1.0mm": 268.25,
-                 "bpfo_0.3mm": 182.65, "bpfo_1.0mm": 183.39}
+# Valores do SINAL SINTÉTICO do auto-teste. Definem o sinal de teste; não são
+# medidas e não entram na análise dos dados reais.
+SINT_F_EIXO = 50.20
+SINT_MEDIDAS = {"bpfi_0.3mm": 268.33, "bpfi_1.0mm": 268.25,
+                "bpfo_0.3mm": 182.65, "bpfo_1.0mm": 183.39}
+
+# Medidas usadas na análise: preenchidas em main(), a partir do
+# picos_metrics.json (dados reais) ou de SINT_* (--sintetico).
+F_EIXO: float = float("nan")
+MEDIDAS_AUDIO: dict[str, float] = {}
+MEDIDAS_JSON = Path("reports/signature/picos_metrics.json")
+
+# Nomes dos canais de vibração. Jung et al. (2023, seção 2) listam as colunas na
+# ordem x e y do mancal A, x e y do mancal B; o .mat traz Point1–Point4, que se
+# supõe estarem na mesma ordem.
+NOMES_VIB = {0: "vib_A_x", 1: "vib_A_y", 2: "vib_B_x", 3: "vib_B_y"}
+
+SNR_MIN_DB = 6.0                    # f0 do envelope abaixo disto sai n/id
+TOL_CONFIRMA_HZ = 0.5               # 2 × a resolução de 0,25 Hz
 
 FAIXAS = {"BPFO": (170.0, 195.0), "BPFI": (255.0, 285.0)}
 N_HARM = 4
@@ -103,14 +134,16 @@ LARGURA_MIN = 2000.0                # Hz
 SEG_ENVELOPE_S = 4.0                # resolução de 0,25 Hz
 
 
-def cinematicas(f_eixo: float = F_EIXO) -> dict[str, float]:
+def cinematicas(f_eixo: float | None = None) -> dict[str, float]:
+    f_eixo = F_EIXO if f_eixo is None else f_eixo
     r = D_ESFERA_MM / D_PRIMITIVO_MM * np.cos(np.radians(THETA_DEG))
     return {"BPFO": N_ESFERAS * f_eixo / 2 * (1 - r),
             "BPFI": N_ESFERAS * f_eixo / 2 * (1 + r)}
 
 
-def theta_efetivo(bpfo: float, f_eixo: float = F_EIXO) -> float:
+def theta_efetivo(bpfo: float, f_eixo: float | None = None) -> float:
     """Ângulo de contato que reproduziria a BPFO medida (mantidos N, d, D)."""
+    f_eixo = F_EIXO if f_eixo is None else f_eixo
     r_eff = 1 - 2 * bpfo / (N_ESFERAS * f_eixo)
     c = r_eff / (D_ESFERA_MM / D_PRIMITIVO_MM)
     return float(np.degrees(np.arccos(c))) if -1 <= c <= 1 else float("nan")
@@ -147,12 +180,13 @@ def carregar_vibracao(caminho: Path) -> tuple[float, np.ndarray, list[str]]:
     a estrutura `Signal` dos .mat de áudio (x_values.increment dá a taxa) e,
     se não houver, a maior matriz numérica do arquivo. Uma primeira coluna
     monotônica crescente é tomada como carimbo de tempo: dá a taxa e sai.
-    Se a estrutura for outra, rode o inspect_vibration_mat.py e me mande a saída.
+    Se a estrutura for outra, rode o inspect_vibration_mat.py e confira a
+    estrutura do arquivo.
     """
     try:
         data = sio.loadmat(caminho, struct_as_record=True, squeeze_me=False)
     except NotImplementedError as e:
-        raise SystemExit(f"{caminho}: MAT v7.3 — rode inspect_vibration_mat.py e mande a saída") from e
+        raise SystemExit(f"{caminho}: MAT v7.3 — rode inspect_vibration_mat.py e confira a estrutura") from e
 
     fs, vals, textos = None, None, []
     if "Signal" in data:
@@ -194,6 +228,34 @@ def carregar_vibracao(caminho: Path) -> tuple[float, np.ndarray, list[str]]:
     if fs is None:
         raise SystemExit(f"{caminho}: não consegui achar a taxa — rode inspect_vibration_mat.py")
     return fs, vals, textos
+
+
+def carregar_medidas(caminho: Path) -> tuple[dict[str, float], float]:
+    """
+    BPFI/BPFO medidas no áudio e f_eixo, do picos_metrics.json do
+    identify_tonal_peaks.py. Para se faltar o arquivo ou alguma medida.
+    """
+    if not caminho.exists():
+        raise SystemExit(f"{caminho} não encontrado: rode o identify_tonal_peaks.py antes.")
+    d = json.loads(caminho.read_text(encoding="utf-8"))
+    medidas = {}
+    for c in FALHAS:
+        fam = "BPFO" if "bpfo" in c else "BPFI"
+        f0 = d["bpf_medidas"][c][fam]["f0_medida"]
+        if f0 is None:
+            raise SystemExit(f"{caminho}: {fam} de {c} não foi medida (n/id).")
+        medidas[c] = float(f0)
+    f_eixo = float(np.mean([v["f_eixo"] for v in d["velocidades"].values()]))
+    return medidas, f_eixo
+
+
+def classificar(f0: float | None, snr_medida: float, medida: float) -> str:
+    """Critério de confirmação da docstring: sim / parcial / não."""
+    if f0 is not None and abs(f0 - medida) <= TOL_CONFIRMA_HZ:
+        return "sim"
+    if np.isfinite(snr_medida) and snr_medida >= SNR_MIN_DB:
+        return "parcial"
+    return "não"
 
 
 # --------------------------------------------------------------------------- #
@@ -275,14 +337,14 @@ def sintetico(fs: float, seed: int) -> dict[str, np.ndarray]:
     for c in config.CLASSES:
         x = 0.05 * rng.standard_normal(n)
         for k in range(1, 6):
-            x += 0.2 / k * np.sin(2 * np.pi * k * F_EIXO * t)
-        if c in MEDIDAS_AUDIO:
-            f0 = MEDIDAS_AUDIO[c]
+            x += 0.2 / k * np.sin(2 * np.pi * k * SINT_F_EIXO * t)
+        if c in SINT_MEDIDAS:
+            f0 = SINT_MEDIDAS[c]
             g = 1.0 if c.endswith("1.0mm") else 0.4
             tk = np.cumsum(1 / f0 * (1 + 0.01 * rng.standard_normal(int(60 * f0) + 10)))
             idx = (tk[tk < 60 - 0.01] * fs).astype(int)
             imp = np.zeros(n)
-            amp = g * (1 + 0.5 * np.cos(2 * np.pi * F_EIXO * tk[: idx.size])) if "bpfi" in c else g
+            amp = g * (1 + 0.5 * np.cos(2 * np.pi * SINT_F_EIXO * tk[: idx.size])) if "bpfi" in c else g
             imp[idx] = amp
             x += sg.lfilter(ir, [1.0], imp) * 3
         out[c] = x
@@ -329,17 +391,25 @@ def figura(res: dict, sensores: list[str], caminho: Path, fmax: float = 600.0) -
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[1])
     ap.add_argument("--vib-dir", type=Path, default=Path("data/raw/vibracao"))
-    ap.add_argument("--canais", type=int, nargs="+", default=[0, 1],
-                    help="colunas da vibração a analisar (padrão: 0 e 1 = x e y do mancal A)")
+    ap.add_argument("--canais", type=int, nargs="+", default=[0, 1, 2, 3],
+                    help="colunas da vibração a analisar (0–1: mancal A; 2–3: mancal B)")
+    ap.add_argument("--medidas", type=Path, default=MEDIDAS_JSON,
+                    help="picos_metrics.json do identify_tonal_peaks.py")
     ap.add_argument("--pcm-raw", type=Path, default=Path("data/processed/pcm_raw"))
     ap.add_argument("--sem-audio", action="store_true", help="só vibração")
     ap.add_argument("--out-dir", type=Path, default=Path("reports/signature"))
     ap.add_argument("--registry", type=Path, default=Path("experiments/registry.csv"))
     ap.add_argument("--sem-registro", action="store_true")
     ap.add_argument("--sintetico", action="store_true", help="auto-teste (implica --sem-registro)")
-    ap.add_argument("--responsavel", default="Clara")
+    ap.add_argument("--responsavel", default="")
     ap.add_argument("--notas", default="")
     args = ap.parse_args()
+
+    global F_EIXO, MEDIDAS_AUDIO
+    if args.sintetico:
+        MEDIDAS_AUDIO, F_EIXO = dict(SINT_MEDIDAS), SINT_F_EIXO
+    else:
+        MEDIDAS_AUDIO, F_EIXO = carregar_medidas(args.medidas)
 
     sinais: dict[str, dict[str, tuple[float, np.ndarray]]] = {}
     if args.sintetico:
@@ -355,19 +425,22 @@ def main() -> None:
             if c == "normal":
                 print(f"Vibração: {vals.shape[1]} canais a {fs:.0f} Hz, {vals.shape[0] / fs:.1f} s "
                       f"(normal). Textos no arquivo: {textos[:12]}")
-                print(f"  Usando as colunas {args.canais}. Confira com a saída do "
-                      "inspect_vibration_mat.py que são as do mancal A.")
+                print(f"  Usando as colunas {args.canais} "
+                      f"({', '.join(NOMES_VIB.get(k, f'vib_col{k}') for k in args.canais)}).")
             for k in args.canais:
                 x = vals[: int(60 * fs), k].copy()                      # cópia: libera a matriz inteira (normal tem 300 s)
-                sinais.setdefault(f"vib_col{k}", {})[c] = (fs, x - x.mean())
+                sinais.setdefault(NOMES_VIB.get(k, f"vib_col{k}"), {})[c] = (fs, x - x.mean())
         if not args.sem_audio:
             for cl in pcm_io.carregar_clipes(args.pcm_raw, fs_esperado=config.FS_ORIGINAL):
                 sinais.setdefault("audio", {})[cl.rotulo] = (cl.fs, cl.x)
     args.out_dir.mkdir(parents=True, exist_ok=True)
 
     cin = cinematicas()
-    print(f"\nCinemáticas (θ = 0°, f_eixo {F_EIXO} Hz): BPFO {cin['BPFO']:.2f} · BPFI {cin['BPFI']:.2f} Hz")
-    print(f"Medidas no áudio: {MEDIDAS_AUDIO}\n")
+    print(f"\nCinemáticas (θ = 0°, f_eixo {F_EIXO:.2f} Hz): BPFO {cin['BPFO']:.2f} · BPFI {cin['BPFI']:.2f} Hz")
+    print(f"Medidas no áudio: {MEDIDAS_AUDIO}"
+          + ("" if args.sintetico else f"  (de {args.medidas})"))
+    print(f"f0 do envelope aceito com SNR ≥ {SNR_MIN_DB:.0f} dB no próprio f0; "
+          f"confirma = f0 a até {TOL_CONFIRMA_HZ} Hz da medida\n")
 
     res: dict[str, dict] = {}
     linhas = []
@@ -375,7 +448,7 @@ def main() -> None:
         res[sensor] = {}
         print(f"── {sensor}")
         print(f"  {'classe':<12}{'banda (Hz)':>16}{'SK':>7}{'família':>9}{'f0 env.':>10}"
-              f"{'SNR@cinem.':>12}{'SNR@áudio':>11}")
+              f"{'SNR@f0':>8}{'SNR@cinem.':>12}{'SNR@áudio':>11}{'confirma':>10}")
         for c in config.CLASSES:
             fs, x = por_classe[c]
             r = analisar(x, fs)
@@ -389,26 +462,40 @@ def main() -> None:
                     [v for k, v in MEDIDAS_AUDIO.items() if fam.lower() in k])))
                 s_cin = snr_em(r["f"], r["m"], cin[fam])
                 s_aud = snr_em(r["f"], r["m"], alvo_audio) if np.isfinite(alvo_audio) else float("nan")
-                f0 = r["f0"][fam]["f0"]
+                s_f0 = r["f0"][fam]["snr_f0_db"]
+                f0 = r["f0"][fam]["f0"] if s_f0 >= SNR_MIN_DB else None
+                conf = classificar(f0, s_aud, alvo_audio) if c != "normal" else "—"
+                f0_txt = f"{f0:.2f}" if f0 is not None else "n/id"
                 print(f"  {c:<12}{b['banda'][0]:>8.0f}–{b['banda'][1]:<7.0f}{b['sk']:>7.2f}{fam:>9}"
-                      f"{f0:>10.2f}{s_cin:>12.1f}{s_aud:>11.1f}")
+                      f"{f0_txt:>10}{s_f0:>8.1f}{s_cin:>12.1f}{s_aud:>11.1f}{conf:>10}")
                 linhas.append({"sensor": sensor, "classe": c, "familia": fam,
                                "banda_lo_hz": round(b["banda"][0], 1), "banda_hi_hz": round(b["banda"][1], 1),
                                "sk_max": round(b["sk"], 3), "janela_sk": b["janela"],
-                               "f0_envelope_hz": round(f0, 3),
+                               "f0_envelope_hz": round(f0, 3) if f0 is not None else "n/id",
+                               "snr_f0_db": round(s_f0, 2),
                                "f_cinematica_hz": round(cin[fam], 3), "snr_cinematica_db": round(s_cin, 2),
                                "f_audio_hz": alvo_audio, "snr_audio_db": round(s_aud, 2),
-                               "theta_efetivo_deg": round(theta_efetivo(f0), 1) if fam == "BPFO" and c != "normal" else ""})
+                               "confirma": conf,
+                               "theta_efetivo_deg": (round(theta_efetivo(f0), 1)
+                                                     if fam == "BPFO" and c != "normal" and f0 is not None
+                                                     else "")})
         print()
 
     print("Leitura: confirma se, na vibração, o f0 do envelope de cada falha cai a poucos")
     print("décimos de Hz da medida no áudio e o SNR na medida supera com folga o SNR na")
     print("cinemática. Na normal, nenhum dos dois deve ter pico.")
     bpfos = [l for l in linhas if l["familia"] == "BPFO" and l["classe"] != "normal"
-             and l["sensor"].startswith("vib")]
+             and l["sensor"].startswith("vib") and l["theta_efetivo_deg"] != ""]
     if bpfos:
         print("θ efetivo que reproduziria a BPFO da vibração: " +
               ", ".join(f"{l['sensor']}/{l['classe']} {l['theta_efetivo_deg']}°" for l in bpfos))
+        por_classe = {}
+        for l in bpfos:
+            por_classe.setdefault(l["classe"], []).append(float(l["theta_efetivo_deg"]))
+        if len(por_classe) > 1:
+            medias = {c: np.mean(v) for c, v in por_classe.items()}
+            print("  θ médio por gravação: " + ", ".join(f"{c} {v:.1f}°" for c, v in medias.items())
+                  + ". Um único ângulo de contato só explicaria as duas se esses valores coincidissem.")
 
     figura(res, list(sinais), args.out_dir / "fig_envelope_bpf.png")
     with (args.out_dir / "envelope_bpf.csv").open("w", encoding="utf-8", newline="") as fh:
@@ -417,6 +504,7 @@ def main() -> None:
         w.writerows(linhas)
     (args.out_dir / "envelope_metrics.json").write_text(json.dumps(
         {"data": date.today().isoformat(), "cinematicas": cin, "medidas_audio": MEDIDAS_AUDIO,
+         "criterio": {"snr_min_db": SNR_MIN_DB, "tol_confirma_hz": TOL_CONFIRMA_HZ},
          "geometria": {"N": N_ESFERAS, "d_mm": D_ESFERA_MM, "D_mm": D_PRIMITIVO_MM,
                        "theta_deg": THETA_DEG, "f_eixo_hz": F_EIXO},
          "linhas": linhas}, indent=2, ensure_ascii=False, default=str), encoding="utf-8")
@@ -425,7 +513,14 @@ def main() -> None:
     if args.sem_registro:
         print("(sem registro)")
         return
-    met = {f"f0_{l['sensor']}_{l['classe']}": l["f0_envelope_hz"] for l in linhas if l["classe"] != "normal"}
+    met = {}
+    for l in linhas:
+        if l["classe"] == "normal":
+            continue
+        chave = f"{l['sensor']}_{l['classe']}"
+        met[f"f0_{chave}"] = l["f0_envelope_hz"]
+        met[f"snr_{chave}"] = l["snr_audio_db"]
+        met[f"conf_{chave}"] = l["confirma"]
     linha = {
         "id": f"exp{experimentos.next_exp_number(args.registry):03d}",
         "data": date.today().isoformat(),
@@ -435,7 +530,8 @@ def main() -> None:
         "parametros": experimentos.kv({"canais_vib": "/".join(map(str, args.canais)),
                                        "janelas_sk": "/".join(map(str, JANELAS_SK)),
                                        "largura_min_hz": LARGURA_MIN, "seg_envelope_s": SEG_ENVELOPE_S,
-                                       "f_eixo_hz": F_EIXO}),
+                                       "f_eixo_hz": round(F_EIXO, 3), "snr_min_db": SNR_MIN_DB,
+                                       "tol_confirma_hz": TOL_CONFIRMA_HZ}),
         "dataset": "jung2023_vibracao_0Nm+acustico_0Nm",
         "metricas": experimentos.kv(met),
         "responsavel": args.responsavel,

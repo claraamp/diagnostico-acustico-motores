@@ -550,7 +550,7 @@ def main() -> None:
     ap.add_argument("--registry", type=Path, default=Path("experiments/registry.csv"))
     ap.add_argument("--sem-registro", action="store_true")
     ap.add_argument("--sintetico", action="store_true", help="auto-teste (implica --sem-registro)")
-    ap.add_argument("--responsavel", default="Clara")
+    ap.add_argument("--responsavel", default="")
     ap.add_argument("--notas", default="")
     args = ap.parse_args()
 

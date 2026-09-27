@@ -82,12 +82,18 @@ FALHAS = [c for c in config.CLASSES if config.BINARIO[c] == "falha"]
 N_MELS_TESTE = (config.MFCC_N_MELS, 40, 64)
 DB_POR_NEPER = 10.0 / np.log(10.0)          # log natural de potência → dB
 
-# Medidas no áudio em 25/09 (identify_tonal_peaks.py v2) e confirmadas pela
-# vibração em 26/09 (confirm_bpf_envelope.py). Pista interna leva bandas
-# laterais a ± eixo (k = −2…2); pista externa, só harmônicos.
-F_EIXO = 50.20
-LINHAS_F0 = {"bpfi_0.3mm": 268.33, "bpfi_1.0mm": 268.25,
-             "bpfo_0.3mm": 182.65, "bpfo_1.0mm": 183.39}
+# Frequências das linhas de falha: as MEDIDAS no áudio, lidas em main() do
+# picos_metrics.json do identify_tonal_peaks.py (não ficam escritas aqui, para
+# não divergirem dele). Pista interna leva bandas laterais a ± eixo (k = −2…2);
+# pista externa, só harmônicos.
+F_EIXO: float = float("nan")
+LINHAS_F0: dict[str, float] = {}
+MEDIDAS_JSON = Path("reports/signature/picos_metrics.json")
+
+# Valores do SINAL SINTÉTICO do auto-teste (definem o sinal; não são medidas).
+SINT_F_EIXO = 50.20
+SINT_LINHAS_F0 = {"bpfi_0.3mm": 268.33, "bpfi_1.0mm": 268.25,
+                  "bpfo_0.3mm": 182.65, "bpfo_1.0mm": 183.39}
 NPERSEG_FINO = 1 << 16                      # 0,195 Hz a 12,8 kHz
 TOL_LINHA_HZ = 0.5
 
@@ -221,12 +227,47 @@ def similaridades(ef: dict[str, dict]) -> dict:
 # --------------------------------------------------------------------------- #
 # 3. O eixo do classificador (features oficiais)
 # --------------------------------------------------------------------------- #
+def carregar_medidas(caminho: Path) -> tuple[dict[str, float], float]:
+    """BPFI/BPFO medidas e f_eixo, do picos_metrics.json. Para se faltar algo."""
+    if not caminho.exists():
+        raise SystemExit(f"{caminho} não encontrado: rode o identify_tonal_peaks.py antes.")
+    d = json.loads(caminho.read_text(encoding="utf-8"))
+    medidas = {}
+    for c in FALHAS:
+        fam = "BPFO" if "bpfo" in c else "BPFI"
+        f0 = d["bpf_medidas"][c][fam]["f0_medida"]
+        if f0 is None:
+            raise SystemExit(f"{caminho}: {fam} de {c} não foi medida (n/id).")
+        medidas[c] = float(f0)
+    return medidas, float(np.mean([v["f_eixo"] for v in d["velocidades"].values()]))
+
+
 def carregar_features(caminho: Path, splits: Path, n_seg: int) -> tuple[np.ndarray, dict]:
-    manifesto = json.loads(caminho.with_name("manifest_features.json").read_text(encoding="utf-8"))
-    h = particao.hash_arquivo(splits)
-    if manifesto.get("splits_hash") != h:
-        raise SystemExit(f"features de outra partição ({manifesto.get('splits_hash')} ≠ {h}): "
-                         "rode o 04_extract_features.py de novo")
+    """
+    Features do 04, com as mesmas conferências do run_protocol: mesma partição,
+    mesma taxa e mesmos parâmetros de MFCC do config, e sem normalização por
+    segmento (as rodadas de referência, exp013/exp015, são sem --norm-clipe).
+    """
+    manifesto_path = caminho.with_name("manifest_features.json")
+    for arq in (caminho, manifesto_path):
+        if not arq.exists():
+            raise SystemExit(f"{arq} não encontrado: rode o 04_extract_features.py.")
+    manifesto = json.loads(manifesto_path.read_text(encoding="utf-8"))
+    esperado = {
+        "splits_hash": particao.hash_arquivo(splits),
+        "fs_hz": config.FS_TRABALHO,
+        "mfcc_janela_ms": config.MFCC_WINDOW_MS,
+        "mfcc_hop_ms": config.MFCC_HOP_MS,
+        "mfcc_n_mels": config.MFCC_N_MELS,
+        "mfcc_n_coefs": config.MFCC_N_COEFS,
+        "norm_clipe": False,
+    }
+    divergentes = [f"{k}: features={manifesto.get(k, False if k == 'norm_clipe' else None)}, esperado={v}"
+                   for k, v in esperado.items()
+                   if manifesto.get(k, False if k == "norm_clipe" else None) != v]
+    if divergentes:
+        raise SystemExit("features extraídas com outra configuração; rode o "
+                         "04_extract_features.py sem flags:\n  " + "\n  ".join(divergentes))
     X = np.load(caminho)["X"]
     if len(X) != n_seg:
         raise SystemExit(f"o .npz tem {len(X)} linhas e a partição tem {n_seg} segmentos")
@@ -372,9 +413,17 @@ def main() -> None:
     ap.add_argument("--registry", type=Path, default=Path("experiments/registry.csv"))
     ap.add_argument("--sem-registro", action="store_true")
     ap.add_argument("--sintetico", action="store_true", help="auto-teste (implica --sem-registro)")
-    ap.add_argument("--responsavel", default="Clara")
+    ap.add_argument("--responsavel", default="")
+    ap.add_argument("--medidas", type=Path, default=MEDIDAS_JSON,
+                    help="picos_metrics.json do identify_tonal_peaks.py")
     ap.add_argument("--notas", default="")
     args = ap.parse_args()
+
+    global F_EIXO, LINHAS_F0
+    if args.sintetico:
+        LINHAS_F0, F_EIXO = dict(SINT_LINHAS_F0), SINT_F_EIXO
+    else:
+        LINHAS_F0, F_EIXO = carregar_medidas(args.medidas)
 
     if args.sintetico:
         args.sem_registro = True
