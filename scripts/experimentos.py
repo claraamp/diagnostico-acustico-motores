@@ -60,8 +60,25 @@ def kv(pairs: dict) -> str:
     return ";".join(f"{k}={v}" for k, v in pairs.items() if v is not None)
 
 
+def _terminar_linha(path: Path) -> None:
+    """
+    Se o arquivo não termina em quebra de linha, acrescenta uma.
+
+    O `csv` sempre termina cada linha que escreve, mas o arquivo pode ter sido
+    salvo por outro programa (editor, planilha) sem a quebra final. Sem esta
+    guarda, a próxima linha seria colada no campo `notas` da anterior, sumiria
+    da leitura, e `next_exp_number` passaria a repetir ids.
+    """
+    if path.exists() and path.stat().st_size:
+        with path.open("rb+") as fh:
+            fh.seek(-1, 2)
+            if fh.read(1) != b"\n":
+                fh.write(b"\r\n")
+
+
 def append_registry(path: Path, rows: list[dict]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
+    _terminar_linha(path)
     novo = not path.exists()
     with path.open("a", encoding="utf-8", newline="") as fh:
         w = csv.DictWriter(fh, fieldnames=REGISTRY_COLUMNS)
