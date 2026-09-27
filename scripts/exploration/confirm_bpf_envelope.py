@@ -484,8 +484,11 @@ def main() -> None:
     print("Leitura: confirma se, na vibração, o f0 do envelope de cada falha cai a poucos")
     print("décimos de Hz da medida no áudio e o SNR na medida supera com folga o SNR na")
     print("cinemática. Na normal, nenhum dos dois deve ter pico.")
+    # só os f0 que confirmam a medida: um f0 aceito fora dela (ex.: 179,5 Hz, abaixo
+    # da cinemática) não é a BPFO e não tem θ real (arccos fora de [−1, 1] → nan)
     bpfos = [l for l in linhas if l["familia"] == "BPFO" and l["classe"] != "normal"
-             and l["sensor"].startswith("vib") and l["theta_efetivo_deg"] != ""]
+             and l["sensor"].startswith("vib") and l["theta_efetivo_deg"] != ""
+             and l["confirma"] in ("sim", "parcial") and np.isfinite(l["theta_efetivo_deg"])]
     if bpfos:
         print("θ efetivo que reproduziria a BPFO da vibração: " +
               ", ".join(f"{l['sensor']}/{l['classe']} {l['theta_efetivo_deg']}°" for l in bpfos))
