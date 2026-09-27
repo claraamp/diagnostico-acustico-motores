@@ -13,6 +13,7 @@ diagnostico-acustico-motores/
 │
 ├── data/
 │   ├── raw/                  # .mat originais do dataset Jung et al. — NÃO versionado (ver .gitignore)
+│   │   └── vibracao/         # .mat de vibração (0 Nm), só para confirmação; mesmos nomes dos de áudio
 │   └── processed/
 │       ├── pcm_raw/          # saída do 01_convert_mat_to_pcm.py — .bin NÃO versionados, manifest.json É versionado
 │       ├── pcm_decimated/    # saída do 02_decimate_pcm.py, subdiretório pela taxa de trabalho (12800/)
@@ -44,6 +45,7 @@ diagnostico-acustico-motores/
 ├── reports/                  # figuras, tabelas e outputs usados nos relatórios
 │   ├── decimation/           # saída do estudo de taxas: métricas, figuras e relatório
 │   ├── exploration/          # figuras dos scripts de scripts/exploration/
+│   ├── signature/            # caracterização da assinatura acústica (BPFI/BPFO medidas, envelope, Mel)
 │   ├── c_reference/          # reference_data.h do 04 --ref-c, VERSIONADO (referência da Fase 2)
 │   └── validation/           # uma pasta por rodada dos protocolos: metrics.json e folds.csv
 │
@@ -61,7 +63,9 @@ Consequência prática dessa escolha, aprendida na marra: **depois de clonar o r
 ## 2. Nomenclatura de arquivos e scripts
 
 **Scripts exploratórios** (`scripts/exploration/`): sem prefixo numérico, nome descritivo do que investigam.
-Exemplos já usados: `inspect_mat_keys.py`, `inspect_signal_data.py`, `inspect_pcm.py`, `inspect_class_spectra.py`, `compare_decimation_rates.py`.
+Exemplos já usados: `inspect_mat_keys.py`, `inspect_signal_data.py`, `inspect_pcm.py`, `inspect_class_spectra.py`, `compare_decimation_rates.py`, `inspect_left_out_fault.py`, `identify_tonal_peaks.py`, `confirm_bpf_envelope.py`.
+
+Um estudo cujo resultado vai para o relatório grava em `reports/<assunto>/` (ex.: `reports/signature/`) e escreve a própria linha no registry, como qualquer rodada (seção 4).
 
 A linha entre as duas pastas é o que o script **faz**, não o seu tamanho: `pipeline/` é transformação que roda de novo toda vez que o dado muda; `exploration/` responde uma pergunta uma vez. O caso que fixou a regra: a escolha da taxa de decimação nasceu misturada com a decimação em si, num arquivo de 1.200 linhas. O estudo — varredura de cinco taxas, métricas, figuras e relatório — foi para `exploration/compare_decimation_rates.py`, e a etapa que aplica a taxa escolhida ficou em `pipeline/02_decimate_pcm.py`, com 105 linhas. Um estudo fica versionado para a decisão continuar auditável, não para ser reexecutado.
 
@@ -108,7 +112,7 @@ Cada rodada de um experimento (extração de features, treino de classificador, 
 |---|---|
 | `id` | identificador curto e sequencial, ex. `exp001` |
 | `data` | data da rodada (AAAA-MM-DD) |
-| `etapa` | qual etapa do pipeline foi exercitada, ex. `decimacao`, `extracao_features`, `validacao_classificador`, `treino_classificador` |
+| `etapa` | qual etapa do pipeline foi exercitada, ex. `decimacao`, `extracao_features`, `validacao_classificador`, `treino_classificador`, `caracterizacao_assinatura` |
 | `script` | script executado, ex. `02_decimate_pcm.py` |
 | `git_commit` | hash curto do commit em que o script estava (`git rev-parse --short HEAD`) — garante que dá pra reproduzir exatamente aquela rodada |
 | `parametros` | parâmetros relevantes da rodada, em formato `chave=valor;chave=valor` (ex. `fator_decimacao=4;filtro=fir_lowpass_order8`) |
@@ -119,13 +123,14 @@ Cada rodada de um experimento (extração de features, treino de classificador, 
 
 Por que CSV e não só um texto corrido: permite comparar experimentos entre si (abrir no pandas/Excel, filtrar por etapa, plotar métrica x parâmetro) — é exatamente o "resultados comparáveis entre si" que a proposta promete. Toda rodada que gerar um número que vá para o relatório parcial deveria ter uma linha aqui, mesmo que o resultado seja negativo.
 
-Três regras práticas, fixadas depois da primeira rodada real:
+Regras práticas, fixadas a partir das primeiras rodadas reais:
 
 - **O script escreve a própria linha.** Preencher à mão depende de alguém lembrar, e foi por isso que a coluna `git_commit` existe: o script lê `git rev-parse --short HEAD` sozinho. Rodadas de teste (trechos curtos, verificação de ambiente) usam a flag que desliga o registro, para não sujar o arquivo.
 - **Uma varredura de parâmetro gera uma linha por ponto**, todas com o mesmo `git_commit` e a mesma data. A rodada de decimação, por exemplo, gerou seis linhas: o baseline de 51,2 kHz e uma para cada taxa candidata. É isso que permite plotar métrica × parâmetro, que é a justificativa do formato.
 - **Rodada de classificação registra protocolo e partição.** Toda linha de `validacao_classificador` traz em `parametros` o `protocolo` (A ou B), o `splits` (hash do `splits.json` usado) e as `features`. É o que permite saber, meses depois, se duas rodadas são comparáveis: com hash diferente, não são. E o número que vale para a meta é o do Protocolo B — o A é limite otimista e não deve ser citado como desempenho.
 - **Commit antes de rodar.** O `git_commit` só serve se o código daquele commit for o que rodou. Rodada registrada com mudanças não commitadas aponta para um estado que não existe.
 - **Resultado negativo se registra; medição inválida se descarta.** As duas coisas não são iguais. Uma taxa que preserva pouco da assinatura é resultado e entra no arquivo. Uma rodada cujo método estava errado — banda de análise mal escolhida, critério que não se aplica ao sinal — não mede o que diz medir, e manter a linha só contamina comparações futuras. Nesse caso a rodada é refeita e a linha inválida não entra.
+- **Auto-teste sintético antes do dado real.** Um estudo que mede algo novo (frequências, SNR, posição num eixo) roda primeiro com `--sintetico`: um sinal montado com a resposta conhecida, para conferir que o método a recupera. O `--sintetico` implica `--sem-registro` e grava em `reports/<assunto>/sintetico/`, que fica fora do Git (`.gitignore`). Foi o que pegou, por exemplo, o pente harmônico travando em f_eixo/2 antes de qualquer número real ser lido.
 
 ## 5. Código compartilhado entre etapas
 
@@ -184,9 +189,30 @@ Evite rebase em branch cujo trabalho já esteja registrado no `registry.csv`: o 
 
 ### Commits
 
-Mensagens no imperativo, em português, prefixadas pela frente de trabalho quando ajudar a rastrear: `dsp: converte .mat para PCM int16`, `firmware: implementa FFT em Q15`, `docs: atualiza convenções`.
+Mensagens no padrão [Conventional Commits](https://www.conventionalcommits.org/pt-br/v1.0.0/):
 
-Note que o prefixo do commit (frente de trabalho) e o prefixo da branch (tipo de trabalho) são eixos diferentes e não precisam coincidir: uma branch `fix/` pode perfeitamente conter um commit `dsp:`.
+```
+<tipo>(<escopo opcional>): <descrição no imperativo, em português, minúscula, sem ponto final>
+
+<corpo opcional: o porquê da mudança, não o como>
+```
+
+| tipo | quando usar | exemplo |
+|---|---|---|
+| `feat` | etapa, funcionalidade ou estudo novo | `feat(aumento): adiciona aumento de dados ao treino` |
+| `fix` | correção de comportamento errado | `fix(exploracao): impede que a f_e trave em 2·f_motor` |
+| `refactor` | reorganização sem mudar resultado (regra da seção 5: saídas idênticas antes e depois) | `refactor(pipeline): isola extração de MFCC` |
+| `docs` | README, CONVENTIONS, docstrings, e o commit que registra rodadas (`registry.csv` + `reports/`) | `docs: registra rodadas do aumento de dados (exp015–exp022)` |
+| `test` | testes novos ou alterados, sem mudar o código testado | `test(validacao): cobre a faixa de descarte` |
+| `chore` | manutenção que não é código nem documentação: `requirements.txt`, `.gitignore` | `chore: ignora saídas do modo sintético` |
+
+**Escopo** é opcional e diz a frente de trabalho, pelo nome da pasta ou do módulo: `dsp`, `pipeline`, `validacao`, `aumento`, `exploracao`, `firmware`. Use quando ajudar a rastrear; commit que atravessa várias frentes fica sem escopo.
+
+**Mudança que quebra a comparação com rodadas registradas** — partição nova, parâmetros de MFCC, taxa de trabalho — leva `!` depois do tipo/escopo e uma linha `BREAKING CHANGE:` no corpo dizendo quais rodadas deixam de ser comparáveis. Exemplo: `feat(pipeline)!: muda o banco de Mel para 40 filtros`.
+
+O prefixo do commit (tipo de mudança) e o prefixo da branch (tipo de trabalho) são eixos diferentes e não precisam coincidir: uma branch `feature/` normalmente tem commits `feat:`, `fix:` e `docs:`.
+
+Os commits mais antigos, de antes da adoção desse padrão, usam o formato anterior (`dsp:`, `validacao:`, `exploracao:`, com a frente de trabalho como prefixo). Eles não são reescritos: isso exigiria rebase, e o parágrafo sobre rebase, acima, explica por que evitá-lo em trabalho que já está no registry.
 
 ### Títulos de PR
 
