@@ -34,7 +34,7 @@ O protocolo de validação existe porque o dataset tem **uma única gravação p
 
 ### Assinatura acústica
 
-As frequências de falha **medidas** nas gravações são BPFI ≈ 268,3 Hz e BPFO ≈ 181,5–183,6 Hz (eixo a 50,20 Hz), confirmadas por dois sensores: o microfone e o acelerômetro do mancal A. Elas diferem das frequências **cinemáticas** da Tabela 1 do artigo (272,1 e 179,4 Hz), calculadas para ângulo de contato θ = 0°. Use as medidas quando precisar de uma frequência de falha, e chame as do artigo de "cinemáticas", não de "frequências da bancada". Abaixo de 6,4 kHz, cada falha aparece no espectro como uma série harmônica estreita da própria pista, e essas linhas sobrevivem à decimação. A impulsividade clássica, no áudio, fica acima de 6,4 kHz (17–22 kHz nas classes de falha), e a decimação a remove.
+As frequências de falha **medidas** no áudio são BPFI ≈ 268,3 Hz e BPFO ≈ 182,7–183,4 Hz (eixo a 50,20 Hz). A BPFI e a BPFO da falha de 1,0 mm foram confirmadas por um segundo sensor: no espectro de envelope, a vibração as mostra a menos de 0,25 Hz do áudio. Na `bpfo_0.3mm` a confirmação é **parcial**: a vibração tem energia em 182,65 Hz, mas o pico do envelope dela fica em 181,5 Hz, e o envelope do áudio não mostra a linha. As medidas diferem das frequências **cinemáticas** da Tabela 1 do artigo (272,1 e 179,4 Hz), calculadas para ângulo de contato θ = 0°. Use as medidas quando precisar de uma frequência de falha, e chame as do artigo de "cinemáticas", não de "frequências da bancada". Abaixo de 6,4 kHz, cada falha aparece no espectro como uma série harmônica estreita da própria pista, e essas linhas sobrevivem à decimação. A impulsividade clássica, no áudio, fica acima de 6,4 kHz (9–22 kHz nas classes de falha), e a decimação a remove.
 
 A `bpfo_0.3mm` tem essas linhas (+30 dB sobre a normal) e o log-Mel oficial as enxerga (+6 a +14 dB em 0,7–1,3 kHz), mas sem a elevação larga das outras falhas. No Protocolo B, o eixo da LDA aprendido com as outras três falhas a coloca a ~20 % do caminho entre a normal e as falhas de treino, do lado da normal. O `inspect_left_out_fault.py` chega ao mesmo número por um cálculo independente. Scripts em `scripts/exploration/` (`inspect_signature_spectra.py`, `identify_tonal_peaks.py`, `confirm_bpf_envelope.py`, `inspect_signature_mel.py`), saídas em `reports/signature/`, rodadas `exp023`–`exp026`.
 
@@ -45,7 +45,7 @@ Mendeley Data, DOI [`10.17632/ztmf3m7h5x.6`](https://doi.org/10.17632/ztmf3m7h5x
 
 Esses cinco arquivos são **todo o áudio do dataset**. Os ensaios com carga (2 e 4 Nm), os defeitos de 3,0 mm e as falhas de desbalanceamento e desalinhamento têm só vibração, corrente e temperatura: os autores não gravaram o microfone com carga porque o freio, resfriado a ar, contaminaria o canal acústico (seção 3.1 do artigo).
 
-Para confirmar as frequências de falha com um segundo sensor, usa-se também a **vibração** da mesma condição (0 Nm; `.mat` com 4 canais a 25,6 kHz; colunas 0 e 1 = mancal A). Ela não entra no classificador. Os arquivos de vibração têm os **mesmos nomes** dos de áudio, então ficam numa subpasta: `data/raw/vibracao/`.
+Para confirmar as frequências de falha com um segundo sensor, usa-se também a **vibração** da mesma condição (0 Nm; `.mat` com 4 canais a 25,6 kHz; pela ordem das colunas no artigo, 0–1 = x e y do mancal A, 2–3 = mancal B). Ela não entra no classificador. Os arquivos de vibração têm os **mesmos nomes** dos de áudio, então ficam numa subpasta: `data/raw/vibracao/`.
 
 Os arquivos `.mat` **não são versionados** neste repositório (ver `.gitignore`) — são grandes e já têm DOI fixo. O mesmo vale para os `.bin` gerados a partir deles; apenas os `manifest.json` e o `splits.json` (a partição dos protocolos de validação) entram no Git.
 
@@ -104,6 +104,7 @@ diagnostico-acustico-motores/
 ├── tests/                    # pytest; não dependem de data/
 │   ├── conftest.py
 │   ├── test_dsp.py
+│   ├── test_experimentos.py           # registry: linha nova nunca é colada na anterior
 │   ├── augmentation/
 │   │   ├── test_transformacoes.py
 │   │   └── test_variantes.py              # inclui: variante aceita nunca lê teste/descarte
@@ -199,13 +200,13 @@ O pipeline **aplica** decisões, não as toma. A comparação entre taxas candid
 python scripts/exploration/compare_decimation_rates.py --condicao 0Nm
 ```
 
-A caracterização da assinatura acústica segue a mesma lógica. Cada script tem um auto-teste com sinal sintético de resposta conhecida (`--sintetico`, que não registra e grava em `reports/signature/sintetico/`, fora do Git). O `confirm_bpf_envelope.py` precisa da vibração em `data/raw/vibracao/`, e o `inspect_signature_mel.py` precisa das features do `04` sem `--norm-clipe`:
+A caracterização da assinatura acústica segue a mesma lógica. Cada script tem um auto-teste com sinal sintético de resposta conhecida (`--sintetico`, que não registra e grava em `reports/signature/sintetico/`, fora do Git). O `confirm_bpf_envelope.py` e o `inspect_signature_mel.py` leem as frequências medidas do `reports/signature/picos_metrics.json`, então o `identify_tonal_peaks.py` roda antes deles. O `confirm_bpf_envelope.py` precisa da vibração em `data/raw/vibracao/`, e o `inspect_signature_mel.py` aborta se as features do `04` não forem as de referência (sem `--norm-clipe`, parâmetros de MFCC do `config.py`):
 
 ```bash
 python scripts/exploration/identify_tonal_peaks.py --sintetico       # auto-teste
 python scripts/exploration/inspect_signature_spectra.py
 python scripts/exploration/identify_tonal_peaks.py
-python scripts/exploration/confirm_bpf_envelope.py --canais 0 1 2 3
+python scripts/exploration/confirm_bpf_envelope.py              # os 4 canais de vibração + microfone
 python scripts/exploration/inspect_signature_mel.py
 ```
  
