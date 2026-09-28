@@ -22,6 +22,9 @@ firmware/**/*.bin
 .vscode/
 .DS_Store
 
+# Saídas dos auto-testes com sinais sintéticos (--sintetico)
+reports/**/sintetico/
+
 # Arquivos gerados de features e testes locais
 data/processed/features/
 reports/validation/teste_*/
