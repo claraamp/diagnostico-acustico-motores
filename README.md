@@ -30,7 +30,7 @@ Fase 1 — Protótipo em Python (em andamento). Conversão, decimação, protoco
  
 A escolha de 12.800 Hz é a única taxa com fator de decimação inteiro dentro da faixa de 8–16 kHz — requisito de `arm_fir_decimate_f32` do CMSIS-DSP — e preserva 96,1 % da energia discriminante no pior caso (classes de defeito incipiente, 0,3 mm). O registro completo da comparação está em `experiments/registry.csv` (`exp001`–`exp006`). O diagnóstico por espectro de envelope desse relatório (SNRs de BPFI/BPFO por taxa) **não vale**: a busca do pico era centrada nas frequências nominais e não alcançava as linhas reais. Ele foi refeito no sinal original pelo `confirm_bpf_envelope.py` (ver "Assinatura acústica" abaixo). A decisão de 12.800 Hz não muda, porque nunca dependeu do envelope.
 
-O protocolo de validação existe porque o dataset tem **uma única gravação por classe**: qualquer divisão treino/teste dentro de uma gravação deixa os dois no mesmo registro, e o classificador pode separar as classes pela identidade da gravação em vez da falha (foi o que deu acurácia 1,0 no estudo de decimação). O Protocolo B testa cada gravação de falha sem que ela apareça no treino; é o único resultado que conta para a meta. A primeira rodada, provisória, está em `exp007`–`exp012`.
+O protocolo de validação existe porque o dataset tem **uma única gravação por classe**: qualquer divisão treino/teste dentro de uma gravação deixa os dois no mesmo registro, e o classificador pode separar as classes pela identidade da gravação em vez da falha (foi o que deu acurácia 1,0 no estudo de decimação). O Protocolo B testa cada gravação de falha sem que ela apareça no treino; é o único resultado que conta para a meta. A primeira rodada, provisória, está em `exp007`–`exp012`. Com o MFCC oficial, sem aumento, o A está em `exp027` (binário) e `exp028` (multiclasse) e o B em `exp013`/`exp015`, e os números são idênticos aos da rodada provisória: A com 1,000 em todos os folds; B com média 0,875, a `bpfo_0.3mm` em 0,5 e as outras três falhas em 1,0. A comparação está em `reports/validation/tabela_provisorio_vs_oficial.md`.
 
 ### Assinatura acústica
 
@@ -99,7 +99,8 @@ diagnostico-acustico-motores/
 │   └── validation/           # protocolo de validação do classificador
 │       ├── particao.py                    # segmentos, folds A e B, verificação
 │       ├── metricas.py                    # sensibilidade, especificidade, acurácia balanceada
-│       └── run_protocol.py                # executável: roda A ou B e registra o resultado
+│       ├── run_protocol.py                # executável: roda A ou B e registra o resultado
+│       └── run_tabela_comparativa.py      # executável: tabela provisório × oficial a partir dos metrics.json
 │
 ├── tests/                    # pytest; não dependem de data/
 │   ├── conftest.py
@@ -165,6 +166,9 @@ python scripts/validation/run_protocol.py --protocolo A --tarefa multiclasse --r
 python scripts/validation/run_protocol.py --protocolo B --sem-c0      # ablação do ganho
 python scripts/validation/run_protocol.py --protocolo B --permutar    # controle de permutação
 python scripts/validation/run_protocol.py --protocolo B --sem-registro   # teste, não registra
+
+# tabela provisório × oficial (lê os metrics.json; não treina nem registra)
+python scripts/validation/run_tabela_comparativa.py
 
 # ablação da normalização RMS por segmento: reextrai e roda de novo
 python scripts/pipeline/04_extract_features.py --norm-clipe
