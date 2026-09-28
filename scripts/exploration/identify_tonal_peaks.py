@@ -18,8 +18,9 @@ classificador pode estar aprendendo isso.
 
 Cinemática da bancada (Jung et al., 2023, seção 3.1)
 -----------------------------------------------------
-- Eixo dos mancais: 3.010 rpm → 50,17 Hz. O rolamento com defeito está no mancal A,
-  perto do microfone.
+- Eixo dos mancais: 3.010 rpm → 50,17 Hz. O microfone fica perto do mancal A; o
+  artigo não informa em qual mancal está o rolamento com defeito nos arquivos de
+  0 Nm (ver confirm_bpf_envelope.py).
 - Caixa multiplicadora de 2,07× entre motor e eixo: o motor gira a ~24,2 Hz.
 - Motor de indução de 4 polos (2 pares), nominal 1.770 rpm a 60 Hz. A 24,2 Hz no
   eixo do motor, a alimentação precisa estar perto de 49 Hz: há um inversor, e
