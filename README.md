@@ -84,6 +84,7 @@ diagnostico-acustico-motores/
 │   │   ├── inspect_pcm.py                 # sanidade da conversão + caráter do sinal
 │   │   ├── inspect_class_spectra.py       # PSD por classe e banda necessária
 │   │   ├── compare_decimation_rates.py    # estudo que definiu a taxa de trabalho
+│   │   ├── inspect_lda_harmonicos.py      # controle: peso da LDA nas bandas dos harmônicos do eixo
 │   │   ├── inspect_left_out_fault.py      # posição da falha deixada de fora (Protocolo B)
 │   │   ├── inspect_signature_spectra.py   # PSD assinada falha × normal (excesso e déficit)
 │   │   ├── identify_tonal_peaks.py        # velocidades e BPFI/BPFO medidas por série harmônica
@@ -168,12 +169,17 @@ python scripts/validation/run_protocol.py --protocolo A --tarefa multiclasse --r
 python scripts/validation/run_protocol.py --protocolo B --sem-c0      # ablação do ganho
 python scripts/validation/run_protocol.py --protocolo B --permutar    # controle de permutação
 python scripts/validation/run_protocol.py --protocolo B --permutar --semente 1   # uma rodada por semente
-python scripts/validation/run_protocol.py --protocolo B --segundos-treino 5      # curva de aprendizado (mín. 2 s)
+python scripts/validation/run_protocol.py --protocolo B --segundos-treino 5 --semente 1   # curva de aprendizado (mín. 2 s; sorteio repartido entre as gravações)
 python scripts/validation/run_protocol.py --protocolo B --sem-registro   # teste, não registra
 
 # tabelas (leem os metrics.json; não treinam nem registram)
 python scripts/validation/run_tabela_comparativa.py   # provisório × oficial
-python scripts/validation/run_tabela_controles.py     # sem c0, permutação e curva de aprendizado
+python scripts/validation/run_tabela_controles.py     # sem c0, normalização, permutação e curva de aprendizado
+
+# controle dos harmônicos do eixo: peso da LDA nas bandas de Mel em que a normal
+# tem harmônicos mais fortes (lê o picos_metrics.json do identify_tonal_peaks.py)
+python scripts/exploration/inspect_lda_harmonicos.py --sintetico   # auto-teste
+python scripts/exploration/inspect_lda_harmonicos.py --responsavel <nome>
 
 # ablação da normalização RMS por segmento: reextrai e roda de novo
 python scripts/pipeline/04_extract_features.py --norm-clipe

@@ -7,13 +7,18 @@ run_tabela_controles.py — tabela dos controles obrigatórios do classificador
 Monta, a partir dos `metrics.json` de `reports/validation/`, a tabela dos três
 controles que dizem se o classificador aprende a falha ou a gravação:
 
-  ablação do ganho       A e B sem o c0 do MFCC, contra a referência com c0
+  ablação do ganho       A e B sem o c0 do MFCC e com normalização RMS por
+                         segmento, contra a referência
   permutação por bloco   distribuição do B com rótulos embaralhados, uma rodada
-                         por semente; o critério é não ficar acima de 0,5
-  curva de aprendizado   A e B com N segundos de treino por classe
+                         por semente. Critério: p empírico da referência contra
+                         essa distribuição, (1 + nº de sementes ≥ referência) /
+                         (n + 1), e a média comparada com 0,5 (teste t)
+  curva de aprendizado   A e B com N segundos de treino por classe, repartidos
+                         entre as gravações; média ± desvio entre as sementes
 
 As rodadas são achadas pelos parâmetros gravados, não por id: MFCC oficial, a
-partição do splits.json atual, LDA, sem aumento e sem normalização por clipe.
+partição do splits.json atual, LDA, binário e sem aumento. Os pontos da curva
+anteriores à amostragem por gravação (sem `amostragem_treino`) ficam de fora.
 Não treina nada nem escreve no registry.
 
 Uso
@@ -30,21 +35,22 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))   # scripts/
 
 import numpy as np
+from scipy import stats
 
 from validation import particao
 
-FEATURES_OFICIAL = "mfcc_dsp_media_desvio"
+FEATURES_OFICIAL = ("mfcc_dsp_media_desvio", "mfcc_dsp_media_desvio_normclipe")
 
 
 def carregar_rodadas(pasta: Path, splits: str) -> list[dict]:
-    """Rodadas registradas (exp*) da referência: MFCC oficial, LDA, sem aumento."""
+    """Rodadas registradas (exp*) com o MFCC oficial, LDA, binário, sem aumento."""
     rodadas = []
     for caminho in sorted(pasta.glob("exp*/metrics.json")):
         d = json.loads(caminho.read_text(encoding="utf-8"))
         p = d["parametros"]
-        if (p.get("features") == FEATURES_OFICIAL and p.get("splits") == splits
+        if (p.get("features") in FEATURES_OFICIAL and p.get("splits") == splits
                 and p.get("modelo") == "lda" and p.get("tarefa") == "binario"
-                and p.get("aumento") in (None, "nenhum") and not p.get("norm_clipe")):
+                and p.get("aumento") in (None, "nenhum")):
             rodadas.append(d)
     return rodadas
 
@@ -53,28 +59,35 @@ def acc(d: dict) -> float:
     return d["resumo"]["acuracia_balanceada_media"]
 
 
-def e_referencia(p: dict) -> bool:
-    return not (p.get("sem_c0") or p.get("permutado") or p.get("segundos_treino") is not None)
+def e_curva(p: dict) -> bool:
+    return p.get("segundos_treino") is not None
 
 
 def ultima(rodadas: list[dict]) -> dict | None:
     return max(rodadas, key=lambda d: d["id"]) if rodadas else None
 
 
-def celula_b(d: dict) -> str:
-    r = d["resumo"]
-    return (f"{r['acuracia_balanceada_media']:.3f} (sens. {r['sensibilidade_media']:.3f}, "
-            f"espec. {r['especificidade_media']:.3f}; bpfo_0.3mm "
-            f"{r['por_falha']['bpfo_0.3mm']['acuracia_balanceada']:.3f})")
-
-
 def celula(d: dict | None) -> str:
     if d is None:
         return "—"
-    if d["resumo"]["protocolo"] == "A":
-        r = d["resumo"]
-        return f"{r['acuracia_balanceada_media']:.3f} ± {r['acuracia_balanceada_desvio']:.3f}"
-    return celula_b(d)
+    r = d["resumo"]
+    if r["protocolo"] == "A":
+        texto = f"{r['acuracia_balanceada_media']:.3f} ± {r['acuracia_balanceada_desvio']:.3f}"
+    else:
+        texto = (f"{r['acuracia_balanceada_media']:.3f} (sens. {r['sensibilidade_media']:.3f}, "
+                 f"espec. {r['especificidade_media']:.3f}; bpfo_0.3mm "
+                 f"{r['por_falha']['bpfo_0.3mm']['acuracia_balanceada']:.3f})")
+    return f"{texto} ({d['id']})"
+
+
+def ms(v) -> str:
+    v = np.asarray(v, dtype=float)
+    return f"{v.mean():.3f} ± {v.std(ddof=1) if len(v) > 1 else 0.0:.3f}"
+
+
+def intervalo_ids(ds: list[dict]) -> str:
+    ids = sorted(d["id"] for d in ds)
+    return f"{ids[0]}–{ids[-1]}" if ids else "—"
 
 
 def main() -> int:
@@ -87,70 +100,109 @@ def main() -> int:
 
     splits = particao.hash_arquivo(args.splits)
     rodadas = carregar_rodadas(args.pasta, splits)
-    por = lambda prot, cond: [d for d in rodadas
-                              if d["parametros"]["protocolo"] == prot and cond(d["parametros"])]
 
-    ref = {prot: ultima(por(prot, e_referencia)) for prot in ("A", "B")}
-    semc0 = {prot: ultima(por(prot, lambda p: p.get("sem_c0") and not p.get("permutado")
-                              and p.get("segundos_treino") is None)) for prot in ("A", "B")}
-    perm = sorted(por("B", lambda p: p.get("permutado") and not p.get("sem_c0")),
-                  key=lambda d: d["id"])
-    curva = {prot: sorted(por(prot, lambda p: p.get("segundos_treino") is not None
-                              and not p.get("sem_c0")),
-                          key=lambda d: d["parametros"]["segundos_treino"])
-             for prot in ("A", "B")}
+    def por(prot, cond):
+        return [d for d in rodadas if d["parametros"]["protocolo"] == prot and cond(d["parametros"])]
 
-    ids = lambda ds: ", ".join(d["id"] for d in ds if d) or "—"
+    def so(sem_c0=False, norm=False, perm=False):
+        return lambda p: (bool(p.get("sem_c0")) == sem_c0 and bool(p.get("norm_clipe")) == norm
+                          and bool(p.get("permutado")) == perm and not e_curva(p))
+
+    ref = {prot: ultima(por(prot, so())) for prot in ("A", "B")}
+    semc0 = {prot: ultima(por(prot, so(sem_c0=True))) for prot in ("A", "B")}
+    norm = {prot: ultima(por(prot, so(norm=True))) for prot in ("A", "B")}
+    perm = por("B", so(perm=True))
+    curva = [d for d in rodadas if e_curva(d["parametros"])
+             and d["parametros"].get("amostragem_treino") == "por_gravacao"
+             and not d["parametros"].get("sem_c0") and not d["parametros"].get("norm_clipe")]
+
     texto = [
         "# Controles obrigatórios do classificador",
         "",
         "Gerado por `scripts/validation/run_tabela_controles.py` a partir dos `metrics.json`. "
         f"MFCC oficial, partição `{splits}`, LDA, binário, sem aumento de dados. "
-        "B: acurácia balanceada média (sensibilidade e especificidade médias; acurácia "
-        "balanceada da `bpfo_0.3mm`).",
+        "A: acurácia balanceada média ± desvio entre os folds. B: acurácia balanceada média "
+        "(sensibilidade e especificidade médias; acurácia balanceada da `bpfo_0.3mm`).",
         "",
-        "## Ablação do ganho (sem o c0)",
+        "## Ablação do ganho",
         "",
-        "| protocolo | com c0 | sem c0 |",
-        "|---|---|---|",
-        *(f"| {prot} | {celula(ref[prot])} ({ref[prot]['id'] if ref[prot] else '—'}) "
-          f"| {celula(semc0[prot])} ({semc0[prot]['id'] if semc0[prot] else '—'}) |"
+        "| protocolo | referência | sem c0 | normalização RMS por segmento |",
+        "|---|---|---|---|",
+        *(f"| {prot} | {celula(ref[prot])} | {celula(semc0[prot])} | {celula(norm[prot])} |"
           for prot in ("A", "B")),
         "",
         "## Permutação por bloco (Protocolo B)",
         "",
     ]
-    if perm:
+    if perm and ref["B"]:
         a = np.array([acc(d) for d in perm])
+        obs = acc(ref["B"])
+        p_emp = (1 + int((a >= obs).sum())) / (len(a) + 1)
+        t = stats.ttest_1samp(a, 0.5)
         texto += [
-            f"{len(perm)} sementes ({ids(perm)}).",
+            f"{len(perm)} sementes ({intervalo_ids(perm)}), contra a referência "
+            f"{obs:.3f} ({ref['B']['id']}).",
             "",
-            "| média ± desvio | mediana | mín. | máx. | sementes acima de 0,5 |",
-            "|---|---|---|---|---|",
-            f"| {a.mean():.3f} ± {a.std(ddof=1) if len(a) > 1 else 0:.3f} | {np.median(a):.3f} "
-            f"| {a.min():.3f} | {a.max():.3f} | {int((a > 0.5).sum())} de {len(a)} |",
+            "| média ± desvio | mediana | mín. | máx. | sementes ≥ referência | p empírico "
+            "| média × 0,5 (teste t) |",
+            "|---|---|---|---|---|---|---|",
+            f"| {ms(a)} | {np.median(a):.3f} | {a.min():.3f} | {a.max():.3f} "
+            f"| {int((a >= obs).sum())} de {len(a)} | {p_emp:.4f} "
+            f"| t = {t.statistic:.2f}, p = {t.pvalue:.2g} |",
             "",
-            "| semente | acc. bal. média | pior fold |",
-            "|---|---|---|",
-            *(f"| {d['parametros']['semente']} | {acc(d):.3f} "
-              f"| {d['resumo']['pior_fold_acuracia_balanceada']:.3f} |" for d in perm),
+            "p empírico = (1 + nº de sementes com acurácia ≥ a da referência) / (n + 1): a "
+            "probabilidade de um modelo sem relação rótulo–sinal chegar ao resultado da "
+            "referência. Com n sementes, o menor valor possível é 1 / (n + 1).",
         ]
+        if t.pvalue < 0.05 and a.mean() < 0.5:
+            texto += [
+                "",
+                "A média fica abaixo de 0,5 de forma significativa. A permutação por bloco "
+                "mantém quantos blocos há de cada rótulo, e há uma única gravação normal: a "
+                "maior parte dos blocos dela recebe o rótulo \"falha\" no treino, e parte dos "
+                "blocos de falha recebe \"normal\". O modelo aprende uma regra invertida em "
+                "relação ao teste, que usa os rótulos verdadeiros. Vazamento empurraria o "
+                "resultado para cima, não para baixo.",
+            ]
     else:
         texto.append("Nenhuma rodada encontrada.")
-    texto += [
-        "",
-        "## Curva de aprendizado",
-        "",
-        "| segundos de treino por classe | A | B |",
-        "|---|---|---|",
-    ]
-    segundos = sorted({d["parametros"]["segundos_treino"] for prot in curva for d in curva[prot]})
-    for s in segundos:
-        cel = {prot: next((d for d in curva[prot] if d["parametros"]["segundos_treino"] == s), None)
-               for prot in ("A", "B")}
-        texto.append(f"| {s:g} | {celula(cel['A'])} | {celula(cel['B'])} |")
-    texto.append(f"| todo o treino | {celula(ref['A'])} | {celula(ref['B'])} |")
-    texto += ["", f"Rodadas da curva: A {ids(curva['A'])}; B {ids(curva['B'])}.", ""]
+
+    texto += ["", "## Curva de aprendizado", ""]
+    if curva:
+        grupos: dict[tuple[str, float], list[dict]] = {}
+        for d in curva:
+            grupos.setdefault((d["parametros"]["protocolo"], d["parametros"]["segundos_treino"]), []).append(d)
+        segundos = sorted({s for _, s in grupos})
+        n_sem = sorted({len(v) for v in grupos.values()})
+        texto += [
+            f"Segmentos de treino repartidos entre as gravações de cada classe; "
+            f"{'/'.join(map(str, n_sem))} sementes por ponto ({intervalo_ids(curva)}). "
+            "Média ± desvio entre as sementes.",
+            "",
+            "| s por classe | A | B (acc. bal.) | B, sensib. | B, especif. | B, bpfo_0.3mm (acc. bal.) |",
+            "|---|---|---|---|---|---|",
+        ]
+        for s in segundos:
+            ga, gb = grupos.get(("A", s), []), grupos.get(("B", s), [])
+            cel_a = ms([acc(d) for d in ga]) if ga else "—"
+            if gb:
+                rb = [d["resumo"] for d in gb]
+                cel_b = (f"{ms([r['acuracia_balanceada_media'] for r in rb])} "
+                         f"| {ms([r['sensibilidade_media'] for r in rb])} "
+                         f"| {ms([r['especificidade_media'] for r in rb])} "
+                         f"| {ms([r['por_falha']['bpfo_0.3mm']['acuracia_balanceada'] for r in rb])}")
+            else:
+                cel_b = "— | — | — | —"
+            texto.append(f"| {s:g} | {cel_a} | {cel_b} |")
+        if ref["A"] and ref["B"]:
+            rb = ref["B"]["resumo"]
+            texto.append(
+                f"| todo o treino | {acc(ref['A']):.3f} | {rb['acuracia_balanceada_media']:.3f} "
+                f"| {rb['sensibilidade_media']:.3f} | {rb['especificidade_media']:.3f} "
+                f"| {rb['por_falha']['bpfo_0.3mm']['acuracia_balanceada']:.3f} |")
+    else:
+        texto.append("Nenhuma rodada encontrada.")
+    texto.append("")
 
     args.saida.write_text("\n".join(texto), encoding="utf-8")
     print("\n".join(texto))

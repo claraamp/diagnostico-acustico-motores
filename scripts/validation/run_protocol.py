@@ -46,8 +46,9 @@ Controles
 --aumento    soma ao treino de cada fold as variantes aceitas do mfcc_aumento.npz
 --segundos-treino N
              curva de aprendizado: em cada fold, sorteia N segundos de treino
-             por classe (N segmentos de SEGMENTO_S) e descarta o resto do
-             treino. O teste é o mesmo. Se poucos segundos por classe já
+             por classe (N segmentos de SEGMENTO_S), repartidos entre as
+             gravações da classe, e descarta o resto do treino. O folds.csv
+             registra quantos segmentos vieram de cada gravação. O teste é o mesmo. Se poucos segundos por classe já
              acertam tudo, o modelo está separando por um atalho, não pela
              falha. Mínimo de 2 segmentos por classe: com 1, a LDA não tem
              covariância dentro da classe.
@@ -121,11 +122,33 @@ def permutar_treino_por_bloco(segmentos: list[particao.Segmento], ids: list[int]
     return y_tr
 
 
-def subamostrar_treino(treino: list[int], y: np.ndarray, n_por_classe: int,
-                       rng: np.random.Generator) -> list[int]:
+def cotas_por_gravacao(disponiveis: dict[str, int], n: int,
+                       rng: np.random.Generator) -> dict[str, int]:
+    """
+    Reparte `n` segmentos entre as gravações de uma classe o mais igual
+    possível. Quando não divide exato, as gravações que levam um a mais são
+    sorteadas; uma gravação sem segmentos suficientes entra inteira e o que
+    falta passa para as outras. No binário a classe "falha" junta 3 (B) ou 4 (A)
+    gravações: sem isso, os poucos segmentos de um ponto da curva podiam vir
+    todos da mesma.
+    """
+    ordem = [str(g) for g in rng.permutation(sorted(disponiveis))]
+    cotas = {g: 0 for g in ordem}
+    restante = min(n, sum(disponiveis.values()))
+    while restante:
+        abertas = [g for g in ordem if cotas[g] < disponiveis[g]]
+        for g in abertas[:restante]:
+            cotas[g] += 1
+            restante -= 1
+    return cotas
+
+
+def subamostrar_treino(treino: list[int], y: np.ndarray, gravacao: np.ndarray,
+                       n_por_classe: int, rng: np.random.Generator) -> list[int]:
     """
     Curva de aprendizado: sorteia `n_por_classe` segmentos de treino de cada
-    classe, sem reposição. Classe com menos segmentos que isso entra inteira.
+    classe, sem reposição, repartidos entre as gravações da classe
+    (`cotas_por_gravacao`). Classe com menos segmentos que isso entra inteira.
     Só escolhe entre os ids de treino, então o teste e a faixa de descarte
     continuam fora.
     """
@@ -133,8 +156,10 @@ def subamostrar_treino(treino: list[int], y: np.ndarray, n_por_classe: int,
     escolhidos = []
     for c in np.unique(y[treino]):
         da_classe = treino[y[treino] == c]
-        n = min(n_por_classe, len(da_classe))
-        escolhidos.extend(rng.choice(da_classe, size=n, replace=False).tolist())
+        por_grav = {str(g): da_classe[gravacao[da_classe] == g] for g in np.unique(gravacao[da_classe])}
+        cotas = cotas_por_gravacao({g: len(ids) for g, ids in por_grav.items()}, n_por_classe, rng)
+        for g, k in cotas.items():
+            escolhidos.extend(rng.choice(por_grav[g], size=k, replace=False).tolist())
     return sorted(int(i) for i in escolhidos)
 
 
@@ -176,10 +201,16 @@ def rodar_folds(folds, X, y, tarefa: str, modelo: str,
                 segmentos_treino: int | None = None) -> list[dict]:
     classes = np.unique(y)
     rng = np.random.default_rng(semente)
+    gravacao = np.array([s.rotulo for s in segmentos]) if segmentos is not None else None
     resultados = []
     for f in folds:
+        extra = {}
         if segmentos_treino is not None:
-            f = dataclasses.replace(f, treino=subamostrar_treino(f.treino, y, segmentos_treino, rng))
+            f = dataclasses.replace(f, treino=subamostrar_treino(f.treino, y, gravacao,
+                                                                 segmentos_treino, rng))
+            g, n = np.unique(gravacao[f.treino], return_counts=True)
+            extra["treino_por_gravacao"] = json.dumps(dict(zip(g.tolist(), n.tolist())),
+                                                      ensure_ascii=False)
         y_tr = (permutar_treino_por_bloco(segmentos, f.treino, y, rng) if permutar
                 else y[f.treino])
         X_fit, y_fit, n_aumento = montar_treino(f, X, y_tr, aumento)
@@ -192,7 +223,7 @@ def rodar_folds(folds, X, y, tarefa: str, modelo: str,
             m = {"acuracia_balanceada": metricas.acuracia_balanceada(y[f.teste], pred),
                  "recall_por_classe": metricas.recall_por_classe(y[f.teste], pred)}
         resultados.append({"nome": f.nome, "info": f.info, "n_treino": len(f.treino),
-                           "n_treino_aumento": n_aumento, "n_teste": len(f.teste), **m})
+                           "n_treino_aumento": n_aumento, "n_teste": len(f.teste), **extra, **m})
     return resultados
 
 
@@ -405,7 +436,7 @@ def main() -> int:
         "normclipe" if norm_clipe else None,
         rotulo_aumento(info_aumento) if aumento else None,
         "semc0" if args.sem_c0 else None, "permutado" if args.permutar else None,
-        f"treino{args.segundos_treino:g}s" if segmentos_treino is not None else None,
+        f"treino{segmentos_treino * config.SEGMENTO_S:g}s" if segmentos_treino is not None else None,
         f"semente{semente}" if args.semente is not None else None,
     ) if p)
     exp_id = "teste" if args.sem_registro else f"exp{experimentos.next_exp_number(args.registry):03d}"
@@ -433,6 +464,9 @@ def main() -> int:
         "semente": semente if (args.permutar or aumento or segmentos_treino) else None,
         "segundos_treino": (segmentos_treino * config.SEGMENTO_S
                             if segmentos_treino is not None else None),
+        # rodadas da curva anteriores a este campo (exp051–exp058) sorteavam
+        # na classe inteira, sem repartir entre as gravações
+        "amostragem_treino": "por_gravacao" if segmentos_treino is not None else None,
         **parametros_aumento(info_aumento if aumento else None),
     }
     (destino / "metrics.json").write_text(json.dumps(
