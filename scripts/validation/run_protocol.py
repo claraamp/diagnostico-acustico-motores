@@ -44,6 +44,15 @@ Controles
              Com --aumento, cada variante herda o rótulo embaralhado do seu
              segmento de origem.
 --aumento    soma ao treino de cada fold as variantes aceitas do mfcc_aumento.npz
+--segundos-treino N
+             curva de aprendizado: em cada fold, sorteia N segundos de treino
+             por classe (N segmentos de SEGMENTO_S) e descarta o resto do
+             treino. O teste é o mesmo. Se poucos segundos por classe já
+             acertam tudo, o modelo está separando por um atalho, não pela
+             falha. Mínimo de 2 segmentos por classe: com 1, a LDA não tem
+             covariância dentro da classe.
+--semente    semente dos sorteios (permutação e curva de aprendizado); padrão
+             config.SEMENTE, que reproduz as rodadas já registradas
 
 Uso
 ---
@@ -53,6 +62,8 @@ Uso
     python scripts/validation/run_protocol.py --protocolo B --sem-c0
     python scripts/validation/run_protocol.py --protocolo B --aumento
     python scripts/validation/run_protocol.py --protocolo B --aumento --permutar
+    python scripts/validation/run_protocol.py --protocolo B --permutar --semente 1
+    python scripts/validation/run_protocol.py --protocolo B --segundos-treino 5
     python scripts/validation/run_protocol.py --protocolo B --sem-registro   # teste
 """
 
@@ -60,6 +71,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import dataclasses
 import json
 import sys
 from datetime import date
@@ -109,6 +121,23 @@ def permutar_treino_por_bloco(segmentos: list[particao.Segmento], ids: list[int]
     return y_tr
 
 
+def subamostrar_treino(treino: list[int], y: np.ndarray, n_por_classe: int,
+                       rng: np.random.Generator) -> list[int]:
+    """
+    Curva de aprendizado: sorteia `n_por_classe` segmentos de treino de cada
+    classe, sem reposição. Classe com menos segmentos que isso entra inteira.
+    Só escolhe entre os ids de treino, então o teste e a faixa de descarte
+    continuam fora.
+    """
+    treino = np.asarray(treino)
+    escolhidos = []
+    for c in np.unique(y[treino]):
+        da_classe = treino[y[treino] == c]
+        n = min(n_por_classe, len(da_classe))
+        escolhidos.extend(rng.choice(da_classe, size=n, replace=False).tolist())
+    return sorted(int(i) for i in escolhidos)
+
+
 # --------------------------------------------------------------------------- #
 # Modelo
 # --------------------------------------------------------------------------- #
@@ -142,11 +171,15 @@ def montar_treino(f, X: np.ndarray, y_tr: np.ndarray, aumento: dict | None):
 
 def rodar_folds(folds, X, y, tarefa: str, modelo: str,
                 segmentos: list[particao.Segmento] | None = None,
-                permutar: bool = False, aumento: dict | None = None) -> list[dict]:
+                permutar: bool = False, aumento: dict | None = None,
+                semente: int = config.SEMENTE,
+                segmentos_treino: int | None = None) -> list[dict]:
     classes = np.unique(y)
-    rng = np.random.default_rng(config.SEMENTE)
+    rng = np.random.default_rng(semente)
     resultados = []
     for f in folds:
+        if segmentos_treino is not None:
+            f = dataclasses.replace(f, treino=subamostrar_treino(f.treino, y, segmentos_treino, rng))
         y_tr = (permutar_treino_por_bloco(segmentos, f.treino, y, rng) if permutar
                 else y[f.treino])
         X_fit, y_fit, n_aumento = montar_treino(f, X, y_tr, aumento)
@@ -252,6 +285,10 @@ def main() -> int:
     ap.add_argument("--permutar", action="store_true", help="controle de permutação por bloco")
     ap.add_argument("--aumento", action="store_true",
                     help="soma ao treino as variantes aceitas do mfcc_aumento.npz")
+    ap.add_argument("--segundos-treino", type=float, default=None, metavar="N",
+                    help="curva de aprendizado: N segundos de treino por classe em cada fold")
+    ap.add_argument("--semente", type=int, default=None,
+                    help=f"semente da permutação e da curva de aprendizado (padrão {config.SEMENTE})")
     ap.add_argument("--splits", type=Path, default=Path("data/processed/splits/splits.json"))
     ap.add_argument("--features", type=Path, default=Path("data/processed/features/mfcc_features.npz"))
     ap.add_argument("--pcm-dir", type=Path,
@@ -267,6 +304,18 @@ def main() -> int:
     if args.protocolo == "B" and args.tarefa == "multiclasse":
         ap.error("o Protocolo B é binário: cada falha testada não aparece no treino, "
                  "então não há como acertar a classe dela")
+    segmentos_treino = None
+    if args.segundos_treino is not None:
+        if args.aumento or args.permutar:
+            ap.error("--segundos-treino não se combina com --aumento nem com --permutar: "
+                     "a curva de aprendizado mede só o efeito da quantidade de treino")
+        segmentos_treino = int(round(args.segundos_treino / config.SEGMENTO_S))
+        if segmentos_treino < 2:
+            # com 1 segmento por classe, a LDA não tem covariância dentro da classe
+            # (o sklearn exige mais amostras que classes)
+            ap.error(f"--segundos-treino precisa de pelo menos 2 segmentos por classe "
+                     f"({2 * config.SEGMENTO_S:g} s) para a LDA")
+    semente = config.SEMENTE if args.semente is None else args.semente
 
     clipes = pcm_io.carregar_clipes(args.pcm_dir, fs_esperado=config.FS_TRABALHO)
     divergencias = pcm_io.verificar_integridade(clipes)
@@ -344,7 +393,8 @@ def main() -> int:
 
     # ------------------------------------------------ folds
     resultados = rodar_folds(folds, X, y, args.tarefa, args.modelo,
-                             segmentos=segmentos, permutar=args.permutar, aumento=aumento)
+                             segmentos=segmentos, permutar=args.permutar, aumento=aumento,
+                             semente=semente, segmentos_treino=segmentos_treino)
     resumo = (metricas.resumo_protocolo_a(resultados) if args.protocolo == "A"
               else metricas.resumo_protocolo_b(resultados))
     imprimir(resumo, resultados)
@@ -355,6 +405,8 @@ def main() -> int:
         "normclipe" if norm_clipe else None,
         rotulo_aumento(info_aumento) if aumento else None,
         "semc0" if args.sem_c0 else None, "permutado" if args.permutar else None,
+        f"treino{args.segundos_treino:g}s" if segmentos_treino is not None else None,
+        f"semente{semente}" if args.semente is not None else None,
     ) if p)
     exp_id = "teste" if args.sem_registro else f"exp{experimentos.next_exp_number(args.registry):03d}"
     destino = args.out_dir / f"{exp_id}_{descricao}"
@@ -378,7 +430,9 @@ def main() -> int:
         "mfcc_n_mels": manifesto_features["mfcc_n_mels"],
         "mfcc_n_coefs": manifesto_features["mfcc_n_coefs"],
         "features_commit": manifesto_features.get("git_commit"),
-        "semente": config.SEMENTE if (args.permutar or aumento) else None,
+        "semente": semente if (args.permutar or aumento or segmentos_treino) else None,
+        "segundos_treino": (segmentos_treino * config.SEGMENTO_S
+                            if segmentos_treino is not None else None),
         **parametros_aumento(info_aumento if aumento else None),
     }
     (destino / "metrics.json").write_text(json.dumps(

@@ -100,7 +100,8 @@ diagnostico-acustico-motores/
 │       ├── particao.py                    # segmentos, folds A e B, verificação
 │       ├── metricas.py                    # sensibilidade, especificidade, acurácia balanceada
 │       ├── run_protocol.py                # executável: roda A ou B e registra o resultado
-│       └── run_tabela_comparativa.py      # executável: tabela provisório × oficial a partir dos metrics.json
+│       ├── run_tabela_comparativa.py      # executável: tabela provisório × oficial a partir dos metrics.json
+│       └── run_tabela_controles.py        # executável: tabela dos controles (sem c0, permutação, curva)
 │
 ├── tests/                    # pytest; não dependem de data/
 │   ├── conftest.py
@@ -110,6 +111,7 @@ diagnostico-acustico-motores/
 │   │   ├── test_transformacoes.py
 │   │   └── test_variantes.py              # inclui: variante aceita nunca lê teste/descarte
 │   └── validation/
+│       ├── test_curva_aprendizado.py      # subamostra só treino, n por classe, reprodutível
 │       └── test_particao.py
 │
 ├── notebooks/                # notebooks de análise/visualização
@@ -165,10 +167,13 @@ python scripts/validation/run_protocol.py --protocolo B --responsavel <nome>
 python scripts/validation/run_protocol.py --protocolo A --tarefa multiclasse --responsavel <nome>
 python scripts/validation/run_protocol.py --protocolo B --sem-c0      # ablação do ganho
 python scripts/validation/run_protocol.py --protocolo B --permutar    # controle de permutação
+python scripts/validation/run_protocol.py --protocolo B --permutar --semente 1   # uma rodada por semente
+python scripts/validation/run_protocol.py --protocolo B --segundos-treino 5      # curva de aprendizado (mín. 2 s)
 python scripts/validation/run_protocol.py --protocolo B --sem-registro   # teste, não registra
 
-# tabela provisório × oficial (lê os metrics.json; não treina nem registra)
-python scripts/validation/run_tabela_comparativa.py
+# tabelas (leem os metrics.json; não treinam nem registram)
+python scripts/validation/run_tabela_comparativa.py   # provisório × oficial
+python scripts/validation/run_tabela_controles.py     # sem c0, permutação e curva de aprendizado
 
 # ablação da normalização RMS por segmento: reextrai e roda de novo
 python scripts/pipeline/04_extract_features.py --norm-clipe
