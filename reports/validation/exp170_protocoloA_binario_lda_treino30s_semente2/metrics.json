@@ -1,0 +1,126 @@
+{
+  "id": "exp170",
+  "parametros": {
+    "protocolo": "A",
+    "tarefa": "binario",
+    "modelo": "lda",
+    "features": "mfcc_dsp_media_desvio",
+    "norm_clipe": false,
+    "sem_c0": false,
+    "permutado": false,
+    "splits": "772c8e1eb1",
+    "fs_hz": 12800,
+    "segmento_s": 1.0,
+    "segmentos_por_bloco": 10,
+    "segmentos_descarte": 1,
+    "mfcc_janela_ms": 25,
+    "mfcc_hop_ms": 10,
+    "mfcc_n_mels": 20,
+    "mfcc_n_coefs": 13,
+    "features_commit": "e6616a3",
+    "semente": 2,
+    "segundos_treino": 30.0,
+    "amostragem_treino": "por_gravacao",
+    "aumento": "nenhum"
+  },
+  "resumo": {
+    "protocolo": "A",
+    "leitura": "limite superior otimista — não conta para a meta",
+    "n_folds": 6,
+    "acuracia_balanceada_media": 1.0,
+    "acuracia_balanceada_desvio": 0.0,
+    "acuracia_balanceada_min": 1.0
+  },
+  "folds": [
+    {
+      "nome": "A_bloco0",
+      "info": {
+        "bloco": 0
+      },
+      "n_treino": 60,
+      "n_treino_aumento": 0,
+      "n_teste": 50,
+      "treino_por_gravacao": "{\"bpfi_0.3mm\": 7, \"bpfi_1.0mm\": 7, \"bpfo_0.3mm\": 8, \"bpfo_1.0mm\": 8, \"normal\": 30}",
+      "sensibilidade": 1.0,
+      "especificidade": 1.0,
+      "acuracia_balanceada": 1.0,
+      "n_teste_falha": 40,
+      "n_teste_normal": 10
+    },
+    {
+      "nome": "A_bloco1",
+      "info": {
+        "bloco": 1
+      },
+      "n_treino": 60,
+      "n_treino_aumento": 0,
+      "n_teste": 50,
+      "treino_por_gravacao": "{\"bpfi_0.3mm\": 7, \"bpfi_1.0mm\": 7, \"bpfo_0.3mm\": 8, \"bpfo_1.0mm\": 8, \"normal\": 30}",
+      "sensibilidade": 1.0,
+      "especificidade": 1.0,
+      "acuracia_balanceada": 1.0,
+      "n_teste_falha": 40,
+      "n_teste_normal": 10
+    },
+    {
+      "nome": "A_bloco2",
+      "info": {
+        "bloco": 2
+      },
+      "n_treino": 60,
+      "n_treino_aumento": 0,
+      "n_teste": 50,
+      "treino_por_gravacao": "{\"bpfi_0.3mm\": 8, \"bpfi_1.0mm\": 7, \"bpfo_0.3mm\": 7, \"bpfo_1.0mm\": 8, \"normal\": 30}",
+      "sensibilidade": 1.0,
+      "especificidade": 1.0,
+      "acuracia_balanceada": 1.0,
+      "n_teste_falha": 40,
+      "n_teste_normal": 10
+    },
+    {
+      "nome": "A_bloco3",
+      "info": {
+        "bloco": 3
+      },
+      "n_treino": 60,
+      "n_treino_aumento": 0,
+      "n_teste": 50,
+      "treino_por_gravacao": "{\"bpfi_0.3mm\": 7, \"bpfi_1.0mm\": 8, \"bpfo_0.3mm\": 7, \"bpfo_1.0mm\": 8, \"normal\": 30}",
+      "sensibilidade": 1.0,
+      "especificidade": 1.0,
+      "acuracia_balanceada": 1.0,
+      "n_teste_falha": 40,
+      "n_teste_normal": 10
+    },
+    {
+      "nome": "A_bloco4",
+      "info": {
+        "bloco": 4
+      },
+      "n_treino": 60,
+      "n_treino_aumento": 0,
+      "n_teste": 50,
+      "treino_por_gravacao": "{\"bpfi_0.3mm\": 7, \"bpfi_1.0mm\": 8, \"bpfo_0.3mm\": 7, \"bpfo_1.0mm\": 8, \"normal\": 30}",
+      "sensibilidade": 1.0,
+      "especificidade": 1.0,
+      "acuracia_balanceada": 1.0,
+      "n_teste_falha": 40,
+      "n_teste_normal": 10
+    },
+    {
+      "nome": "A_bloco5",
+      "info": {
+        "bloco": 5
+      },
+      "n_treino": 60,
+      "n_treino_aumento": 0,
+      "n_teste": 45,
+      "treino_por_gravacao": "{\"bpfi_0.3mm\": 7, \"bpfi_1.0mm\": 8, \"bpfo_0.3mm\": 8, \"bpfo_1.0mm\": 7, \"normal\": 30}",
+      "sensibilidade": 1.0,
+      "especificidade": 1.0,
+      "acuracia_balanceada": 1.0,
+      "n_teste_falha": 36,
+      "n_teste_normal": 9
+    }
+  ]
+}

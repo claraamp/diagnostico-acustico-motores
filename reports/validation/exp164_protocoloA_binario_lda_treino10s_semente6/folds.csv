@@ -1,0 +1,7 @@
+nome,n_treino,n_treino_aumento,n_teste,treino_por_gravacao,sensibilidade,especificidade,acuracia_balanceada,n_teste_falha,n_teste_normal,info
+A_bloco0,20,0,50,"{""bpfi_0.3mm"": 3, ""bpfi_1.0mm"": 2, ""bpfo_0.3mm"": 2, ""bpfo_1.0mm"": 3, ""normal"": 10}",1.0,1.0,1.0,40,10,"{""bloco"": 0}"
+A_bloco1,20,0,50,"{""bpfi_0.3mm"": 2, ""bpfi_1.0mm"": 3, ""bpfo_0.3mm"": 3, ""bpfo_1.0mm"": 2, ""normal"": 10}",1.0,1.0,1.0,40,10,"{""bloco"": 1}"
+A_bloco2,20,0,50,"{""bpfi_0.3mm"": 3, ""bpfi_1.0mm"": 2, ""bpfo_0.3mm"": 2, ""bpfo_1.0mm"": 3, ""normal"": 10}",1.0,1.0,1.0,40,10,"{""bloco"": 2}"
+A_bloco3,20,0,50,"{""bpfi_0.3mm"": 3, ""bpfi_1.0mm"": 2, ""bpfo_0.3mm"": 3, ""bpfo_1.0mm"": 2, ""normal"": 10}",1.0,1.0,1.0,40,10,"{""bloco"": 3}"
+A_bloco4,20,0,50,"{""bpfi_0.3mm"": 2, ""bpfi_1.0mm"": 2, ""bpfo_0.3mm"": 3, ""bpfo_1.0mm"": 3, ""normal"": 10}",1.0,1.0,1.0,40,10,"{""bloco"": 4}"
+A_bloco5,20,0,45,"{""bpfi_0.3mm"": 2, ""bpfi_1.0mm"": 3, ""bpfo_0.3mm"": 2, ""bpfo_1.0mm"": 3, ""normal"": 10}",0.9444444444444444,1.0,0.9722222222222222,36,9,"{""bloco"": 5}"
