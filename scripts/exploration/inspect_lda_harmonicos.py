@@ -27,6 +27,15 @@ Método (Protocolo B, treino inteiro, features de referência do 04):
    A pergunta é que fração da separação vem das bandas dos harmônicos,
    comparada com a fração de bandas que elas são.
 
+4. **Intervenção (`--intervencao`).** A decomposição do passo 3 é instável
+   quando bandas vizinhas são correlacionadas (os sinais alternam entre
+   vizinhas). O teste mais direto é apagar a informação: em cada fold, o
+   log-Mel das bandas dos harmônicos vira a média do treino em todos os
+   segmentos, a média dos MFCC é recalculada como L·Dᵀ (o desvio fica), e o B
+   é treinado de novo. Controle: o mesmo número de bandas por fold, sorteadas
+   fora dos harmônicos (N_SORTEIOS vezes). É o argumento principal; a
+   decomposição é complemento.
+
 Não é prova de atalho: uma banda dos harmônicos também pode conter energia de
 falha. É uma medida de quanto o modelo se apoia nessas bandas.
 
@@ -38,7 +47,9 @@ grava em `reports/validation/controle_harmonicos/sintetico/` (fora do Git).
 Uso
 ---
     python scripts/exploration/inspect_lda_harmonicos.py --sintetico
+    python scripts/exploration/inspect_lda_harmonicos.py --sintetico --intervencao
     python scripts/exploration/inspect_lda_harmonicos.py --responsavel <nome>
+    python scripts/exploration/inspect_lda_harmonicos.py --intervencao --responsavel <nome>
 """
 
 from __future__ import annotations
@@ -66,10 +77,11 @@ from exploration.inspect_signature_mel import (MEDIDAS_JSON, NPERSEG_FINO, TOL_L
                                                carregar_features, carregar_medidas,
                                                centros_mel, features_como_o_04,
                                                filtros_na_grade, logmel_por_segmento)
-from validation import particao
+from validation import metricas, particao
 from validation.run_protocol import FEATURES_ID, novo_modelo
 
 LIMIAR_DB = 3.0
+N_SORTEIOS = 5            # controle da intervenção: bandas sorteadas fora dos harmônicos
 SINT_F_EIXO = 50.20
 N_MELS = config.MFCC_N_MELS
 N_COEFS = config.MFCC_N_COEFS
@@ -142,6 +154,46 @@ def decompor_fold(X: np.ndarray, L: np.ndarray, y: np.ndarray, treino: list[int]
 
 
 # --------------------------------------------------------------------------- #
+# 4. Intervenção: apagar as bandas e treinar de novo
+# --------------------------------------------------------------------------- #
+def apagar_bandas(X: np.ndarray, L: np.ndarray, treino: list[int], bandas: np.ndarray) -> np.ndarray:
+    """
+    Troca o log-Mel das `bandas` pela média do treino em todos os segmentos
+    (treino e teste) e recalcula a média dos MFCC como L·Dᵀ. O desvio dos MFCC
+    fica como está. A decomposição banda a banda é instável quando bandas
+    vizinhas são correlacionadas; apagar a informação e medir o efeito não é.
+    """
+    L2 = L.copy()
+    L2[:, bandas] = L[treino][:, bandas].mean(axis=0)
+    X2 = X.copy()
+    X2[:, :N_COEFS] = L2 @ matriz_dct().T
+    return X2
+
+
+def rodar_b(folds, X: np.ndarray, L: np.ndarray, y: np.ndarray, bandas_por_fold: list[np.ndarray]) -> dict:
+    """Protocolo B com as bandas de cada fold apagadas, com o mesmo modelo do run_protocol."""
+    resultados = []
+    for f, bandas in zip(folds, bandas_por_fold):
+        X2 = apagar_bandas(X, L, f.treino, bandas) if bandas.any() else X
+        mdl = novo_modelo("lda", 2)
+        mdl.fit(X2[f.treino], y[f.treino])
+        m = metricas.metricas_binarias(y[f.teste], mdl.predict(X2[f.teste]))
+        resultados.append({"nome": f.nome, "info": f.info, **m})
+    return metricas.resumo_protocolo_b(resultados)
+
+
+def bandas_sorteadas(bandas_por_fold: list[np.ndarray], rng: np.random.Generator) -> list[np.ndarray]:
+    """Mesmo número de bandas por fold, sorteadas entre as que NÃO são dos harmônicos."""
+    saida = []
+    for bandas in bandas_por_fold:
+        fora = np.flatnonzero(~bandas)
+        escolha = np.zeros_like(bandas)
+        escolha[rng.choice(fora, size=int(bandas.sum()), replace=False)] = True
+        saida.append(escolha)
+    return saida
+
+
+# --------------------------------------------------------------------------- #
 # Auto-teste
 # --------------------------------------------------------------------------- #
 def sintetico(seed: int = 0) -> list[pcm_io.Clip]:
@@ -196,6 +248,9 @@ def main() -> int:
     ap.add_argument("--registry", type=Path, default=Path("experiments/registry.csv"))
     ap.add_argument("--sem-registro", action="store_true")
     ap.add_argument("--sintetico", action="store_true", help="auto-teste (implica --sem-registro)")
+    ap.add_argument("--intervencao", action="store_true",
+                    help="apaga as bandas dos harmônicos, treina o B de novo e compara com "
+                         f"{N_SORTEIOS} sorteios do mesmo número de bandas fora deles")
     ap.add_argument("--responsavel", default="")
     ap.add_argument("--notas", default="")
     args = ap.parse_args()
@@ -203,6 +258,9 @@ def main() -> int:
     if args.sintetico:
         args.sem_registro = True
         args.out_dir = args.out_dir / "sintetico"
+    if args.intervencao:
+        args.out_dir = args.out_dir / "intervencao"      # não sobrescreve a rodada da decomposição
+    if args.sintetico:
         lista = sintetico()
         segmentos = particao.segmentar(lista)
         folds = particao.folds_protocolo_b(segmentos)
@@ -210,7 +268,8 @@ def main() -> int:
         X = features_como_o_04(clipes, segmentos)
         f_eixo, manif, hash_splits = SINT_F_EIXO, {"git_commit": "sintetico"}, "sintetico"
         print("Modo sintético: esperado bandas dos harmônicos acima de ~3 kHz e quase toda a "
-              "separação atribuída a elas.")
+              "separação atribuída a elas. Com --intervencao, apagá-las derruba o B e os sorteios "
+              "fora delas não; a queda não vai a 0,5 porque o desvio dos MFCC não é apagado.")
     else:
         lista = pcm_io.carregar_clipes(args.pcm_dec, fs_esperado=config.FS_TRABALHO)
         divergencias = pcm_io.verificar_integridade(lista)
@@ -241,11 +300,13 @@ def main() -> int:
     H = potencia_harmonicos_por_banda(clipes, f_eixo)
     centros = centros_mel(config.FS_TRABALHO, N_MELS)
     resultados = []
+    bandas_por_fold = []
     for f in folds:
         falha_fora = f.info["falha_de_fora"]
         falhas_treino = [c for c in config.CLASSES if c not in ("normal", falha_fora)]
         exc = excesso_normal_db(H, falhas_treino)
         bandas = exc >= LIMIAR_DB
+        bandas_por_fold.append(bandas)
         r = decompor_fold(X, L, y, f.treino, bandas)
         resultados.append({"fold": f.nome, "falha_de_fora": falha_fora,
                            "excesso_normal_db": exc.tolist(), **r})
@@ -276,6 +337,34 @@ def main() -> int:
           f"{np.median(frac):.2f} (mín. {frac.min():.2f}, máx. {frac.max():.2f}), "
           f"contra {np.median(base):.2f} das bandas; desvio dos MFCC {np.median(desv):.2f}")
 
+    intervencao = None
+    if args.intervencao:
+        # a média dos MFCC recalculada do log-Mel tem que fechar com a do 04
+        erro = np.abs(L @ matriz_dct().T - X[:, :N_COEFS]).max()
+        if erro > 1e-6:
+            raise SystemExit(f"L·Dᵀ não reproduz a média dos MFCC do 04 (erro máx. {erro:.2g})")
+        ref = rodar_b(folds, X, L, y, [np.zeros(N_MELS, bool)] * len(folds))
+        sem_harm = rodar_b(folds, X, L, y, bandas_por_fold)
+        rng = np.random.default_rng(config.SEMENTE)
+        sorteios = [rodar_b(folds, X, L, y, bandas_sorteadas(bandas_por_fold, rng))
+                    for _ in range(N_SORTEIOS)]
+        acc_s = np.array([s["acuracia_balanceada_media"] for s in sorteios])
+        print("\n  intervenção: bandas apagadas (log-Mel = média do treino) e B treinado de novo")
+        print(f"  {'':<36}{'acc. bal.':>10}{'sensib.':>10}{'especif.':>10}{'bpfo_0.3mm':>12}")
+        for nome, r in (("referência", ref), ("bandas dos harmônicos apagadas", sem_harm)):
+            print(f"  {nome:<36}{r['acuracia_balanceada_media']:>10.3f}{r['sensibilidade_media']:>10.3f}"
+                  f"{r['especificidade_media']:>10.3f}"
+                  f"{r['por_falha']['bpfo_0.3mm']['acuracia_balanceada']:>12.3f}")
+        print(f"  {f'mesmo nº fora dos harmônicos ({N_SORTEIOS}×)':<36}"
+              f"{acc_s.min():>10.3f} a {acc_s.max():.3f}")
+        mesmo = all(a["acuracia_balanceada"] == b["acuracia_balanceada"]
+                    for a, b in zip(ref["por_falha"].values(), sem_harm["por_falha"].values()))
+        intervencao = {
+            "referencia": ref, "sem_harmonicos": sem_harm, "sorteios": sorteios,
+            "acc_bal_sorteios_min": float(acc_s.min()), "acc_bal_sorteios_max": float(acc_s.max()),
+            "sem_harmonicos_igual_referencia_por_falha": mesmo,
+        }
+
     resumo = {
         "f_eixo_hz": f_eixo, "limiar_db": LIMIAR_DB, "n_folds": len(folds),
         "fracao_separacao_harm_mediana": float(np.median(frac)),
@@ -287,6 +376,7 @@ def main() -> int:
     }
     (args.out_dir / "metrics.json").write_text(json.dumps(
         {"resumo": resumo, "folds": resultados, "centros_hz": centros.tolist(),
+         "intervencao": intervencao,
          "features_commit": manif.get("git_commit"), "splits": hash_splits},
         ensure_ascii=False, indent=2), encoding="utf-8")
     with (args.out_dir / "bandas.csv").open("w", encoding="utf-8", newline="") as fh:
@@ -303,6 +393,17 @@ def main() -> int:
         print("(registry não alterado)")
         return 0
     exp_id = f"exp{experimentos.next_exp_number(args.registry):03d}"
+    metricas_intervencao = {}
+    if intervencao:
+        r, s = intervencao["referencia"], intervencao["sem_harmonicos"]
+        metricas_intervencao = {
+            "acc_bal_referencia": f"{r['acuracia_balanceada_media']:.4f}",
+            "acc_bal_sem_harm": f"{s['acuracia_balanceada_media']:.4f}",
+            "sens_sem_harm": f"{s['sensibilidade_media']:.4f}",
+            "espec_sem_harm": f"{s['especificidade_media']:.4f}",
+            "acc_bal_sorteios_min": f"{intervencao['acc_bal_sorteios_min']:.4f}",
+            "acc_bal_sorteios_max": f"{intervencao['acc_bal_sorteios_max']:.4f}",
+        }
     experimentos.append_registry(args.registry, [{
         "id": exp_id,
         "data": date.today().isoformat(),
@@ -313,16 +414,22 @@ def main() -> int:
             "protocolo": "B", "modelo": "lda", "features": FEATURES_ID, "splits": hash_splits,
             "features_commit": manif.get("git_commit"), "fs_hz": config.FS_TRABALHO,
             "n_mels": N_MELS, "n_coefs": N_COEFS, "f_eixo_hz": f"{f_eixo:.3f}",
-            "limiar_db": LIMIAR_DB, "nperseg": NPERSEG_FINO, "tol_hz": TOL_LINHA_HZ}),
+            "limiar_db": LIMIAR_DB, "nperseg": NPERSEG_FINO, "tol_hz": TOL_LINHA_HZ,
+            "intervencao": bool(intervencao) or None,
+            "n_sorteios": N_SORTEIOS if intervencao else None,
+            "semente": config.SEMENTE if intervencao else None}),
         "dataset": f"jung2023_acustico_0Nm_{config.FS_TRABALHO}Hz",
         "metricas": experimentos.kv({
             "frac_sep_harm_mediana": f"{np.median(frac):.3f}",
             "frac_sep_harm_min": f"{frac.min():.3f}", "frac_sep_harm_max": f"{frac.max():.3f}",
             "frac_bandas_mediana": f"{np.median(base):.3f}",
             "frac_desvio_mfcc_mediana": f"{np.median(desv):.3f}",
-            **{f"frac_sep_harm_{k}": f"{v['fracao_bandas_harmonicos']:.3f}" for k, v in por_falha.items()}}),
+            **{f"frac_sep_harm_{k}": f"{v['fracao_bandas_harmonicos']:.3f}" for k, v in por_falha.items()},
+            **metricas_intervencao}),
         "responsavel": args.responsavel,
-        "notas": args.notas or "controle dos harmônicos do eixo (pesos da LDA por banda de Mel)",
+        "notas": args.notas or ("controle dos harmônicos do eixo: intervenção (bandas apagadas) "
+                                "e pesos da LDA por banda de Mel" if intervencao else
+                                "controle dos harmônicos do eixo (pesos da LDA por banda de Mel)"),
     }])
     print(f"registrado: {exp_id} em {args.registry}")
     return 0
