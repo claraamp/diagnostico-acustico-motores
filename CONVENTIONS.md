@@ -63,9 +63,11 @@ Consequência prática dessa escolha, aprendida na marra: **depois de clonar o r
 ## 2. Nomenclatura de arquivos e scripts
 
 **Scripts exploratórios** (`scripts/exploration/`): sem prefixo numérico, nome descritivo do que investigam.
-Exemplos já usados: `inspect_mat_keys.py`, `inspect_signal_data.py`, `inspect_pcm.py`, `inspect_class_spectra.py`, `compare_decimation_rates.py`, `inspect_left_out_fault.py`, `identify_tonal_peaks.py`, `confirm_bpf_envelope.py`.
+Exemplos já usados: `inspect_mat_keys.py`, `inspect_signal_data.py`, `inspect_pcm.py`, `inspect_class_spectra.py`, `compare_decimation_rates.py`, `compare_classifiers.py`, `inspect_left_out_fault.py`, `identify_tonal_peaks.py`, `confirm_bpf_envelope.py`.
 
 Um estudo cujo resultado vai para o relatório grava em `reports/<assunto>/` (ex.: `reports/signature/`) e escreve a própria linha no registry, como qualquer rodada (seção 4).
+
+O estudo de escolha do classificador seguiu a mesma regra: nasceu como `validation/piloto_modelos.py`, mas não é executável do protocolo (não começa com `run_`) nem mede desempenho. Responde uma vez qual modelo usar, então foi para `exploration/compare_classifiers.py`, grava em `reports/classifier/` e registra a rodada com etapa `escolha_classificador`.
 
 A linha entre as duas pastas é o que o script **faz**, não o seu tamanho: `pipeline/` é transformação que roda de novo toda vez que o dado muda; `exploration/` responde uma pergunta uma vez. O caso que fixou a regra: a escolha da taxa de decimação nasceu misturada com a decimação em si, num arquivo de 1.200 linhas. O estudo — varredura de cinco taxas, métricas, figuras e relatório — foi para `exploration/compare_decimation_rates.py`, e a etapa que aplica a taxa escolhida ficou em `pipeline/02_decimate_pcm.py`, com 105 linhas. Um estudo fica versionado para a decisão continuar auditável, não para ser reexecutado.
 
@@ -94,14 +96,30 @@ Trabalhe sempre dentro do venv do projeto, e gere o arquivo com `--local`:
 
 ```bash
 source .venv/bin/activate
-pip freeze --local > requirements.txt
+python -m pip freeze --local > requirements.txt
 ```
+
+Use `python -m pip`, não `pip` sozinho: com o conda `(base)` ativo junto do venv, o `pip` do PATH pode ser o do conda, e o pacote vai para o ambiente errado.
+
+**PyTorch só para CPU.** O torch vem do índice do PyTorch (`torch==X.Y.Z+cpu`), que não está no PyPI. O `pip freeze` não guarda de onde o pacote veio, então, **depois de todo freeze**, recoloque no topo do arquivo:
+
+```
+--extra-index-url https://download.pytorch.org/whl/cpu
+```
+
+Sem essa linha, um `pip install -r requirements.txt` num venv novo falha com `No matching distribution found for torch==X.Y.Z+cpu`. É `--extra-index-url`, e não `--index-url`, para o resto continuar vindo do PyPI. A escolha pela CPU está justificada no README ("Como rodar").
 
 O `--local` restringe a lista ao que está instalado no próprio venv. Sem ele, um freeze pode arrastar pacotes de fora — de outro ambiente ativo ou de um diretório em `PYTHONPATH` — e o arquivo deixa de descrever o ambiente que reproduz os resultados. Confira antes de commitar:
 
 ```bash
 python -c "import sys; print(sys.prefix)"    # tem que apontar para o .venv do projeto
-wc -l requirements.txt                       # ~15–25 linhas; muito mais que isso é contaminação
+wc -l requirements.txt                       # ~30–35 linhas; muito mais que isso é contaminação
+```
+
+Desde o torch, o arquivo tem ~30 linhas: ele traz dependências próprias (`filelock`, `fsspec`, `Jinja2`, `MarkupSafe`, `mpmath`, `networkx`, `setuptools`, `sympy`, `typing_extensions`). Antes de commitar um `requirements.txt` novo, teste num venv limpo:
+
+```bash
+python -m venv /tmp/teste-req && /tmp/teste-req/bin/python -m pip install -r requirements.txt
 ```
 
 ## 4. Formato de registro de experimentos
@@ -112,7 +130,7 @@ Cada rodada de um experimento (extração de features, treino de classificador, 
 |---|---|
 | `id` | identificador curto e sequencial, ex. `exp001` |
 | `data` | data da rodada (AAAA-MM-DD) |
-| `etapa` | qual etapa do pipeline foi exercitada, ex. `decimacao`, `extracao_features`, `validacao_classificador`, `treino_classificador`, `caracterizacao_assinatura` |
+| `etapa` | qual etapa do pipeline foi exercitada, ex. `decimacao`, `extracao_features`, `validacao_classificador`, `escolha_classificador`, `treino_classificador`, `caracterizacao_assinatura` |
 | `script` | script executado, ex. `02_decimate_pcm.py` |
 | `git_commit` | hash curto do commit em que o script estava (`git rev-parse --short HEAD`) — garante que dá pra reproduzir exatamente aquela rodada |
 | `parametros` | parâmetros relevantes da rodada, em formato `chave=valor;chave=valor` (ex. `fator_decimacao=4;filtro=fir_lowpass_order8`) |
@@ -130,6 +148,7 @@ Regras práticas, fixadas a partir das primeiras rodadas reais:
 - **Rodada de classificação registra protocolo e partição.** Toda linha de `validacao_classificador` traz em `parametros` o `protocolo` (A ou B), o `splits` (hash do `splits.json` usado) e as `features`. É o que permite saber, meses depois, se duas rodadas são comparáveis: com hash diferente, não são. E o número que vale para a meta é o do Protocolo B — o A é limite otimista e não deve ser citado como desempenho.
 - **Commit antes de rodar.** O `git_commit` só serve se o código daquele commit for o que rodou. Rodada registrada com mudanças não commitadas aponta para um estado que não existe.
 - **Resultado negativo se registra; medição inválida se descarta.** As duas coisas não são iguais. Uma taxa que preserva pouco da assinatura é resultado e entra no arquivo. Uma rodada cujo método estava errado — banda de análise mal escolhida, critério que não se aplica ao sinal — não mede o que diz medir, e manter a linha só contamina comparações futuras. Nesse caso a rodada é refeita e a linha inválida não entra.
+- **Escolha de modelo não usa o teste.** Arquitetura e hiperparâmetros se escolhem por validação interna ao treino de cada fold (etapa `escolha_classificador`), nunca olhando o resultado do Protocolo B. O número interno não é desempenho e não vai para a meta; o desempenho do modelo escolhido é o do `run_protocol.py`.
 - **Auto-teste sintético antes do dado real.** Um estudo que mede algo novo (frequências, SNR, posição num eixo) roda primeiro com `--sintetico`: um sinal montado com a resposta conhecida, para conferir que o método a recupera. O `--sintetico` implica `--sem-registro` e grava em `reports/<assunto>/sintetico/`, que fica fora do Git (`.gitignore`). Foi o que pegou, por exemplo, o pente harmônico travando em f_eixo/2 antes de qualquer número real ser lido.
 
 ## 5. Código compartilhado entre etapas
