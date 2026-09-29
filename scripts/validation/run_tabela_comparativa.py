@@ -34,11 +34,35 @@ def carregar(pasta: Path, exp_id: str) -> dict:
     return json.loads(achados[0].read_text(encoding="utf-8"))
 
 
-def conferir_comparaveis(rodadas: list[dict]) -> None:
-    """Rodadas com partição diferente não são comparáveis (CONVENTIONS, seção 4)."""
-    hashes = {r["parametros"]["splits"] for r in rodadas}
-    if len(hashes) != 1:
-        raise SystemExit(f"Abortado: as rodadas usam partições diferentes ({', '.join(sorted(hashes))}).")
+IGUAIS = ("splits", "modelo", "mfcc_janela_ms", "mfcc_hop_ms", "mfcc_n_mels", "mfcc_n_coefs")
+
+
+def conferir_comparaveis(ids: dict, rodadas: dict) -> None:
+    """
+    As rodadas só entram na tabela se forem a mesma rodada de referência: mesma
+    partição, modelo e MFCC; sem aumento, sem normalização, sem ablação nem
+    controle; e cada par no protocolo e na tarefa da sua linha.
+    """
+    esperado = {"A binário": ("A", "binario"), "A multiclasse": ("A", "multiclasse"),
+                "B": ("B", "binario")}
+    erros = []
+    todas = [(e, r["parametros"]) for k in ids for e, r in zip(ids[k], rodadas[k])]
+    for campo in IGUAIS:
+        valores = {str(p.get(campo)) for _, p in todas}
+        if len(valores) != 1:
+            erros.append(f"{campo} difere entre as rodadas: {', '.join(sorted(valores))}")
+    for linha, (protocolo, tarefa) in esperado.items():
+        for e, r in zip(ids[linha], rodadas[linha]):
+            p = r["parametros"]
+            if (p.get("protocolo"), p.get("tarefa")) != (protocolo, tarefa):
+                erros.append(f"{e}: é {p.get('protocolo')}/{p.get('tarefa')}, "
+                             f"a linha '{linha}' pede {protocolo}/{tarefa}")
+            if p.get("aumento") not in (None, "nenhum"):
+                erros.append(f"{e}: tem aumento ({p['aumento']})")
+            if p.get("norm_clipe") or p.get("sem_c0") or p.get("permutado"):
+                erros.append(f"{e}: é ablação ou controle (norm_clipe/sem_c0/permutado)")
+    if erros:
+        raise SystemExit("Abortado: rodadas não comparáveis:\n  " + "\n  ".join(erros))
 
 
 def linha_a(rotulo: str, prov: dict, ofic: dict) -> str:
@@ -81,7 +105,7 @@ def main() -> int:
 
     ids = {"A binário": args.a_binario, "A multiclasse": args.a_multiclasse, "B": args.b}
     rodadas = {k: [carregar(args.pasta, e) for e in v] for k, v in ids.items()}
-    conferir_comparaveis([r for par in rodadas.values() for r in par])
+    conferir_comparaveis(ids, rodadas)
 
     feats = {k: [r["parametros"]["features"] for r in par] for k, par in rodadas.items()}
     texto = [
