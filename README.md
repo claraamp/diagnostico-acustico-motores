@@ -30,7 +30,7 @@ Fase 1 — Protótipo em Python (em andamento). Conversão, decimação, protoco
  
 A escolha de 12.800 Hz é a única taxa com fator de decimação inteiro dentro da faixa de 8–16 kHz — requisito de `arm_fir_decimate_f32` do CMSIS-DSP — e preserva 96,1 % da energia discriminante no pior caso (classes de defeito incipiente, 0,3 mm). O registro completo da comparação está em `experiments/registry.csv` (`exp001`–`exp006`). O diagnóstico por espectro de envelope desse relatório (SNRs de BPFI/BPFO por taxa) **não vale**: a busca do pico era centrada nas frequências nominais e não alcançava as linhas reais. Ele foi refeito no sinal original pelo `confirm_bpf_envelope.py` (ver "Assinatura acústica" abaixo). A decisão de 12.800 Hz não muda, porque nunca dependeu do envelope.
 
-O protocolo de validação existe porque o dataset tem **uma única gravação por classe**: qualquer divisão treino/teste dentro de uma gravação deixa os dois no mesmo registro, e o classificador pode separar as classes pela identidade da gravação em vez da falha (foi o que deu acurácia 1,0 no estudo de decimação). O Protocolo B testa cada gravação de falha sem que ela apareça no treino; é o único resultado que conta para a meta. A primeira rodada, provisória, está em `exp007`–`exp012`. Com o MFCC oficial, sem aumento, o A está em `exp027` (binário) e `exp028` (multiclasse) e o B em `exp013`/`exp015`, e os números são idênticos aos da rodada provisória: A com 1,000 em todos os folds; B com média 0,875, a `bpfo_0.3mm` em 0,5 e as outras três falhas em 1,0. A comparação está em `reports/validation/tabela_provisorio_vs_oficial.md`.
+O protocolo de validação existe porque o dataset tem **uma única gravação por classe**: qualquer divisão treino/teste dentro de uma gravação deixa os dois no mesmo registro, e o classificador pode separar as classes pela identidade da gravação em vez da falha (foi o que deu acurácia 1,0 no estudo de decimação). O Protocolo B testa cada gravação de falha sem que ela apareça no treino; é o único resultado que conta para a meta. A primeira rodada, provisória, está em `exp007`–`exp012`. Com o MFCC oficial, sem aumento, o A está em `exp027` (binário) e `exp028` (multiclasse) e o B em `exp013`/`exp015`, e os números são idênticos aos da rodada provisória: A com 1,000 em todos os folds; B com média 0,875, a `bpfo_0.3mm` em 0,5 e as outras três falhas em 1,0. A comparação está em `reports/validation/tabela_provisorio_vs_oficial.md`. Os controles obrigatórios com o MFCC oficial estão em `reports/validation/tabela_controles.md`. Sem o c0 e com normalização RMS por segmento nada muda (`exp029`, `exp030`, `exp014`, `exp219`). Com os rótulos permutados, o B fica em 0,450 ± 0,060 em 100 sementes (`exp031`–`exp050`, `exp059`–`exp138`; p empírico 0,0099). Na curva de aprendizado com o sorteio repartido entre as gravações (`exp139`–`exp218`, 10 sementes por ponto), o B vai de 0,757 com 2 s a 0,867 com 30 s por classe. A curva não descarta que o modelo tenha aprendido "diferente da gravação normal = falha", porque há uma só gravação normal e o teste dela vem da mesma gravação. O `inspect_lda_harmonicos.py` mostra que a LDA não depende das bandas de Mel em que a normal tem harmônicos do eixo mais fortes: apagar essas bandas (log-Mel trocado pela média do treino) e treinar o B de novo deixa o resultado idêntico, 0,875, enquanto apagar o mesmo número de bandas sorteadas fora dos harmônicos dá 0,854–0,875 (`exp221`). A decomposição da separação por banda (`exp220`, −0,20 nas bandas dos harmônicos) é complemento, porque bandas vizinhas são correlacionadas. As rodadas `exp051`–`exp058` são da curva sem estratificação e ficam só no registry.
 
 ### Assinatura acústica
 
@@ -84,6 +84,7 @@ diagnostico-acustico-motores/
 │   │   ├── inspect_pcm.py                 # sanidade da conversão + caráter do sinal
 │   │   ├── inspect_class_spectra.py       # PSD por classe e banda necessária
 │   │   ├── compare_decimation_rates.py    # estudo que definiu a taxa de trabalho
+│   │   ├── inspect_lda_harmonicos.py      # controle: peso da LDA nas bandas dos harmônicos do eixo
 │   │   ├── inspect_left_out_fault.py      # posição da falha deixada de fora (Protocolo B)
 │   │   ├── inspect_signature_spectra.py   # PSD assinada falha × normal (excesso e déficit)
 │   │   ├── identify_tonal_peaks.py        # velocidades e BPFI/BPFO medidas por série harmônica
@@ -100,7 +101,8 @@ diagnostico-acustico-motores/
 │       ├── particao.py                    # segmentos, folds A e B, verificação
 │       ├── metricas.py                    # sensibilidade, especificidade, acurácia balanceada
 │       ├── run_protocol.py                # executável: roda A ou B e registra o resultado
-│       └── run_tabela_comparativa.py      # executável: tabela provisório × oficial a partir dos metrics.json
+│       ├── run_tabela_comparativa.py      # executável: tabela provisório × oficial a partir dos metrics.json
+│       └── run_tabela_controles.py        # executável: tabela dos controles (sem c0, permutação, curva)
 │
 ├── tests/                    # pytest; não dependem de data/
 │   ├── conftest.py
@@ -110,6 +112,7 @@ diagnostico-acustico-motores/
 │   │   ├── test_transformacoes.py
 │   │   └── test_variantes.py              # inclui: variante aceita nunca lê teste/descarte
 │   └── validation/
+│       ├── test_curva_aprendizado.py      # subamostra só treino, n por classe, reprodutível
 │       └── test_particao.py
 │
 ├── notebooks/                # notebooks de análise/visualização
@@ -165,10 +168,18 @@ python scripts/validation/run_protocol.py --protocolo B --responsavel <nome>
 python scripts/validation/run_protocol.py --protocolo A --tarefa multiclasse --responsavel <nome>
 python scripts/validation/run_protocol.py --protocolo B --sem-c0      # ablação do ganho
 python scripts/validation/run_protocol.py --protocolo B --permutar    # controle de permutação
+python scripts/validation/run_protocol.py --protocolo B --permutar --semente 1   # uma rodada por semente
+python scripts/validation/run_protocol.py --protocolo B --segundos-treino 5 --semente 1   # curva de aprendizado (mín. 2 s; sorteio repartido entre as gravações)
 python scripts/validation/run_protocol.py --protocolo B --sem-registro   # teste, não registra
 
-# tabela provisório × oficial (lê os metrics.json; não treina nem registra)
-python scripts/validation/run_tabela_comparativa.py
+# tabelas (leem os metrics.json; não treinam nem registram)
+python scripts/validation/run_tabela_comparativa.py   # provisório × oficial
+python scripts/validation/run_tabela_controles.py     # sem c0, normalização, permutação e curva de aprendizado
+
+# controle dos harmônicos do eixo: peso da LDA nas bandas de Mel em que a normal
+# tem harmônicos mais fortes (lê o picos_metrics.json do identify_tonal_peaks.py)
+python scripts/exploration/inspect_lda_harmonicos.py --sintetico   # auto-teste
+python scripts/exploration/inspect_lda_harmonicos.py --responsavel <nome>
 
 # ablação da normalização RMS por segmento: reextrai e roda de novo
 python scripts/pipeline/04_extract_features.py --norm-clipe

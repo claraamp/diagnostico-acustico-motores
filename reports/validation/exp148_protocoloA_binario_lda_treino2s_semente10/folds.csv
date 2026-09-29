@@ -1,0 +1,7 @@
+nome,n_treino,n_treino_aumento,n_teste,treino_por_gravacao,sensibilidade,especificidade,acuracia_balanceada,n_teste_falha,n_teste_normal,info
+A_bloco0,4,0,50,"{""bpfo_0.3mm"": 1, ""bpfo_1.0mm"": 1, ""normal"": 2}",0.5,1.0,0.75,40,10,"{""bloco"": 0}"
+A_bloco1,4,0,50,"{""bpfi_1.0mm"": 1, ""bpfo_1.0mm"": 1, ""normal"": 2}",0.85,1.0,0.925,40,10,"{""bloco"": 1}"
+A_bloco2,4,0,50,"{""bpfi_1.0mm"": 1, ""bpfo_0.3mm"": 1, ""normal"": 2}",0.7,0.5,0.6,40,10,"{""bloco"": 2}"
+A_bloco3,4,0,50,"{""bpfi_1.0mm"": 1, ""bpfo_0.3mm"": 1, ""normal"": 2}",0.625,0.8,0.7125,40,10,"{""bloco"": 3}"
+A_bloco4,4,0,50,"{""bpfi_1.0mm"": 1, ""bpfo_1.0mm"": 1, ""normal"": 2}",0.55,1.0,0.775,40,10,"{""bloco"": 4}"
+A_bloco5,4,0,45,"{""bpfo_0.3mm"": 1, ""bpfo_1.0mm"": 1, ""normal"": 2}",0.5,1.0,0.75,36,9,"{""bloco"": 5}"

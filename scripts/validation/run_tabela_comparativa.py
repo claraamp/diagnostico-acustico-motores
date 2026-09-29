@@ -61,6 +61,8 @@ def conferir_comparaveis(ids: dict, rodadas: dict) -> None:
                 erros.append(f"{e}: tem aumento ({p['aumento']})")
             if p.get("norm_clipe") or p.get("sem_c0") or p.get("permutado"):
                 erros.append(f"{e}: é ablação ou controle (norm_clipe/sem_c0/permutado)")
+            if p.get("segundos_treino") is not None:
+                erros.append(f"{e}: é ponto da curva de aprendizado (treino reduzido)")
     if erros:
         raise SystemExit("Abortado: rodadas não comparáveis:\n  " + "\n  ".join(erros))
 
