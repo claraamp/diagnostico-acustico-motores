@@ -13,7 +13,7 @@ Sistema embarcado que classifica, em tempo real e a partir de sinal acústico, o
 
 ## Status
 
-Fase 1 — Protótipo em Python (em andamento). Conversão, decimação, protocolo de validação, extração de MFCC, aumento de dados, caracterização da assinatura acústica e estudo de escolha do classificador concluídos (a LDA venceu na validação interna; ver "Escolha do classificador" abaixo). Próximo passo: modelo final e exportação dos pesos para o firmware. Ver o quadro de tarefas no Notion para o estado detalhado de cada etapa.
+Fase 1 — Protótipo em Python (em andamento). Conversão, decimação, protocolo de validação, extração de MFCC, aumento de dados, caracterização da assinatura acústica e estudo de escolha do classificador concluídos (fica a LDA: empata com a CNN 2D na validação interna e sai mais barata; ver "Escolha do classificador" abaixo). Próximo passo: modelo final e exportação dos pesos para o firmware. Ver o quadro de tarefas no Notion para o estado detalhado de cada etapa.
 
 ## Decisões técnicas fixadas
  
@@ -26,7 +26,7 @@ Fase 1 — Protótipo em Python (em andamento). Conversão, decimação, protoco
 | Unidade de classificação | segmento de 1 s (12.800 amostras); 59 por gravação, em blocos de 10, 10, 10, 10, 10 e 9 | Notion, Registro de Decisões (protocolo de validação) |
 | Protocolo de validação | **A** — blocos temporais (limite otimista); **B** — gravação de falha deixada de fora (resultado principal) | idem; implementação em `scripts/validation/particao.py` |
 | Meta de desempenho | acurácia balanceada média do Protocolo B ≥ 85 %, sempre com sensibilidade, especificidade e pior caso | idem; resultados em `reports/validation/` |
-| Classificador | **LDA** sobre média e desvio dos 13 MFCC (26 valores), priors uniformes; venceu MLP raso, CNN 1D e CNN 2D na validação interna ao treino do B | `scripts/exploration/compare_classifiers.py`; Notion, estudo comparativo da tarefa Classificador 3/6 |
+| Classificador | **LDA** sobre média e desvio dos 13 MFCC (26 valores), priors uniformes; na validação interna ao treino do B, empata com a CNN 2D e fica pelo custo, e supera o MLP raso e a CNN 1D | `scripts/exploration/compare_classifiers.py`; Notion, estudo comparativo da tarefa Classificador 3/6 |
 | Aumento de dados | só no treino de cada fold: deslocamento de janela (±0,4 s), estiramento temporal (taxa 0,95–1,05, phase vocoder) e ruído branco (SNR 20–35 dB); variante só entra se ler apenas segmentos de treino do fold | proposta (Metodologia); `scripts/augmentation/` |
  
 A escolha de 12.800 Hz é a única taxa com fator de decimação inteiro dentro da faixa de 8–16 kHz — requisito de `arm_fir_decimate_f32` do CMSIS-DSP — e preserva 96,1 % da energia discriminante no pior caso (classes de defeito incipiente, 0,3 mm). O registro completo da comparação está em `experiments/registry.csv` (`exp001`–`exp006`). O diagnóstico por espectro de envelope desse relatório (SNRs de BPFI/BPFO por taxa) **não vale**: a busca do pico era centrada nas frequências nominais e não alcançava as linhas reais. Ele foi refeito no sinal original pelo `confirm_bpf_envelope.py` (ver "Assinatura acústica" abaixo). A decisão de 12.800 Hz não muda, porque nunca dependeu do envelope.
@@ -35,9 +35,9 @@ O protocolo de validação existe porque o dataset tem **uma única gravação p
 
 ### Escolha do classificador
 
-A proposta previa escolher entre um MLP raso e uma CNN pequena. O `compare_classifiers.py` comparou quatro modelos (LDA como referência, MLP 26 → 16 → 2, CNN 1D sobre a matriz MFCC 13 × 98 e CNN 2D sobre o log-Mel 20 × 98) **sem usar o teste do Protocolo B**. Em cada fold externo do B, o treino é dividido de novo pela mesma lógica: cada falha de treino deixada de fora, combinada com cada bloco normal de treino (15 treinos internos por fold, 24 folds, 3 sementes por rede). O vencedor é calculado separadamente para cada falha deixada de fora (escolha aninhada).
+A proposta previa escolher entre um MLP raso e uma CNN pequena. O `compare_classifiers.py` comparou quatro modelos (LDA como referência, MLP 26 → 16 → 2, CNN 1D sobre a matriz MFCC 13 × 98 e CNN 2D sobre o log-Mel 20 × 98) **sem usar o teste do Protocolo B**. Em cada fold externo do B, o treino é dividido de novo pela mesma lógica: cada falha de treino deixada de fora, combinada com cada bloco normal de treino (15 treinos internos por fold, 24 folds, 3 sementes por rede). A escolha é feita separadamente para cada falha deixada de fora (escolha aninhada), pelo critério do `escolher()`: dentro de uma margem de 0,02 da melhor acurácia interna (ou da dispersão entre sementes, se for maior), fica o modelo mais barato em MACs. O critério foi fechado depois da primeira rodada (`exp222`), que desempatava pela ordem da lista de modelos; aplicado aos mesmos números, ele dá a mesma escolha, e a rodada seguinte já o registra.
 
-A LDA vence nas quatro escolhas aninhadas, com acurácia balanceada interna de 0,875. A CNN 2D empata (0,875), mas custa ~13.000× mais MACs e ~700× mais RAM de ativação. O MLP (0,828) e a CNN 1D (0,824) perdem na `bpfi_0.3mm`, onde a sensibilidade média cai para ~0,6. Nenhum modelo recupera a `bpfo_0.3mm`, nem a CNN 2D, que vê as bandas de Mel onde está a diferença: o pior caso vem de deslocamento de distribuição, não de capacidade do modelo. Em todos os modelos, os erros são falsos negativos (especificidade 1,000). Os números internos são pessimistas, porque o treino interno tem só 2 falhas contra 3 no B externo; o que conta é a comparação entre modelos. O custo estimado no STM32F411CEU6 (parâmetros, MACs e pico de ativação) sai do próprio script. Saída em `reports/classifier/compare_classifiers.json`.
+A LDA e a CNN 2D empatam exatamente nas quatro escolhas aninhadas (0,875 de acurácia balanceada interna média), e a LDA fica pelo custo: a CNN 2D custa ~13.000× mais MACs e ~700× mais RAM de ativação. O MLP (0,828) e a CNN 1D (0,824) perdem na `bpfi_0.3mm`, onde a sensibilidade média cai para ~0,6. Nenhum modelo recupera a `bpfo_0.3mm`, nem a CNN 2D, que vê as bandas de Mel onde está a diferença: o pior caso vem de deslocamento de distribuição, não de capacidade do modelo. Em todos os modelos, os erros são falsos negativos (especificidade 1,000). Os números internos são pessimistas, porque o treino interno tem só 2 falhas contra 3 no B externo; o que conta é a comparação entre modelos. Cada rede foi avaliada numa configuração fixa (120 épocas, taxa de aprendizado 3e-3, 16 neurônios ocultos no MLP, 16 filtros na CNN 1D, 8 e 16 na CNN 2D), sem busca de hiperparâmetros: a conclusão de que modelos não lineares não trouxeram ganho vale para essas configurações. O estudo é só binário, porque no B a falha de fora não tem exemplos de treino e um modelo multiclasse não poderia prever essa classe. O custo estimado no STM32F411CEU6 (parâmetros, MACs e pico de ativação) sai do próprio script. Saída em `reports/classifier/compare_classifiers.json`.
 
 ### Assinatura acústica
 
@@ -119,6 +119,8 @@ diagnostico-acustico-motores/
 │   ├── augmentation/
 │   │   ├── test_transformacoes.py
 │   │   └── test_variantes.py              # inclui: variante aceita nunca lê teste/descarte
+│   ├── exploration/
+│   │   └── test_compare_classifiers.py    # critério de escolha: mais barato na margem, em qualquer ordem (pula sem torch)
 │   └── validation/
 │       ├── test_curva_aprendizado.py      # subamostra só treino, n por classe, reprodutível
 │       └── test_particao.py

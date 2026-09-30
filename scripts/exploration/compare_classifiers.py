@@ -36,8 +36,25 @@ meta continua sendo o do `run_protocol.py` com o modelo escolhido.
 
 Features: recalculadas aqui com `dsp.mfcc`/`dsp.log_mel` sobre os segmentos da
 partição, porque as CNNs precisam da matriz por quadro, que o `04` não guarda.
-O resumo de 26 valores é o mesmo do `04` (média e desvio dos 13 MFCC); a LDA
-daqui reproduz o B oficial (0,875, exp015).
+O resumo de 26 valores é o mesmo do `04` (média e desvio dos 13 MFCC), então a
+LDA daqui usa, por construção, as mesmas features do B oficial (exp015). Este
+script não calcula o B externo; só a validação interna.
+
+Tarefa: só binária. Os modelos recebem `n_classes` e servem para o multiclasse,
+mas o estudo não: no B, a falha de fora não tem nenhum exemplo no treino, e um
+modelo multiclasse não pode prever uma classe que nunca viu. O multiclasse só se
+avalia no Protocolo A (como no exp028).
+
+Critério de escolha (seção 4 do estudo no Notion; fechado depois da rodada exp222)
+----------------------------------------------------------------------------------
+Em cada escolha aninhada, `escolher()`:
+1. toma a melhor acurácia balanceada interna média;
+2. aceita como candidato todo modelo a até `--margem` dela (padrão 0,02). Se a
+   dispersão entre sementes somada dos dois for maior que a margem, a tolerância
+   passa a ser essa dispersão: diferença menor que o ruído não é diferença;
+3. fica o candidato mais barato (menos MACs, depois menos parâmetros); em custo
+   igual, o de melhor pior falha interna.
+O resultado não depende da ordem de `--modelos`.
 
 Uso
 ---
@@ -252,6 +269,30 @@ def custo(nome: str, n_classes: int = 2) -> dict:
 
 
 # --------------------------------------------------------------------------- #
+# Critério de escolha
+# --------------------------------------------------------------------------- #
+def escolher(medias: dict, custos: dict, margem: float,
+             desvios: dict | None = None, pior: dict | None = None) -> tuple[str, list[str]]:
+    """
+    Devolve (modelo escolhido, candidatos dentro da tolerância).
+
+    `medias`   acc. bal. interna média por modelo
+    `custos`   {"macs": ..., "parametros": ...} por modelo (ver `custo()`)
+    `margem`   tolerância mínima em relação ao melhor
+    `desvios`  dispersão entre sementes por modelo (0 se ausente)
+    `pior`     pior falha interna por modelo, para desempate em custo igual
+    """
+    desvios = desvios or {}
+    pior = pior or {}
+    melhor = max(medias, key=lambda m: (medias[m], m))       # m só para ser determinístico
+    cand = [m for m in medias
+            if medias[melhor] - medias[m]
+            <= max(margem, desvios.get(melhor, 0.0) + desvios.get(m, 0.0)) + 1e-12]
+    cand.sort(key=lambda m: (custos[m]["macs"], custos[m]["parametros"], -pior.get(m, 0.0), m))
+    return cand[0], cand
+
+
+# --------------------------------------------------------------------------- #
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -259,6 +300,8 @@ def main() -> int:
     ap.add_argument("--pcm-dir", type=Path,
                     default=Path(f"data/processed/pcm_decimated/{config.FS_TRABALHO}"))
     ap.add_argument("--modelos", default="lda,mlp,cnn1d,cnn2d")
+    ap.add_argument("--margem", type=float, default=0.02,
+                    help="tolerância em relação ao melhor; dentro dela, fica o mais barato")
     ap.add_argument("--sementes", type=int, default=3)
     ap.add_argument("--epocas", type=int, default=120)
     ap.add_argument("--sintetico", action="store_true")
@@ -365,19 +408,37 @@ def main() -> int:
               ", ".join(f"{f} {v:.3f}" for f, v in por_falha.items()))
 
     # Escolha aninhada: para o fold externo da falha F, só valem os treinos internos
-    # dos folds externos de F (onde F está inteira fora). Se o vencedor for o mesmo
+    # dos folds externos de F (onde F está inteira fora). Se o escolhido for o mesmo
     # para as quatro falhas, uma escolha única equivale à escolha aninhada.
     externas = sorted({r["externo"].rsplit("_bloco", 1)[0] for r in res[modelos[0]]})
-    vencedor = {}
-    print("\nescolha aninhada (acc. bal. interna média, só folds externos de cada falha):")
+    custos = {m: custo(m, n_classes) for m in modelos}
+    vencedor, detalhe = {}, {}
+    print(f"\nescolha aninhada (acc. bal. interna média, só folds externos de cada falha; "
+          f"margem {args.margem}, dentro dela fica o mais barato):")
     for e in externas:
-        medias = {m: float(np.mean([r["acuracia_balanceada"] for r in res[m]
-                                    if r["externo"].rsplit("_bloco", 1)[0] == e]))
+        do_grupo = {m: [r for r in res[m] if r["externo"].rsplit("_bloco", 1)[0] == e]
+                    for m in modelos}
+        medias = {m: float(np.mean([r["acuracia_balanceada"] for r in do_grupo[m]]))
                   for m in modelos}
-        vencedor[e] = max(medias, key=medias.get)
+        desvios = {}
+        pior = {}
+        for m in modelos:
+            por_sem, por_f = {}, {}
+            for r in do_grupo[m]:
+                por_sem.setdefault(r["semente"], []).append(r["acuracia_balanceada"])
+                por_f.setdefault(r["falha_interna"], []).append(r["acuracia_balanceada"])
+            desvios[m] = float(np.std([np.mean(v) for v in por_sem.values()]))
+            pior[m] = float(min(np.mean(v) for v in por_f.values()))
+        vencedor[e], cand = escolher(medias, custos, args.margem, desvios, pior)
+        empate = [m for m in cand if m != vencedor[e]]
+        detalhe[e] = {"medias": medias, "desvio_sementes": desvios, "pior_falha": pior,
+                      "candidatos": cand, "escolhido": vencedor[e]}
         print(f"  {e:<18} " + "  ".join(f"{m} {v:.3f}" for m, v in medias.items())
-              + f"  → {vencedor[e]}")
+              + f"  → {vencedor[e]}"
+              + (f" (dentro da margem: {', '.join(empate)}; fica o mais barato)" if empate else ""))
+    resumo_final["margem"] = args.margem
     resumo_final["escolha_aninhada"] = vencedor
+    resumo_final["escolha_aninhada_detalhe"] = detalhe
     resumo_final["escolha_unica_equivale"] = len(set(vencedor.values())) == 1
 
     args.saida.parent.mkdir(parents=True, exist_ok=True)
@@ -397,9 +458,10 @@ def main() -> int:
         "git_commit": experimentos.git_short_hash(),
         "parametros": experimentos.kv({
             "validacao": "interna_B", "tarefa": "binario" if n_classes == 2 else "multiclasse",
-            "modelos": "/".join(modelos), "folds_externos": len(folds_b),
+            "modelos": "/".join(modelos), "margem": args.margem, "folds_externos": len(folds_b),
             "blocos_externos": args.blocos_externos if args.blocos_externos is not None else "todos",
-            "sementes": args.sementes, "epocas": args.epocas,
+            "sementes": args.sementes, "epocas": args.epocas, "lr": 3e-3, "wd": 1e-3, "batch": 32,
+            "mlp_oculto": 16, "cnn1d_filtros": 16, "cnn2d_filtros": "8/16", "hiperparametros": "fixos",
             "splits": particao.hash_arquivo(args.splits), "fs_hz": config.FS_TRABALHO,
             "segmento_s": config.SEGMENTO_S, "mfcc_janela_ms": config.MFCC_WINDOW_MS,
             "mfcc_hop_ms": config.MFCC_HOP_MS, "mfcc_n_mels": config.MFCC_N_MELS,
@@ -408,7 +470,9 @@ def main() -> int:
         "metricas": experimentos.kv({
             **{f"acc_bal_int_{m}": f"{mm[m]['acuracia_balanceada_media']:.4f}" for m in modelos},
             **{f"desvio_sementes_{m}": f"{mm[m]['desvio_entre_sementes']:.4f}" for m in modelos},
-            **{f"vencedor_{e.removeprefix('B_')}": v for e, v in vencedor.items()},
+            **{f"escolhido_{e.removeprefix('B_')}": v for e, v in vencedor.items()},
+            **{f"candidatos_{e.removeprefix('B_')}": "/".join(detalhe[e]["candidatos"])
+               for e in externas},
             "escolha_unica": "sim" if resumo_final["escolha_unica_equivale"] else "nao"}),
         "responsavel": args.responsavel,
         "notas": args.notas or "validação interna ao treino do B; não é desempenho",
