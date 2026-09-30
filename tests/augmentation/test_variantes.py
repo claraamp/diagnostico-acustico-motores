@@ -66,6 +66,16 @@ def test_sorteio_reprodutivel(segmentos):
     assert V.sortear(s, 1, V.TECNICAS, N_AMOSTRAS) != V.sortear(s, 2, V.TECNICAS, N_AMOSTRAS)
 
 
+def test_semente_do_aumento_troca_o_sorteio(segmentos):
+    """Outra semente sorteia outra variante; a padrão é a do config (exp016–exp022)."""
+    s = segmentos[17]
+    padrao = V.sortear(s, 0, V.TECNICAS, N_AMOSTRAS)
+    assert V.sortear(s, 0, V.TECNICAS, N_AMOSTRAS, semente=config.SEMENTE) == padrao
+    outra = V.sortear(s, 0, V.TECNICAS, N_AMOSTRAS, semente=1)
+    assert (outra.deslocamento, outra.taxa, outra.snr_db) != \
+        (padrao.deslocamento, padrao.taxa, padrao.snr_db)
+
+
 def test_parametros_dentro_das_faixas(todas):
     d_max = round(config.AUMENTO_DESLOC_MAX_S * config.FS_TRABALHO)
     lo, hi = config.AUMENTO_ESTIR_TAXAS

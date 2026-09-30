@@ -24,6 +24,10 @@ Opções
                segmentos de treino daquele fold. O teste nunca é aumentado.
 --tecnicas     técnicas do aumento, separadas por vírgula (padrão: as três,
                deslocamento,estiramento,ruido) — para as ablações
+--semente-aumento N  semente do sorteio das variantes (padrão: config.SEMENTE).
+               Mudar a semente sorteia outro conjunto de variantes com os
+               mesmos parâmetros — para medir quanto o resultado depende do
+               sorteio do aumento.
 --modo-estiramento  "tempo" (phase vocoder) ou "velocidade" (reamostragem);
                padrão: config.AUMENTO_ESTIR_MODO
 --ref-c        exporta `reports/c_reference/reference_data.h` com a entrada int16
@@ -37,6 +41,7 @@ Uso
     python scripts/pipeline/04_extract_features.py --ref-c
     python scripts/pipeline/04_extract_features.py --aumento 4
     python scripts/pipeline/04_extract_features.py --aumento 4 --tecnicas ruido
+    python scripts/pipeline/04_extract_features.py --aumento 4 --semente-aumento 1
 """
 
 import argparse
@@ -93,7 +98,7 @@ def resumo_mfcc(trecho: np.ndarray, norm_clipe: bool) -> np.ndarray:
 
 
 def extrair_aumento(segmentos, por_rotulo: dict, n_copias: int, tecnicas, modo: str,
-                    norm_clipe: bool) -> dict:
+                    norm_clipe: bool, semente: int = config.SEMENTE) -> dict:
     """
     MFCC das variantes de todos os segmentos, com os parâmetros de cada uma.
 
@@ -105,8 +110,8 @@ def extrair_aumento(segmentos, por_rotulo: dict, n_copias: int, tecnicas, modo: 
     for seg in segmentos:
         c = por_rotulo[seg.rotulo]
         for k in range(n_copias):
-            v = variantes.sortear(seg, k, tecnicas, c.n)
-            y = variantes.aplicar(c.x, v, seg.fim - seg.inicio, modo=modo)
+            v = variantes.sortear(seg, k, tecnicas, c.n, semente=semente)
+            y = variantes.aplicar(c.x, v, seg.fim - seg.inicio, modo=modo, semente=semente)
             linhas.append(resumo_mfcc(y, norm_clipe))
             meta.append(v)
     return {
@@ -135,6 +140,8 @@ def main() -> int:
                     help="número de variantes por segmento (0 = sem aumento)")
     ap.add_argument("--tecnicas", default=",".join(config.AUMENTO_TECNICAS),
                     help="técnicas do aumento, separadas por vírgula")
+    ap.add_argument("--semente-aumento", type=int, default=config.SEMENTE, metavar="N",
+                    help="semente do sorteio das variantes (padrão: config.SEMENTE)")
     ap.add_argument("--modo-estiramento", choices=["tempo", "velocidade"],
                     default=config.AUMENTO_ESTIR_MODO)
     ap.add_argument("--ref-c", action="store_true",
@@ -193,9 +200,10 @@ def main() -> int:
     aumento = None
     if args.aumento > 0:
         print(f"Gerando {args.aumento} variante(s) por segmento "
-              f"({', '.join(tecnicas)}; estiramento '{args.modo_estiramento}')...")
+              f"({', '.join(tecnicas)}; estiramento '{args.modo_estiramento}'; "
+              f"semente {args.semente_aumento})...")
         dados = extrair_aumento(segmentos, por_rotulo, args.aumento, tecnicas,
-                                args.modo_estiramento, args.norm_clipe)
+                                args.modo_estiramento, args.norm_clipe, args.semente_aumento)
         np.savez_compressed(destino_aumento, **dados)
         aumento = {
             "copias": args.aumento,
@@ -206,7 +214,7 @@ def main() -> int:
             "snr_db": list(config.AUMENTO_SNR_DB),
             "pv_nfft": config.AUMENTO_PV_NFFT,
             "pv_hop": config.AUMENTO_PV_HOP,
-            "semente": config.SEMENTE,
+            "semente": args.semente_aumento,
             "n_variantes": int(len(dados["X"])),
         }
     else:

@@ -279,13 +279,17 @@ _SIGLAS = {"deslocamento": "desl", "estiramento": "estir", "ruido": "ruido"}
 
 def rotulo_aumento(info: dict) -> str:
     """
-    Trecho do nome da pasta da rodada, ex. `aum4-desl-estir-ruido`. O modo
-    `velocidade` do estiramento, que não é o padrão, ganha o sufixo `-vel`,
-    para as duas rodadas não terem pastas com o mesmo nome.
+    Trecho do nome da pasta da rodada, ex. `aum4-desl-estir-ruido`. O que não
+    é o padrão ganha sufixo, para duas rodadas diferentes não terem pastas com
+    o mesmo nome: `-vel` para o estiramento no modo `velocidade`, e `-s<N>`
+    para uma semente de aumento diferente de `config.SEMENTE`.
     """
     partes = [f"aum{info['copias']}"] + [_SIGLAS[t] for t in info["tecnicas"]]
     if "estiramento" in info["tecnicas"] and info["modo_estiramento"] == "velocidade":
         partes.append("vel")
+    semente = info.get("semente", config.SEMENTE)
+    if semente != config.SEMENTE:
+        partes.append(f"s{semente}")
     return "-".join(partes)
 
 
@@ -302,6 +306,8 @@ def parametros_aumento(info: dict | None) -> dict:
         "aumento_snr_db": "-".join(str(t) for t in info["snr_db"]),
         "aumento_pv_nfft": info["pv_nfft"],
         "aumento_pv_hop": info["pv_hop"],
+        # rodadas anteriores a este campo (exp016–exp022) usaram config.SEMENTE
+        "aumento_semente": info.get("semente", config.SEMENTE),
     }
 
 
