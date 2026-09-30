@@ -13,7 +13,7 @@ Sistema embarcado que classifica, em tempo real e a partir de sinal acústico, o
 
 ## Status
 
-Fase 1 — Protótipo em Python (em andamento). Conversão, decimação, protocolo de validação, extração de MFCC, aumento de dados e caracterização da assinatura acústica concluídos; escolha do classificador em andamento. Ver o quadro de tarefas no Notion para o estado detalhado de cada etapa.
+Fase 1 — Protótipo em Python (em andamento). Conversão, decimação, protocolo de validação, extração de MFCC, aumento de dados, caracterização da assinatura acústica e estudo de escolha do classificador concluídos (fica a LDA: empata com a CNN 2D na validação interna e sai mais barata; ver "Escolha do classificador" abaixo). Próximo passo: modelo final e exportação dos pesos para o firmware. Ver o quadro de tarefas no Notion para o estado detalhado de cada etapa.
 
 ## Decisões técnicas fixadas
  
@@ -26,11 +26,18 @@ Fase 1 — Protótipo em Python (em andamento). Conversão, decimação, protoco
 | Unidade de classificação | segmento de 1 s (12.800 amostras); 59 por gravação, em blocos de 10, 10, 10, 10, 10 e 9 | Notion, Registro de Decisões (protocolo de validação) |
 | Protocolo de validação | **A** — blocos temporais (limite otimista); **B** — gravação de falha deixada de fora (resultado principal) | idem; implementação em `scripts/validation/particao.py` |
 | Meta de desempenho | acurácia balanceada média do Protocolo B ≥ 85 %, sempre com sensibilidade, especificidade e pior caso | idem; resultados em `reports/validation/` |
+| Classificador | **LDA** sobre média e desvio dos 13 MFCC (26 valores), priors uniformes; na validação interna ao treino do B, empata com a CNN 2D e fica pelo custo, e supera o MLP raso e a CNN 1D | `scripts/exploration/compare_classifiers.py`; Notion, estudo comparativo da tarefa Classificador 3/6 |
 | Aumento de dados | só no treino de cada fold: deslocamento de janela (±0,4 s), estiramento temporal (taxa 0,95–1,05, phase vocoder) e ruído branco (SNR 20–35 dB); variante só entra se ler apenas segmentos de treino do fold | proposta (Metodologia); `scripts/augmentation/` |
  
 A escolha de 12.800 Hz é a única taxa com fator de decimação inteiro dentro da faixa de 8–16 kHz — requisito de `arm_fir_decimate_f32` do CMSIS-DSP — e preserva 96,1 % da energia discriminante no pior caso (classes de defeito incipiente, 0,3 mm). O registro completo da comparação está em `experiments/registry.csv` (`exp001`–`exp006`). O diagnóstico por espectro de envelope desse relatório (SNRs de BPFI/BPFO por taxa) **não vale**: a busca do pico era centrada nas frequências nominais e não alcançava as linhas reais. Ele foi refeito no sinal original pelo `confirm_bpf_envelope.py` (ver "Assinatura acústica" abaixo). A decisão de 12.800 Hz não muda, porque nunca dependeu do envelope.
 
 O protocolo de validação existe porque o dataset tem **uma única gravação por classe**: qualquer divisão treino/teste dentro de uma gravação deixa os dois no mesmo registro, e o classificador pode separar as classes pela identidade da gravação em vez da falha (foi o que deu acurácia 1,0 no estudo de decimação). O Protocolo B testa cada gravação de falha sem que ela apareça no treino; é o único resultado que conta para a meta. A primeira rodada, provisória, está em `exp007`–`exp012`. Com o MFCC oficial, sem aumento, o A está em `exp027` (binário) e `exp028` (multiclasse) e o B em `exp013`/`exp015`, e os números são idênticos aos da rodada provisória: A com 1,000 em todos os folds; B com média 0,875, a `bpfo_0.3mm` em 0,5 e as outras três falhas em 1,0. A comparação está em `reports/validation/tabela_provisorio_vs_oficial.md`. Os controles obrigatórios com o MFCC oficial estão em `reports/validation/tabela_controles.md`. Sem o c0 e com normalização RMS por segmento nada muda (`exp029`, `exp030`, `exp014`, `exp219`). Com os rótulos permutados, o B fica em 0,450 ± 0,060 em 100 sementes (`exp031`–`exp050`, `exp059`–`exp138`; p empírico 0,0099). Na curva de aprendizado com o sorteio repartido entre as gravações (`exp139`–`exp218`, 10 sementes por ponto), o B vai de 0,757 com 2 s a 0,867 com 30 s por classe. A curva não descarta que o modelo tenha aprendido "diferente da gravação normal = falha", porque há uma só gravação normal e o teste dela vem da mesma gravação. O `inspect_lda_harmonicos.py` mostra que a LDA não depende das bandas de Mel em que a normal tem harmônicos do eixo mais fortes: apagar essas bandas (log-Mel trocado pela média do treino) e treinar o B de novo deixa o resultado idêntico, 0,875, enquanto apagar o mesmo número de bandas sorteadas fora dos harmônicos dá 0,854–0,875 (`exp221`). A decomposição da separação por banda (`exp220`, −0,20 nas bandas dos harmônicos) é complemento, porque bandas vizinhas são correlacionadas. As rodadas `exp051`–`exp058` são da curva sem estratificação e ficam só no registry.
+
+### Escolha do classificador
+
+A proposta previa escolher entre um MLP raso e uma CNN pequena. O `compare_classifiers.py` comparou quatro modelos (LDA como referência, MLP 26 → 16 → 2, CNN 1D sobre a matriz MFCC 13 × 98 e CNN 2D sobre o log-Mel 20 × 98) **sem usar o teste do Protocolo B**. Em cada fold externo do B, o treino é dividido de novo pela mesma lógica: cada falha de treino deixada de fora, combinada com cada bloco normal de treino (15 treinos internos por fold, 24 folds, 3 sementes por rede). A escolha é feita separadamente para cada falha deixada de fora (escolha aninhada), pelo critério do `escolher()`: dentro de uma margem de 0,02 da melhor acurácia interna (ou da dispersão entre sementes, se for maior), fica o modelo mais barato em MACs. O critério foi fechado depois da primeira rodada (`exp222`), que desempatava pela ordem da lista de modelos; aplicado aos mesmos números, ele dá a mesma escolha, e a rodada seguinte já o registra.
+
+A LDA e a CNN 2D empatam exatamente nas quatro escolhas aninhadas (0,875 de acurácia balanceada interna média), e a LDA fica pelo custo: a CNN 2D custa ~13.000× mais MACs e ~700× mais RAM de ativação. O MLP (0,828) e a CNN 1D (0,824) perdem na `bpfi_0.3mm`, onde a sensibilidade média cai para ~0,6. Nenhum modelo recupera a `bpfo_0.3mm`, nem a CNN 2D, que vê as bandas de Mel onde está a diferença: o pior caso vem de deslocamento de distribuição, não de capacidade do modelo. Em todos os modelos, os erros são falsos negativos (especificidade 1,000). Os números internos são pessimistas, porque o treino interno tem só 2 falhas contra 3 no B externo; o que conta é a comparação entre modelos. Cada rede foi avaliada numa configuração fixa (120 épocas, taxa de aprendizado 3e-3, 16 neurônios ocultos no MLP, 16 filtros na CNN 1D, 8 e 16 na CNN 2D), sem busca de hiperparâmetros: a conclusão de que modelos não lineares não trouxeram ganho vale para essas configurações. O estudo é só binário, porque no B a falha de fora não tem exemplos de treino e um modelo multiclasse não poderia prever essa classe. O custo estimado no STM32F411CEU6 (parâmetros, MACs e pico de ativação) sai do próprio script. Saída em `reports/classifier/compare_classifiers.json`.
 
 ### Assinatura acústica
 
@@ -84,6 +91,7 @@ diagnostico-acustico-motores/
 │   │   ├── inspect_pcm.py                 # sanidade da conversão + caráter do sinal
 │   │   ├── inspect_class_spectra.py       # PSD por classe e banda necessária
 │   │   ├── compare_decimation_rates.py    # estudo que definiu a taxa de trabalho
+│   │   ├── compare_classifiers.py         # estudo que escolheu o classificador (validação interna ao B)
 │   │   ├── inspect_lda_harmonicos.py      # controle: peso da LDA nas bandas dos harmônicos do eixo
 │   │   ├── inspect_left_out_fault.py      # posição da falha deixada de fora (Protocolo B)
 │   │   ├── inspect_signature_spectra.py   # PSD assinada falha × normal (excesso e déficit)
@@ -111,6 +119,8 @@ diagnostico-acustico-motores/
 │   ├── augmentation/
 │   │   ├── test_transformacoes.py
 │   │   └── test_variantes.py              # inclui: variante aceita nunca lê teste/descarte
+│   ├── exploration/
+│   │   └── test_compare_classifiers.py    # critério de escolha: mais barato na margem, em qualquer ordem (pula sem torch)
 │   └── validation/
 │       ├── test_curva_aprendizado.py      # subamostra só treino, n por classe, reprodutível
 │       └── test_particao.py
@@ -126,6 +136,7 @@ diagnostico-acustico-motores/
 │
 ├── reports/                  # figuras, tabelas e outputs para os relatórios
 │   ├── c_reference/          # reference_data.h: entrada int16 + MFCC esperado, para o porte em C
+│   ├── classifier/           # estudo de escolha do classificador (compare_classifiers.json)
 │   ├── decimation/           # métricas, figuras e relatório da escolha da taxa
 │   ├── exploration/          # figuras dos scripts exploratórios
 │   ├── signature/            # caracterização da assinatura acústica
@@ -141,8 +152,10 @@ Ver [`CONVENTIONS.md`](./CONVENTIONS.md) para as convenções de nomenclatura de
 ```bash
 python -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
+python -m pip install -r requirements.txt
 ```
+
+O `requirements.txt` instala o PyTorch **só para CPU**, pelo índice do PyTorch (linha `--extra-index-url` no topo do arquivo). É proposital: as redes do estudo do classificador têm menos de 2.400 parâmetros, a GPU não acelera nada nesse tamanho, e a versão CUDA ocupa alguns GB. Quem tiver GPU e quiser a versão CUDA pode instalá-la no próprio venv, sem mudar o `requirements.txt`.
 
 Baixe os 5 arquivos `.mat` do Mendeley e coloque em `data/raw/`. Depois, o pipeline na ordem numérica:
 
@@ -185,6 +198,12 @@ python scripts/exploration/inspect_lda_harmonicos.py --responsavel <nome>
 python scripts/pipeline/04_extract_features.py --norm-clipe
 python scripts/validation/run_protocol.py --protocolo B --responsavel <nome>
 python scripts/pipeline/04_extract_features.py       # volta ao padrão (sem normalização)
+
+# estudo da escolha do classificador: LDA × MLP × CNN 1D × CNN 2D por validação
+# interna ao treino do B (~33 min completo; --blocos-externos 1 leva ~1/6 disso)
+python scripts/exploration/compare_classifiers.py --sintetico       # auto-teste, sem registro
+python scripts/exploration/compare_classifiers.py --responsavel <nome>
+python scripts/exploration/compare_classifiers.py --blocos-externos 1 --sem-registro   # conferência rápida
 
 # referência para o porte em C (Fase 2)
 python scripts/pipeline/04_extract_features.py --ref-c
