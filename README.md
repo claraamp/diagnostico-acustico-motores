@@ -43,6 +43,10 @@ A LDA e a CNN 2D empatam exatamente nas quatro escolhas aninhadas (0,875 de acur
 
 Com a LDA, o Protocolo B com aumento aplicado só no treino de cada fold dá o mesmo resultado que sem aumento: 0,875 de acurácia balanceada média (sensibilidade 0,750, especificidade 1,000), com a `bpfo_0.3mm` como pior falha (0,500) e o pior fold em 0,500. Isso vale para o aumento completo em 10 sorteios diferentes das variantes (`exp224`–`exp233`, desvio 0,000 entre as sementes; o `exp224` reproduz o `exp016`) e para cada técnica isolada (`exp019`–`exp021`). O fator de expansão do treino é 5 nominal (o segmento e 4 variantes) e 4,98 efetivo, porque o filtro por fold recusa as variantes que encostam no teste ou na faixa de descarte (889 a 903 aceitas por fold). O estiramento por reamostragem é o único que muda o resultado, para pior (0,788, `exp022`), por deslocar as linhas estreitas de falha; por isso o padrão é o phase vocoder. O ganho aleatório não foi implementado: a ablação do nível do sinal (`exp014`, `exp029`, `exp030`) mostra que o modelo não usa o nível. A tabela está em `reports/validation/tabela_aumento.md`. Nas rodadas com aumento, os `parametros` (e o registry) trazem duas sementes: `semente` é a do `run_protocol` (permutação e curva de aprendizado; nestas rodadas, sempre a do config) e `aumento_semente` é a do sorteio das variantes, a única que varia entre o `exp224` e o `exp233`.
 
+### Decimação conferida com o classificador
+
+Com a LDA, o Protocolo B a 25,6 kHz não melhora o de 12,8 kHz: 0,870 de acurácia balanceada média contra 0,875 (`exp235` × `exp234`, no mesmo commit e com a mesma partição em segundos; a de 25,6 kHz é a `splits_25600.json`). A `bpfo_0.3mm` continua sem ser detectada nas duas taxas (sensibilidade 0,000). A única diferença é a `bpfi_0.3mm`, que a 25,6 kHz perde 13 dos 59 segmentos num dos seis folds (acurácia balanceada 0,982). O classificador não indica perda com a decimação; somado ao `exp023` (nenhuma energia a mais que a normal entre 6,4 e 12,8 kHz) e ao `exp026` (linhas de BPFO abaixo de ~3,8 kHz, que o MFCC a 12,8 kHz recebe), não há indício de que a faixa cortada carregue a informação da `bpfo_0.3mm`. O `exp235` sozinho não isola a banda alta: a 25,6 kHz as mesmas 20 bandas Mel se redistribuem até 12,8 kHz, e as bandas com centro abaixo de 3,8 kHz, onde ficam as linhas de BPFO, caem de 16 para 13, enquanto só 4 cobrem a faixa de 6,4 a 12,8 kHz. A comparação mede, portanto, a taxa junto com o MFCC padrão; isolar a banda alta pediria uma rodada a 25,6 kHz com as bandas abaixo de 6,4 kHz iguais às de 12,8 kHz e bandas extras na faixa alta. A tabela está em `reports/validation/tabela_taxas.md`.
+
 ### Assinatura acústica
 
 As frequências de falha **medidas** no áudio são BPFI ≈ 268,3 Hz e BPFO ≈ 182,7–183,4 Hz (eixo a 50,20 Hz). A BPFI e a BPFO da falha de 1,0 mm foram confirmadas por um segundo sensor: no espectro de envelope, a vibração as mostra a menos de 0,25 Hz do áudio. Na `bpfo_0.3mm` a confirmação é **parcial**: a vibração tem energia em 182,65 Hz, mas o pico do envelope dela fica em 181,5 Hz, e o envelope do áudio não mostra a linha. As medidas diferem das frequências **cinemáticas** da Tabela 1 do artigo (272,1 e 179,4 Hz), calculadas para ângulo de contato θ = 0°. Use as medidas quando precisar de uma frequência de falha, e chame as do artigo de "cinemáticas", não de "frequências da bancada". Abaixo de 6,4 kHz, cada falha aparece no espectro como uma série harmônica estreita da própria pista, e essas linhas sobrevivem à decimação. A impulsividade clássica, no áudio, fica acima de 6,4 kHz (9–22 kHz nas classes de falha), e a decimação a remove.
@@ -78,8 +82,10 @@ diagnostico-acustico-motores/
 │       ├── pcm_raw/          # saída do 01 — .bin não versionados, manifest.json versionado
 │       ├── pcm_decimated/    # saída do 02, um subdiretório por taxa (ex.: 12800/)
 │       ├── splits/
-│       │   └── splits.json   # saída do 03 — partição dos protocolos A e B, VERSIONADA
+│       │   ├── splits.json   # saída do 03 — partição dos protocolos A e B, VERSIONADA
+│       │   └── splits_25600.json   # a mesma partição a 25,6 kHz (03 --fs 25600), para comparar taxas
 │       └── features/         # saída do 04 — mfcc_features.npz + manifest_features.json, NÃO versionados
+│                             # (outra taxa: features/<fs>/)
 │
 ├── scripts/
 │   ├── config.py             # parâmetros compartilhados entre etapas
@@ -115,7 +121,8 @@ diagnostico-acustico-motores/
 │       ├── run_protocol.py                # executável: roda A ou B e registra o resultado
 │       ├── run_tabela_comparativa.py      # executável: tabela provisório × oficial a partir dos metrics.json
 │       ├── run_tabela_controles.py        # executável: tabela dos controles (sem c0, permutação, curva)
-│       └── run_tabela_aumento.py          # executável: tabela do B com e sem aumento de dados
+│       ├── run_tabela_aumento.py          # executável: tabela do B com e sem aumento de dados
+│       └── run_tabela_taxas.py            # executável: tabela do B em duas taxas de amostragem
 │
 ├── tests/                    # pytest; não dependem de data/
 │   ├── conftest.py
@@ -129,7 +136,8 @@ diagnostico-acustico-motores/
 │   └── validation/
 │       ├── test_curva_aprendizado.py      # subamostra só treino, n por classe, reprodutível
 │       ├── test_tabela_aumento.py         # tabela do aumento: comparabilidade e fator de expansão
-│       └── test_particao.py
+│       ├── test_tabela_taxas.py           # tabela das taxas: comparabilidade e mesma partição em segundos
+│       └── test_particao.py               # inclui: outra taxa dá os mesmos segmentos em segundos
 │
 ├── notebooks/                # notebooks de análise/visualização
 │
@@ -226,6 +234,16 @@ python scripts/pipeline/04_extract_features.py --aumento 4 --modo-estiramento ve
 # outro sorteio das variantes, com os mesmos parâmetros (uma rodada por semente)
 python scripts/pipeline/04_extract_features.py --aumento 4 --semente-aumento 1
 python scripts/validation/run_protocol.py --protocolo B --aumento --responsavel <nome>
+
+# Protocolo B em outra taxa, sem mudar a de produção: cada etapa com --fs grava
+# em caminhos próprios (pcm_decimated/25600/, splits_25600.json, features/25600/)
+python scripts/pipeline/02_decimate_pcm.py --fs 25600
+python scripts/pipeline/03_make_splits.py --fs 25600      # confere a partição versionada
+python scripts/pipeline/04_extract_features.py --fs 25600
+python scripts/validation/run_protocol.py --protocolo B --fs 25600 --responsavel <nome>
+python scripts/pipeline/04_extract_features.py            # a referência, a 12,8 kHz
+python scripts/validation/run_protocol.py --protocolo B --responsavel <nome>
+python scripts/validation/run_tabela_taxas.py --rodadas <exp 12,8 kHz> <exp 25,6 kHz>
 ```
 
 O teste nunca é aumentado: todo fold é avaliado nos segmentos originais. Rodar o `04` sem `--aumento` apaga o `mfcc_aumento.npz` de uma rodada anterior, para que ele não seja lido como se fosse da extração atual.

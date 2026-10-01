@@ -52,6 +52,11 @@ Controles
              acertam tudo, o modelo está separando por um atalho, não pela
              falha. Mínimo de 2 segmentos por classe: com 1, a LDA não tem
              covariância dentro da classe.
+--fs N       roda na taxa N (padrão: config.FS_TRABALHO), com o PCM, a partição
+             e as features dessa taxa (`02`, `03` e `04` com `--fs N`), nos
+             caminhos de `config`. Serve para comparar taxas com o mesmo
+             protocolo e o mesmo modelo, sem mudar a taxa de produção. A
+             taxa entra no nome da pasta (`_<N>hz`) quando não é a de trabalho.
 --semente    semente dos sorteios (permutação e curva de aprendizado); padrão
              config.SEMENTE, que reproduz as rodadas já registradas
 
@@ -65,6 +70,7 @@ Uso
     python scripts/validation/run_protocol.py --protocolo B --aumento --permutar
     python scripts/validation/run_protocol.py --protocolo B --permutar --semente 1
     python scripts/validation/run_protocol.py --protocolo B --segundos-treino 5
+    python scripts/validation/run_protocol.py --protocolo B --fs 25600
     python scripts/validation/run_protocol.py --protocolo B --sem-registro   # teste
 """
 
@@ -326,10 +332,14 @@ def main() -> int:
                     help="curva de aprendizado: N segundos de treino por classe em cada fold")
     ap.add_argument("--semente", type=int, default=None,
                     help=f"semente da permutação e da curva de aprendizado (padrão {config.SEMENTE})")
-    ap.add_argument("--splits", type=Path, default=Path("data/processed/splits/splits.json"))
-    ap.add_argument("--features", type=Path, default=Path("data/processed/features/mfcc_features.npz"))
-    ap.add_argument("--pcm-dir", type=Path,
-                    default=Path(f"data/processed/pcm_decimated/{config.FS_TRABALHO}"))
+    ap.add_argument("--fs", type=int, default=config.FS_TRABALHO,
+                    help="taxa da rodada (padrão: config.FS_TRABALHO)")
+    ap.add_argument("--splits", type=Path, default=None,
+                    help="padrão: a partição da taxa (config.arquivo_splits)")
+    ap.add_argument("--features", type=Path, default=None,
+                    help="padrão: mfcc_features.npz em config.dir_features(fs)")
+    ap.add_argument("--pcm-dir", type=Path, default=None,
+                    help="padrão: data/processed/pcm_decimated/<fs>")
     ap.add_argument("--out-dir", type=Path, default=Path("reports/validation"))
     ap.add_argument("--registry", type=Path, default=Path("experiments/registry.csv"))
     ap.add_argument("--sem-registro", action="store_true",
@@ -341,6 +351,10 @@ def main() -> int:
     if args.protocolo == "B" and args.tarefa == "multiclasse":
         ap.error("o Protocolo B é binário: cada falha testada não aparece no treino, "
                  "então não há como acertar a classe dela")
+    if args.aumento and args.fs != config.FS_TRABALHO:
+        # o 04 só gera o aumento na taxa de trabalho; sem isto, a mensagem de
+        # "rode o 04 com --aumento N" mandaria rodar algo que o 04 recusa
+        ap.error(f"--aumento só vale na taxa de trabalho ({config.FS_TRABALHO} Hz)")
     segmentos_treino = None
     if args.segundos_treino is not None:
         if args.aumento or args.permutar:
@@ -353,8 +367,11 @@ def main() -> int:
             ap.error(f"--segundos-treino precisa de pelo menos 2 segmentos por classe "
                      f"({2 * config.SEGMENTO_S:g} s) para a LDA")
     semente = config.SEMENTE if args.semente is None else args.semente
+    args.splits = args.splits or Path(config.arquivo_splits(args.fs))
+    args.features = args.features or Path(config.dir_features(args.fs)) / "mfcc_features.npz"
+    args.pcm_dir = args.pcm_dir or Path(config.dir_pcm_decimado(args.fs))
 
-    clipes = pcm_io.carregar_clipes(args.pcm_dir, fs_esperado=config.FS_TRABALHO)
+    clipes = pcm_io.carregar_clipes(args.pcm_dir, fs_esperado=args.fs)
     divergencias = pcm_io.verificar_integridade(clipes)
     pcm_io.relatar_integridade(divergencias)
     if divergencias:
@@ -362,7 +379,8 @@ def main() -> int:
         return 1
 
     particoes = particao.carregar(args.splits)
-    problemas = particao.conferir_compatibilidade(particoes, clipes) + particao.verificar(particoes)
+    problemas = (particao.conferir_compatibilidade(particoes, clipes, args.fs)
+                 + particao.verificar(particoes))
     if problemas:
         print("\nAbortado — splits.json inválido para estes dados:")
         for p in problemas:
@@ -385,7 +403,7 @@ def main() -> int:
 
     esperado = {
         "splits_hash": hash_splits,
-        "fs_hz": config.FS_TRABALHO,
+        "fs_hz": args.fs,
         "mfcc_janela_ms": config.MFCC_WINDOW_MS,
         "mfcc_hop_ms": config.MFCC_HOP_MS,
         "mfcc_n_mels": config.MFCC_N_MELS,
@@ -444,6 +462,7 @@ def main() -> int:
         "semc0" if args.sem_c0 else None, "permutado" if args.permutar else None,
         f"treino{segmentos_treino * config.SEGMENTO_S:g}s" if segmentos_treino is not None else None,
         f"semente{semente}" if args.semente is not None else None,
+        f"{args.fs}hz" if args.fs != config.FS_TRABALHO else None,
     ) if p)
     exp_id = "teste" if args.sem_registro else f"exp{experimentos.next_exp_number(args.registry):03d}"
     destino = args.out_dir / f"{exp_id}_{descricao}"
@@ -492,7 +511,7 @@ def main() -> int:
         "script": "validation/run_protocol.py",
         "git_commit": experimentos.git_short_hash(),
         "parametros": experimentos.kv(parametros),
-        "dataset": f"jung2023_acustico_0Nm_{config.FS_TRABALHO}Hz",
+        "dataset": f"jung2023_acustico_0Nm_{args.fs}Hz",
         "metricas": experimentos.kv(metricas_registry(resumo)),
         "responsavel": args.responsavel,
         "notas": args.notas or (

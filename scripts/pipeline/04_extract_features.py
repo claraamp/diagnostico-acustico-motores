@@ -30,6 +30,12 @@ Opções
                sorteio do aumento.
 --modo-estiramento  "tempo" (phase vocoder) ou "velocidade" (reamostragem);
                padrão: config.AUMENTO_ESTIR_MODO
+--fs N         extrai as features dos PCM a N Hz (do `02 --fs N`) com a partição
+               dessa taxa (`03 --fs N`), em data/processed/features/<N>/. O MFCC
+               usa os mesmos parâmetros em milissegundos e o banco de Mel vai até
+               o Nyquist de N. Padrão: config.FS_TRABALHO, nos caminhos de
+               sempre. Não se combina com --aumento nem com --ref-c, que são da
+               taxa de trabalho.
 --ref-c        exporta `reports/c_reference/reference_data.h` com a entrada int16
                e o MFCC do primeiro segmento da classe `normal`, para validar o
                porte em C da Fase 2. Só sem `--norm-clipe`.
@@ -42,6 +48,7 @@ Uso
     python scripts/pipeline/04_extract_features.py --aumento 4
     python scripts/pipeline/04_extract_features.py --aumento 4 --tecnicas ruido
     python scripts/pipeline/04_extract_features.py --aumento 4 --semente-aumento 1
+    python scripts/pipeline/04_extract_features.py --fs 25600
 """
 
 import argparse
@@ -89,11 +96,12 @@ def exportar_referencia_c(sinal_bruto_int16: np.ndarray, mfcc_matriz: np.ndarray
     destino.write_text("\n".join(linhas) + "\n", encoding="utf-8")
 
 
-def resumo_mfcc(trecho: np.ndarray, norm_clipe: bool) -> np.ndarray:
+def resumo_mfcc(trecho: np.ndarray, norm_clipe: bool,
+                fs: float = config.FS_TRABALHO) -> np.ndarray:
     """Linha de features de um trecho: média e desvio de cada coeficiente MFCC."""
     if norm_clipe:
         trecho = dsp.normalizar_rms_clipe(trecho)
-    m = dsp.mfcc(trecho, config.FS_TRABALHO)
+    m = dsp.mfcc(trecho, fs)
     return np.concatenate([m.mean(axis=0), m.std(axis=0)])
 
 
@@ -129,10 +137,14 @@ def extrair_aumento(segmentos, por_rotulo: dict, n_copias: int, tecnicas, modo: 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--splits", type=Path, default=Path("data/processed/splits/splits.json"))
-    ap.add_argument("--pcm-dir", type=Path,
-                    default=Path(f"data/processed/pcm_decimated/{config.FS_TRABALHO}"))
-    ap.add_argument("--out-dir", type=Path, default=Path("data/processed/features"))
+    ap.add_argument("--fs", type=int, default=config.FS_TRABALHO,
+                    help="taxa dos PCM decimados (padrão: config.FS_TRABALHO)")
+    ap.add_argument("--splits", type=Path, default=None,
+                    help="padrão: a partição da taxa (config.arquivo_splits)")
+    ap.add_argument("--pcm-dir", type=Path, default=None,
+                    help="padrão: data/processed/pcm_decimated/<fs>")
+    ap.add_argument("--out-dir", type=Path, default=None,
+                    help="padrão: data/processed/features (outra taxa: features/<fs>)")
     ap.add_argument("--ref-dir", type=Path, default=Path("reports/c_reference"))
     ap.add_argument("--norm-clipe", action="store_true",
                     help="normaliza cada segmento pelo próprio RMS antes do MFCC")
@@ -153,12 +165,20 @@ def main() -> int:
         ap.error("--ref-c não pode ser combinado com --norm-clipe")
     if args.aumento < 0:
         ap.error("--aumento tem que ser ≥ 0")
+    if args.fs != config.FS_TRABALHO and (args.aumento or args.ref_c):
+        # o deslocamento e o phase vocoder do aumento, e o header do porte em C,
+        # são definidos para a taxa de trabalho
+        ap.error("--aumento e --ref-c só valem na taxa de trabalho "
+                 f"({config.FS_TRABALHO} Hz)")
+    args.splits = args.splits or Path(config.arquivo_splits(args.fs))
+    args.pcm_dir = args.pcm_dir or Path(config.dir_pcm_decimado(args.fs))
+    args.out_dir = args.out_dir or Path(config.dir_features(args.fs))
     try:
         tecnicas = variantes.validar_tecnicas(args.tecnicas.split(","))
     except ValueError as e:
         ap.error(str(e))
 
-    clipes = pcm_io.carregar_clipes(args.pcm_dir, fs_esperado=config.FS_TRABALHO)
+    clipes = pcm_io.carregar_clipes(args.pcm_dir, fs_esperado=args.fs)
     divergencias = pcm_io.verificar_integridade(clipes)
     pcm_io.relatar_integridade(divergencias)
     if divergencias:
@@ -166,7 +186,7 @@ def main() -> int:
         return 1
 
     particoes = particao.carregar(args.splits)
-    problemas = particao.conferir_compatibilidade(particoes, clipes)
+    problemas = particao.conferir_compatibilidade(particoes, clipes, args.fs)
     if problemas:
         print("\nAbortado — splits.json incompatível com estes dados:")
         for p in problemas:
@@ -176,7 +196,8 @@ def main() -> int:
     segmentos = particao.segmentos_de(particoes)
     por_rotulo = {c.rotulo: c for c in clipes}
 
-    print(f"Extraindo features de {len(segmentos)} segmentos (norm_clipe={args.norm_clipe})...")
+    print(f"Extraindo features de {len(segmentos)} segmentos a {args.fs} Hz "
+          f"(norm_clipe={args.norm_clipe})...")
     linhas_X = []
     referencia_salva = False
     for seg in segmentos:
@@ -189,7 +210,7 @@ def main() -> int:
             exportar_referencia_c(sinal_int16, dsp.mfcc(trecho, config.FS_TRABALHO),
                                   args.ref_dir / "reference_data.h")
             referencia_salva = True
-        linhas_X.append(resumo_mfcc(trecho, args.norm_clipe))
+        linhas_X.append(resumo_mfcc(trecho, args.norm_clipe, args.fs))
 
     args.out_dir.mkdir(parents=True, exist_ok=True)
     destino_features = args.out_dir / "mfcc_features.npz"
@@ -225,7 +246,7 @@ def main() -> int:
         "git_commit": experimentos.git_short_hash(),
         "splits_hash": hash_splits,
         "n_segmentos": len(segmentos),
-        "fs_hz": config.FS_TRABALHO,
+        "fs_hz": args.fs,
         "norm_clipe": args.norm_clipe,
         "mfcc_janela_ms": config.MFCC_WINDOW_MS,
         "mfcc_hop_ms": config.MFCC_HOP_MS,

@@ -180,3 +180,42 @@ def test_compatibilidade_acusa_gravacao_de_outro_tamanho(particoes):
                          pcm=np.zeros(N_AMOSTRAS - 1, dtype=config.PCM_DTYPE))
              for r in config.CLASSES]
     assert particao.conferir_compatibilidade(particoes, outro)
+
+
+# --------------------------------------------------------------- outra taxa
+def _clipes_a(fs: int, n: int):
+    return [pcm_io.Clip(rotulo=r, binario=config.BINARIO[r], fs=fs,
+                        pcm=np.zeros(n, dtype=config.PCM_DTYPE))
+            for r in config.CLASSES]
+
+
+def test_outra_taxa_tem_os_mesmos_segmentos_em_segundos(particoes):
+    """A 25,6 kHz (02 --fs 25600: 1.535.982 amostras), os segmentos e os folds são
+    os mesmos da taxa de trabalho; só o número de amostras de cada um dobra."""
+    fs = 25_600
+    outra = particao.gerar_particoes(_clipes_a(fs, 1_535_982), config.amostras_por_segmento(fs))
+    assert particao.verificar(outra) == []
+    a, b = particao.segmentos_de(particoes), particao.segmentos_de(outra)
+    assert [(s.rotulo, s.indice, s.bloco) for s in a] == [(s.rotulo, s.indice, s.bloco) for s in b]
+    assert all(t.inicio == 2 * s.inicio and t.fim == 2 * s.fim for s, t in zip(a, b))
+    assert [(f.nome, f.treino, f.teste, f.descartados) for f in particao.folds_de(particoes)] == \
+        [(f.nome, f.treino, f.teste, f.descartados) for f in particao.folds_de(outra)]
+
+
+def test_compatibilidade_confere_a_taxa_da_rodada(particoes):
+    fs = 25_600
+    clipes_25k = _clipes_a(fs, 1_535_982)
+    outra = particao.gerar_particoes(clipes_25k, config.amostras_por_segmento(fs))
+    assert particao.conferir_compatibilidade(outra, clipes_25k, fs) == []
+    # a partição de 25,6 kHz não passa como se fosse da taxa de trabalho, nem o contrário
+    assert particao.conferir_compatibilidade(outra, clipes_25k)
+    assert particao.conferir_compatibilidade(particoes, clipes_25k, fs)
+
+
+def test_caminhos_da_taxa_de_trabalho_nao_mudam():
+    fs = config.FS_TRABALHO
+    assert config.arquivo_splits(fs) == "data/processed/splits/splits.json"
+    assert config.dir_features(fs) == "data/processed/features"
+    assert config.arquivo_splits(25_600) == "data/processed/splits/splits_25600.json"
+    assert config.dir_features(25_600) == "data/processed/features/25600"
+    assert config.amostras_por_segmento(fs) == config.AMOSTRAS_POR_SEGMENTO

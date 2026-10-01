@@ -79,7 +79,7 @@ BINARIO = {
 # treino e teste no mesmo registro. O protocolo que contorna isso — blocos
 # temporais (A) e gravação de falha deixada de fora (B) — está implementado em
 # validation/particao.py. A partição é gerada UMA vez pelo
-# pipeline/04_make_splits.py e gravada em data/processed/splits/splits.json;
+# pipeline/03_make_splits.py e gravada em data/processed/splits/splits.json;
 # todo experimento lê esse arquivo. A meta de 85 % é a acurácia balanceada
 # média do Protocolo B.
 SEGMENTOS_POR_BLOCO = 10   # segmentos de SEGMENTO_S por bloco temporal
@@ -89,7 +89,13 @@ SEMENTE = 20260925         # só para controles aleatórios (permutação de ró
                            # e treino de modelos; a partição é determinística
 
 # Derivado (não editar)
-AMOSTRAS_POR_SEGMENTO = int(round(FS_TRABALHO * SEGMENTO_S))   # 12800
+def amostras_por_segmento(fs: float) -> int:
+    """Amostras de um segmento de SEGMENTO_S a uma taxa `fs` (a de trabalho ou
+    outra, nos estudos que comparam taxas sem mudar a de produção)."""
+    return int(round(fs * SEGMENTO_S))
+
+
+AMOSTRAS_POR_SEGMENTO = amostras_por_segmento(FS_TRABALHO)   # 12800
 
 # A sobra do fim de cada gravação que não completa um segmento é descartada.
 # Com a decimação atual, cada gravação tem 767.982 amostras: 59 segmentos
@@ -117,6 +123,28 @@ assert AUMENTO_DESLOC_MAX_S < SEGMENTOS_DESCARTE * SEGMENTO_S, (
     "o deslocamento máximo tem que ser menor que a faixa de descarte; senão "
     "quase toda variante de borda do treino seria recusada pelo run_protocol"
 )
+
+# ==========================================
+# Caminhos dos dados por taxa
+# ==========================================
+# A taxa de trabalho usa os caminhos de sempre. Outra taxa (estudo que compara
+# taxas sem mudar a de produção) tem PCM, partição e features próprios, em
+# caminhos separados, para nunca sobrescrever os de FS_TRABALHO.
+def dir_pcm_decimado(fs: float) -> str:
+    return f"data/processed/pcm_decimated/{int(fs)}"
+
+
+def arquivo_splits(fs: float) -> str:
+    if int(fs) == FS_TRABALHO:
+        return "data/processed/splits/splits.json"
+    return f"data/processed/splits/splits_{int(fs)}.json"
+
+
+def dir_features(fs: float) -> str:
+    if int(fs) == FS_TRABALHO:
+        return "data/processed/features"
+    return f"data/processed/features/{int(fs)}"
+
 
 # ==========================================
 # Formato dos dados
