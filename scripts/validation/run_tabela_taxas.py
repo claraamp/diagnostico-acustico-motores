@@ -15,8 +15,9 @@ escreve no registry: só lê rodadas que já têm linha própria.
 Comparabilidade
 ---------------
 Aborta se as rodadas não forem do B binário com o mesmo modelo, as mesmas
-features, a mesma segmentação e o mesmo MFCC (em milissegundos), sem controles
-nem aumento, ou se repetirem a taxa. A partição de cada taxa é um splits.json
+features extraídas no mesmo commit (`features_commit`), a mesma segmentação e
+o mesmo MFCC (em milissegundos), sem controles nem aumento, ou se repetirem a
+taxa. A partição de cada taxa é um splits.json
 próprio (`config.arquivo_splits`), então o hash difere; o script confere, em
 vez disso, que as partições descrevem os MESMOS segmentos em segundos e os
 mesmos folds, e que o hash de cada uma é o que a rodada registrou.
@@ -41,8 +42,11 @@ from validation import particao
 from validation.run_tabela_aumento import carregar
 
 # tudo o que define a rodada além da taxa: nada disso pode variar entre as linhas
-IGUAIS = ("protocolo", "tarefa", "modelo", "features", "segmento_s", "segmentos_por_bloco",
-          "segmentos_descarte", "mfcc_janela_ms", "mfcc_hop_ms", "mfcc_n_mels", "mfcc_n_coefs")
+# (o features_commit garante o mesmo código de extração, `dsp.mfcc` inclusive:
+# com outro commit, a diferença entre as linhas poderia não ser da taxa)
+IGUAIS = ("protocolo", "tarefa", "modelo", "features", "features_commit", "segmento_s",
+          "segmentos_por_bloco", "segmentos_descarte", "mfcc_janela_ms", "mfcc_hop_ms",
+          "mfcc_n_mels", "mfcc_n_coefs")
 CONTROLES = ("permutado", "sem_c0", "norm_clipe", "segundos_treino")
 
 

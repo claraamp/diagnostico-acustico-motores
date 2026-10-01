@@ -351,6 +351,10 @@ def main() -> int:
     if args.protocolo == "B" and args.tarefa == "multiclasse":
         ap.error("o Protocolo B é binário: cada falha testada não aparece no treino, "
                  "então não há como acertar a classe dela")
+    if args.aumento and args.fs != config.FS_TRABALHO:
+        # o 04 só gera o aumento na taxa de trabalho; sem isto, a mensagem de
+        # "rode o 04 com --aumento N" mandaria rodar algo que o 04 recusa
+        ap.error(f"--aumento só vale na taxa de trabalho ({config.FS_TRABALHO} Hz)")
     segmentos_treino = None
     if args.segundos_treino is not None:
         if args.aumento or args.permutar:

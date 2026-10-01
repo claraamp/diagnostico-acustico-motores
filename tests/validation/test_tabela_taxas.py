@@ -20,7 +20,7 @@ from validation import particao
 from validation import run_tabela_taxas as T
 
 BASE = {"protocolo": "B", "tarefa": "binario", "modelo": "lda",
-        "features": "mfcc_dsp_media_desvio", "segmento_s": 1.0,
+        "features": "mfcc_dsp_media_desvio", "features_commit": "abc1234", "segmento_s": 1.0,
         "segmentos_por_bloco": 10, "segmentos_descarte": 1,
         "mfcc_janela_ms": 25, "mfcc_hop_ms": 10, "mfcc_n_mels": 20, "mfcc_n_coefs": 13,
         "permutado": False, "sem_c0": False, "norm_clipe": False, "aumento": "nenhum"}
@@ -66,7 +66,8 @@ def raiz(tmp_path):
     _rodada(pasta, "exp003", {**BASE, "fs_hz": 25_600, "splits": h25, "mfcc_n_mels": 40})
     _rodada(pasta, "exp004", {**BASE, "fs_hz": 25_600, "splits": h25, "aumento": "ruido"})
     _rodada(pasta, "exp005", {**BASE, "fs_hz": 25_600, "splits": "outro"})
-    _rodada(pasta, "exp006", {**BASE, "fs_hz": 12_800, "splits": h12, "permutado": True})
+    _rodada(pasta, "exp006", {**BASE, "fs_hz": 25_600, "splits": h25, "permutado": True})
+    _rodada(pasta, "exp008", {**BASE, "fs_hz": 25_600, "splits": h25, "features_commit": "def5678"})
     return tmp_path
 
 
@@ -81,11 +82,21 @@ def test_tabela_com_a_diferenca_entre_taxas(raiz):
 @pytest.mark.parametrize("ids", [
     ["exp001", "exp003"],   # outro MFCC
     ["exp001", "exp004"],   # com aumento
-    ["exp001", "exp006"],   # controle permutado, e mesma taxa
+    ["exp001", "exp006"],   # controle permutado (só isso: a taxa é outra)
     ["exp002", "exp005"],   # mesma taxa
+    ["exp001", "exp008"],   # features extraídas em outro commit
 ])
 def test_recusa_rodadas_nao_comparaveis(raiz, ids):
     with pytest.raises(SystemExit):
+        T.montar(ids, raiz / "reports", raiz)
+
+
+@pytest.mark.parametrize("ids, motivo", [
+    (["exp001", "exp006"], "controle"),
+    (["exp001", "exp008"], "features_commit"),
+])
+def test_recusa_diz_o_motivo(raiz, ids, motivo):
+    with pytest.raises(SystemExit, match=motivo):
         T.montar(ids, raiz / "reports", raiz)
 
 
