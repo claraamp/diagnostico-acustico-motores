@@ -37,7 +37,7 @@ B — gravação de falha deixada de fora (resultado principal, binário). Para 
     Com 4 falhas e 6 blocos normais, são 24 folds.
 
 A partição é determinística: não há sorteio. Ela é gerada uma vez pelo
-`pipeline/04_make_splits.py`, gravada em `data/processed/splits/splits.json`
+`pipeline/03_make_splits.py`, gravada em `data/processed/splits/splits.json`
 (versionado) e lida por todo experimento. `verificar` confere as garantias
 acima e é usada pelo 04, pelos experimentos e pelos testes.
 
@@ -308,25 +308,29 @@ def verificar(particoes: dict) -> list[str]:
     return erros
 
 
-def conferir_compatibilidade(particoes: dict, clipes) -> list[str]:
+def conferir_compatibilidade(particoes: dict, clipes,
+                             fs: float = config.FS_TRABALHO) -> list[str]:
     """
     Confere se o splits.json descreve os dados carregados agora.
 
     Se a decimação ou os parâmetros de segmentação mudarem, a partição gravada
     deixa de corresponder aos dados, e os índices passam a apontar para trechos
     errados sem erro nenhum. Esta checagem transforma isso em erro.
+
+    `fs` é a taxa da rodada: a de trabalho por padrão, ou outra nos estudos que
+    comparam taxas (cada taxa tem o próprio splits.json).
     """
     erros: list[str] = []
     p = particoes["parametros"]
     esperado = {
-        "fs_hz": int(config.FS_TRABALHO),
-        "amostras_por_segmento": config.AMOSTRAS_POR_SEGMENTO,
+        "fs_hz": int(fs),
+        "amostras_por_segmento": config.amostras_por_segmento(fs),
         "segmentos_por_bloco": config.SEGMENTOS_POR_BLOCO,
         "segmentos_descarte": config.SEGMENTOS_DESCARTE,
     }
     for k, v in esperado.items():
         if p.get(k) != v:
-            erros.append(f"splits.json tem {k}={p.get(k)}, config.py tem {v}")
+            erros.append(f"splits.json tem {k}={p.get(k)}, a rodada espera {v}")
     gravacoes = particoes.get("gravacoes", {})
     for c in clipes:
         g = gravacoes.get(c.rotulo)
@@ -374,7 +378,7 @@ def carregar(caminho: Path) -> dict:
     if not caminho.exists():
         raise FileNotFoundError(
             f"não achei {caminho}. Ele é versionado; se não existe, rode "
-            "scripts/pipeline/04_make_splits.py."
+            "scripts/pipeline/03_make_splits.py."
         )
     particoes = json.loads(caminho.read_text(encoding="utf-8"))
     if particoes.get("formato") != FORMATO:

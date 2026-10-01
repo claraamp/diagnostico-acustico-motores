@@ -78,8 +78,10 @@ diagnostico-acustico-motores/
 │       ├── pcm_raw/          # saída do 01 — .bin não versionados, manifest.json versionado
 │       ├── pcm_decimated/    # saída do 02, um subdiretório por taxa (ex.: 12800/)
 │       ├── splits/
-│       │   └── splits.json   # saída do 03 — partição dos protocolos A e B, VERSIONADA
+│       │   ├── splits.json   # saída do 03 — partição dos protocolos A e B, VERSIONADA
+│       │   └── splits_25600.json   # a mesma partição a 25,6 kHz (03 --fs 25600), para comparar taxas
 │       └── features/         # saída do 04 — mfcc_features.npz + manifest_features.json, NÃO versionados
+│                             # (outra taxa: features/<fs>/)
 │
 ├── scripts/
 │   ├── config.py             # parâmetros compartilhados entre etapas
@@ -115,7 +117,8 @@ diagnostico-acustico-motores/
 │       ├── run_protocol.py                # executável: roda A ou B e registra o resultado
 │       ├── run_tabela_comparativa.py      # executável: tabela provisório × oficial a partir dos metrics.json
 │       ├── run_tabela_controles.py        # executável: tabela dos controles (sem c0, permutação, curva)
-│       └── run_tabela_aumento.py          # executável: tabela do B com e sem aumento de dados
+│       ├── run_tabela_aumento.py          # executável: tabela do B com e sem aumento de dados
+│       └── run_tabela_taxas.py            # executável: tabela do B em duas taxas de amostragem
 │
 ├── tests/                    # pytest; não dependem de data/
 │   ├── conftest.py
@@ -129,7 +132,8 @@ diagnostico-acustico-motores/
 │   └── validation/
 │       ├── test_curva_aprendizado.py      # subamostra só treino, n por classe, reprodutível
 │       ├── test_tabela_aumento.py         # tabela do aumento: comparabilidade e fator de expansão
-│       └── test_particao.py
+│       ├── test_tabela_taxas.py           # tabela das taxas: comparabilidade e mesma partição em segundos
+│       └── test_particao.py               # inclui: outra taxa dá os mesmos segmentos em segundos
 │
 ├── notebooks/                # notebooks de análise/visualização
 │
@@ -226,6 +230,16 @@ python scripts/pipeline/04_extract_features.py --aumento 4 --modo-estiramento ve
 # outro sorteio das variantes, com os mesmos parâmetros (uma rodada por semente)
 python scripts/pipeline/04_extract_features.py --aumento 4 --semente-aumento 1
 python scripts/validation/run_protocol.py --protocolo B --aumento --responsavel <nome>
+
+# Protocolo B em outra taxa, sem mudar a de produção: cada etapa com --fs grava
+# em caminhos próprios (pcm_decimated/25600/, splits_25600.json, features/25600/)
+python scripts/pipeline/02_decimate_pcm.py --fs 25600
+python scripts/pipeline/03_make_splits.py --fs 25600      # confere a partição versionada
+python scripts/pipeline/04_extract_features.py --fs 25600
+python scripts/validation/run_protocol.py --protocolo B --fs 25600 --responsavel <nome>
+python scripts/pipeline/04_extract_features.py            # a referência, a 12,8 kHz
+python scripts/validation/run_protocol.py --protocolo B --responsavel <nome>
+python scripts/validation/run_tabela_taxas.py --rodadas <exp 12,8 kHz> <exp 25,6 kHz>
 ```
 
 O teste nunca é aumentado: todo fold é avaliado nos segmentos originais. Rodar o `04` sem `--aumento` apaga o `mfcc_aumento.npz` de uma rodada anterior, para que ele não seja lido como se fosse da extração atual.

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-04_make_splits.py — gera a partição dos protocolos A e B, uma única vez
+03_make_splits.py — gera a partição dos protocolos A e B, uma única vez
 ======================================================================
 
 Aplica o protocolo de validação registrado em 24/09 (Notion, Registro de
@@ -18,9 +18,18 @@ partição nova invalida a comparação com tudo o que foi registrado antes, e i
 tem que ser uma decisão, não um efeito colateral. Use `--sobrescrever` só
 depois de registrar essa decisão.
 
+Outra taxa
+----------
+`--fs N` gera a partição dos PCM decimados a N Hz (do `02 --fs N`), com
+segmentos de `config.SEGMENTO_S` na taxa N, em `data/processed/splits/
+splits_<N>.json` — nunca sobre o `splits.json` da taxa de trabalho. Os
+segmentos, blocos e folds são os mesmos em segundos; só o número de amostras
+muda. Serve para comparar taxas com o mesmo protocolo, sem mudar o config.
+
 Uso
 ---
-    python scripts/pipeline/04_make_splits.py
+    python scripts/pipeline/03_make_splits.py
+    python scripts/pipeline/03_make_splits.py --fs 25600     # splits_25600.json
 """
 
 from __future__ import annotations
@@ -39,21 +48,27 @@ from validation import particao
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--pcm-dir", type=Path,
-                    default=Path(f"data/processed/pcm_decimated/{config.FS_TRABALHO}"))
-    ap.add_argument("--saida", type=Path, default=Path("data/processed/splits/splits.json"))
+    ap.add_argument("--fs", type=int, default=config.FS_TRABALHO,
+                    help="taxa dos PCM decimados (padrão: config.FS_TRABALHO)")
+    ap.add_argument("--pcm-dir", type=Path, default=None,
+                    help="padrão: data/processed/pcm_decimated/<fs>")
+    ap.add_argument("--saida", type=Path, default=None,
+                    help="padrão: splits.json na taxa de trabalho, splits_<fs>.json nas outras")
     ap.add_argument("--sobrescrever", action="store_true",
                     help="substitui um splits.json diferente (ver docstring)")
     args = ap.parse_args()
+    args.pcm_dir = args.pcm_dir or Path(config.dir_pcm_decimado(args.fs))
+    args.saida = args.saida or Path(config.arquivo_splits(args.fs))
+    amostras = config.amostras_por_segmento(args.fs)
 
-    clipes = pcm_io.carregar_clipes(args.pcm_dir, fs_esperado=config.FS_TRABALHO)
+    clipes = pcm_io.carregar_clipes(args.pcm_dir, fs_esperado=args.fs)
     divergencias = pcm_io.verificar_integridade(clipes)
     pcm_io.relatar_integridade(divergencias)
     if divergencias:
         print("Abortado: a partição seria gerada sobre dados que não batem com o manifest.")
         return 1
 
-    particoes = particao.gerar_particoes(clipes)
+    particoes = particao.gerar_particoes(clipes, amostras)
     erros = particao.verificar(particoes)
     if erros:
         print("\nAbortado — a partição gerada viola o protocolo:")
@@ -63,11 +78,11 @@ def main() -> int:
 
     # ------------------------------------------------------------ resumo
     segmentos = particao.segmentos_de(particoes)
-    print(f"\nSegmentos de {config.SEGMENTO_S:g} s ({config.AMOSTRAS_POR_SEGMENTO} amostras), "
+    print(f"\nSegmentos de {config.SEGMENTO_S:g} s ({amostras} amostras a {args.fs} Hz), "
           f"blocos de {config.SEGMENTOS_POR_BLOCO}, descarte de {config.SEGMENTOS_DESCARTE}:\n")
     for rotulo, g in particoes["gravacoes"].items():
         blocos = Counter(s.bloco for s in segmentos if s.rotulo == rotulo)
-        sobra = g["n_amostras"] - g["n_segmentos"] * config.AMOSTRAS_POR_SEGMENTO
+        sobra = g["n_amostras"] - g["n_segmentos"] * amostras
         print(f"  {rotulo:<12} {g['binario']:<7} {g['n_segmentos']:>3} segmentos  "
               f"blocos {[blocos[b] for b in sorted(blocos)]}  sobra descartada: {sobra} amostras")
 
