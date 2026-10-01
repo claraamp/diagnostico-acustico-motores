@@ -15,6 +15,8 @@ import pytest
 from validation import run_tabela_aumento as T
 
 BASE = {"protocolo": "B", "tarefa": "binario", "modelo": "lda", "splits": "abc",
+        "features": "mfcc_dsp_media_desvio", "fs_hz": 12800, "segmento_s": 1.0,
+        "segmentos_por_bloco": 10, "segmentos_descarte": 1,
         "mfcc_janela_ms": 25, "mfcc_hop_ms": 10, "mfcc_n_mels": 20, "mfcc_n_coefs": 13,
         "permutado": False, "sem_c0": False, "norm_clipe": False}
 AUM = {"aumento": "deslocamento+estiramento+ruido", "aumento_copias": 4,
@@ -77,3 +79,16 @@ def test_recusa_particao_diferente(pasta):
     _rodada(pasta, "exp006", {**BASE, **AUM, "splits": "outro", "aumento_semente": 2})
     with pytest.raises(SystemExit):
         T.montar("exp001", ["exp002", "exp006"], [], pasta)
+
+
+@pytest.mark.parametrize("campo, valor", [
+    ("fs_hz", 25600),                      # mesma partição, outra taxa
+    ("segmento_s", 0.5),
+    ("segmentos_por_bloco", 5),
+    ("segmentos_descarte", 0),
+    ("features", "mfcc_dsp_media_desvio_normclipe"),
+])
+def test_recusa_taxa_segmentacao_ou_features_diferentes(pasta, campo, valor):
+    _rodada(pasta, "exp007", {**BASE, **AUM, campo: valor, "aumento_semente": 3})
+    with pytest.raises(SystemExit, match=campo):
+        T.montar("exp001", ["exp002", "exp007"], [], pasta)

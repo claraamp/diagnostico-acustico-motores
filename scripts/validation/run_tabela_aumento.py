@@ -45,8 +45,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))   # scripts/
 
 import config
 
-# a mesma rodada de referência: nada disso pode variar entre as linhas
-IGUAIS = ("splits", "modelo", "mfcc_janela_ms", "mfcc_hop_ms", "mfcc_n_mels", "mfcc_n_coefs")
+# O que define o experimento além do aumento: nada disso pode variar entre as
+# linhas da tabela. O `splits` é só o hash do splits.json, que não muda com a
+# taxa nem com o tamanho do segmento; por isso a taxa, a segmentação e as
+# features entram separadas (uma rodada a 25,6 kHz com a mesma partição e o
+# mesmo MFCC não é comparável).
+IGUAIS = ("splits", "modelo", "features", "fs_hz", "segmento_s", "segmentos_por_bloco",
+          "segmentos_descarte", "mfcc_janela_ms", "mfcc_hop_ms", "mfcc_n_mels", "mfcc_n_coefs")
 _NOMES = {"deslocamento": "deslocamento", "estiramento": "estiramento", "ruido": "ruído"}
 
 
