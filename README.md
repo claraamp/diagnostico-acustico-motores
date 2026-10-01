@@ -39,6 +39,10 @@ A proposta previa escolher entre um MLP raso e uma CNN pequena. O `compare_class
 
 A LDA e a CNN 2D empatam exatamente nas quatro escolhas aninhadas (0,875 de acurácia balanceada interna média), e a LDA fica pelo custo: a CNN 2D custa ~13.000× mais MACs e ~700× mais RAM de ativação. O MLP (0,828) e a CNN 1D (0,824) perdem na `bpfi_0.3mm`, onde a sensibilidade média cai para ~0,6. Nenhum modelo recupera a `bpfo_0.3mm`, nem a CNN 2D, que vê as bandas de Mel onde está a diferença: o pior caso vem de deslocamento de distribuição, não de capacidade do modelo. Em todos os modelos, os erros são falsos negativos (especificidade 1,000). Os números internos são pessimistas, porque o treino interno tem só 2 falhas contra 3 no B externo; o que conta é a comparação entre modelos. Cada rede foi avaliada numa configuração fixa (120 épocas, taxa de aprendizado 3e-3, 16 neurônios ocultos no MLP, 16 filtros na CNN 1D, 8 e 16 na CNN 2D), sem busca de hiperparâmetros: a conclusão de que modelos não lineares não trouxeram ganho vale para essas configurações. O estudo é só binário, porque no B a falha de fora não tem exemplos de treino e um modelo multiclasse não poderia prever essa classe. O custo estimado no STM32F411CEU6 (parâmetros, MACs e pico de ativação) sai do próprio script. Saída em `reports/classifier/compare_classifiers.json`.
 
+### Aumento de dados com o modelo escolhido
+
+Com a LDA, o Protocolo B com aumento aplicado só no treino de cada fold dá o mesmo resultado que sem aumento: 0,875 de acurácia balanceada média (sensibilidade 0,750, especificidade 1,000), com a `bpfo_0.3mm` como pior falha (0,500) e o pior fold em 0,500. Isso vale para o aumento completo em 10 sorteios diferentes das variantes (`exp224`–`exp233`, desvio 0,000 entre as sementes; o `exp224` reproduz o `exp016`) e para cada técnica isolada (`exp019`–`exp021`). O fator de expansão do treino é 5 nominal (o segmento e 4 variantes) e 4,98 efetivo, porque o filtro por fold recusa as variantes que encostam no teste ou na faixa de descarte (889 a 903 aceitas por fold). O estiramento por reamostragem é o único que muda o resultado, para pior (0,788, `exp022`), por deslocar as linhas estreitas de falha; por isso o padrão é o phase vocoder. O ganho aleatório não foi implementado: a ablação do nível do sinal (`exp014`, `exp029`, `exp030`) mostra que o modelo não usa o nível. A tabela está em `reports/validation/tabela_aumento.md`. Nas rodadas com aumento, os `parametros` (e o registry) trazem duas sementes: `semente` é a do `run_protocol` (permutação e curva de aprendizado; nestas rodadas, sempre a do config) e `aumento_semente` é a do sorteio das variantes, a única que varia entre o `exp224` e o `exp233`.
+
 ### Assinatura acústica
 
 As frequências de falha **medidas** no áudio são BPFI ≈ 268,3 Hz e BPFO ≈ 182,7–183,4 Hz (eixo a 50,20 Hz). A BPFI e a BPFO da falha de 1,0 mm foram confirmadas por um segundo sensor: no espectro de envelope, a vibração as mostra a menos de 0,25 Hz do áudio. Na `bpfo_0.3mm` a confirmação é **parcial**: a vibração tem energia em 182,65 Hz, mas o pico do envelope dela fica em 181,5 Hz, e o envelope do áudio não mostra a linha. As medidas diferem das frequências **cinemáticas** da Tabela 1 do artigo (272,1 e 179,4 Hz), calculadas para ângulo de contato θ = 0°. Use as medidas quando precisar de uma frequência de falha, e chame as do artigo de "cinemáticas", não de "frequências da bancada". Abaixo de 6,4 kHz, cada falha aparece no espectro como uma série harmônica estreita da própria pista, e essas linhas sobrevivem à decimação. A impulsividade clássica, no áudio, fica acima de 6,4 kHz (9–22 kHz nas classes de falha), e a decimação a remove.
@@ -110,7 +114,8 @@ diagnostico-acustico-motores/
 │       ├── metricas.py                    # sensibilidade, especificidade, acurácia balanceada
 │       ├── run_protocol.py                # executável: roda A ou B e registra o resultado
 │       ├── run_tabela_comparativa.py      # executável: tabela provisório × oficial a partir dos metrics.json
-│       └── run_tabela_controles.py        # executável: tabela dos controles (sem c0, permutação, curva)
+│       ├── run_tabela_controles.py        # executável: tabela dos controles (sem c0, permutação, curva)
+│       └── run_tabela_aumento.py          # executável: tabela do B com e sem aumento de dados
 │
 ├── tests/                    # pytest; não dependem de data/
 │   ├── conftest.py
@@ -123,6 +128,7 @@ diagnostico-acustico-motores/
 │   │   └── test_compare_classifiers.py    # critério de escolha: mais barato na margem, em qualquer ordem (pula sem torch)
 │   └── validation/
 │       ├── test_curva_aprendizado.py      # subamostra só treino, n por classe, reprodutível
+│       ├── test_tabela_aumento.py         # tabela do aumento: comparabilidade e fator de expansão
 │       └── test_particao.py
 │
 ├── notebooks/                # notebooks de análise/visualização
@@ -188,6 +194,7 @@ python scripts/validation/run_protocol.py --protocolo B --sem-registro   # teste
 # tabelas (leem os metrics.json; não treinam nem registram)
 python scripts/validation/run_tabela_comparativa.py   # provisório × oficial
 python scripts/validation/run_tabela_controles.py     # sem c0, normalização, permutação e curva de aprendizado
+python scripts/validation/run_tabela_aumento.py       # B com e sem aumento: médias, pior caso e fator de expansão
 
 # controle dos harmônicos do eixo: peso da LDA nas bandas de Mel em que a normal
 # tem harmônicos mais fortes (lê o picos_metrics.json do identify_tonal_peaks.py)
@@ -216,6 +223,9 @@ python scripts/validation/run_protocol.py --protocolo B --aumento --permutar   #
 # ablação por técnica (deslocamento | estiramento | ruido) e modo do estiramento
 python scripts/pipeline/04_extract_features.py --aumento 4 --tecnicas ruido
 python scripts/pipeline/04_extract_features.py --aumento 4 --modo-estiramento velocidade
+# outro sorteio das variantes, com os mesmos parâmetros (uma rodada por semente)
+python scripts/pipeline/04_extract_features.py --aumento 4 --semente-aumento 1
+python scripts/validation/run_protocol.py --protocolo B --aumento --responsavel <nome>
 ```
 
 O teste nunca é aumentado: todo fold é avaliado nos segmentos originais. Rodar o `04` sem `--aumento` apaga o `mfcc_aumento.npz` de uma rodada anterior, para que ele não seja lido como se fosse da extração atual.

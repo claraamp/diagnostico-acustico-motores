@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import numpy as np
 
+import config
 from validation import particao
 from validation.run_protocol import montar_treino, parametros_aumento, rotulo_aumento
 
@@ -60,6 +61,14 @@ def test_rotulo_distingue_o_modo_velocidade():
     # sem estiramento, o modo não se aplica e não entra no nome
     so_ruido = {**_INFO, "tecnicas": ["ruido"], "modo_estiramento": "velocidade"}
     assert rotulo_aumento(so_ruido) == "aum4-ruido"
+
+
+def test_rotulo_e_parametros_distinguem_a_semente_do_aumento():
+    # sem o campo (manifestos anteriores) ou com a semente do config: sem sufixo
+    assert rotulo_aumento({**_INFO, "semente": config.SEMENTE}) == "aum4-desl-estir-ruido"
+    assert rotulo_aumento({**_INFO, "semente": 3}) == "aum4-desl-estir-ruido-s3"
+    assert parametros_aumento(_INFO)["aumento_semente"] == config.SEMENTE
+    assert parametros_aumento({**_INFO, "semente": 3})["aumento_semente"] == 3
 
 
 def test_parametros_registram_o_phase_vocoder():
