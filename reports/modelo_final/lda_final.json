@@ -1,9 +1,10 @@
 {
-  "id": "exp236",
-  "versao_formato": 1,
+  "id": "exp237",
+  "versao_formato": 2,
   "modelo": "lda",
-  "escore": "escore > 0 → falha; escore <= 0 → normal",
+  "escore": "escore >= 0 → falha; escore < 0 → normal",
   "classe_positiva": "falha",
+  "escore_zero": "falha",
   "priors": [
     0.5,
     0.5
