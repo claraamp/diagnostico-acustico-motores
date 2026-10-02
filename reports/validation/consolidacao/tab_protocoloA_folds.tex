@@ -1,0 +1,21 @@
+\begin{table}[H]
+\centering
+\caption{Protocolo A (blocos temporais), \emph{fold} a \emph{fold}. \textbf{Limite superior otimista}: treino e teste vêm das mesmas gravações, e o resultado não é usado para aferir a meta. Na multiclasse, a última coluna é o menor acerto entre as cinco classes. Rodadas \texttt{exp027} (binário) e \texttt{exp028} (multiclasse).}
+\label{tab:protocoloA-folds}
+\begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}X C{1.4cm} C{1.4cm} C{1.4cm} C{2.4cm} C{2.4cm} C{1.9cm}}
+\toprule
+ & & \multicolumn{3}{c}{\textbf{Binário}} & \multicolumn{2}{c}{\textbf{Multiclasse}} \\
+\cmidrule(lr){3-5}\cmidrule(lr){6-7}
+\textbf{Bloco no teste} & \textbf{Teste} & \textbf{Sens.} & \textbf{Espec.} & \textbf{AB} & \textbf{AB} & \textbf{Menor acerto} \\
+\midrule
+1 & 50 & 1,000 & 1,000 & 1,000 & 1,000 & 1,000 \\
+2 & 50 & 1,000 & 1,000 & 1,000 & 1,000 & 1,000 \\
+3 & 50 & 1,000 & 1,000 & 1,000 & 1,000 & 1,000 \\
+4 & 50 & 1,000 & 1,000 & 1,000 & 1,000 & 1,000 \\
+5 & 50 & 1,000 & 1,000 & 1,000 & 1,000 & 1,000 \\
+6 & 45 & 1,000 & 1,000 & 1,000 & 1,000 & 1,000 \\
+\midrule
+\textbf{Média $\pm$ desvio} & & & & 1,000 $\pm$ 0,000 & 1,000 $\pm$ 0,000 & \\
+\bottomrule
+\end{tabularx}
+\end{table}

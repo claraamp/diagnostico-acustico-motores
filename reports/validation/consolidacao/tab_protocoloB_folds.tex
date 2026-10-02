@@ -1,0 +1,20 @@
+\begin{table}[H]
+\centering
+\caption{Protocolo B, \emph{fold} a \emph{fold}: acurácia balanceada da LDA para cada gravação de falha deixada de fora (linhas) combinada com cada bloco da gravação normal (colunas). À direita, a média dos seis blocos. Pior \emph{fold}: \texttt{B\_bpfo\_0.3mm\_bloco0} (0,500). Rodada \texttt{exp015}; \texttt{exp013} reproduz os mesmos valores.}
+\label{tab:protocoloB-folds}
+\footnotesize
+\begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}X C{0.95cm} C{0.95cm} C{0.95cm} C{0.95cm} C{0.95cm} C{0.95cm} C{1.15cm} C{1.15cm} C{1.15cm}}
+\toprule
+ & \multicolumn{6}{c}{\textbf{Bloco normal no teste}} & \multicolumn{3}{c}{\textbf{Média dos blocos}} \\
+\cmidrule(lr){2-7}\cmidrule(lr){8-10}
+\textbf{Falha de fora} & \textbf{1} & \textbf{2} & \textbf{3} & \textbf{4} & \textbf{5} & \textbf{6} & \textbf{Sens.} & \textbf{Espec.} & \textbf{AB} \\
+\midrule
+\texttt{bpfi\_0.3mm} & 1,000 & 1,000 & 1,000 & 1,000 & 1,000 & 1,000 & 1,000 & 1,000 & 1,000 \\
+\texttt{bpfi\_1.0mm} & 1,000 & 1,000 & 1,000 & 1,000 & 1,000 & 1,000 & 1,000 & 1,000 & 1,000 \\
+\texttt{bpfo\_0.3mm} & 0,500 & 0,500 & 0,500 & 0,500 & 0,500 & 0,500 & 0,000 & 1,000 & 0,500 \\
+\texttt{bpfo\_1.0mm} & 1,000 & 1,000 & 1,000 & 1,000 & 1,000 & 1,000 & 1,000 & 1,000 & 1,000 \\
+\midrule
+\textbf{Média} & 0,875 & 0,875 & 0,875 & 0,875 & 0,875 & 0,875 & \textbf{0,750} & \textbf{1,000} & \textbf{0,875} \\
+\bottomrule
+\end{tabularx}
+\end{table}

@@ -1,0 +1,25 @@
+\begin{table}[H]
+\centering
+\caption{Controles do protocolo (LDA, binário, sem aumento). A: acurácia balanceada média; B: acurácia balanceada (AB), sensibilidade e especificidade médias, e AB da \texttt{bpfo\_0.3mm}. Na permutação, o p empírico da referência é 0,0099 (0 de 100 sorteios $\geq$ 0,875). Na curva de aprendizado, os segmentos de treino são repartidos entre as gravações de cada classe, com 10 sorteios por ponto; sensibilidade, especificidade e \texttt{bpfo\_0.3mm} são médias entre os sorteios.}
+\label{tab:controles-completa}
+\footnotesize
+\setlength{\tabcolsep}{4pt}
+\begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}X C{2.1cm} C{2.1cm} C{1.1cm} C{1.2cm} C{1.3cm} C{2.6cm}}
+\toprule
+ & \textbf{A} & \multicolumn{4}{c}{\textbf{B}} & \\
+\cmidrule(lr){2-2}\cmidrule(lr){3-6}
+\textbf{Rodada} & \textbf{AB} & \textbf{AB} & \textbf{Sens.} & \textbf{Espec.} & \textbf{BPFO 0,3~mm} & \textbf{Registro} \\
+\midrule
+Referência (MFCC completo) & 1,000 & 0,875 & 0,750 & 1,000 & 0,500 & \texttt{exp027, exp015} \\
+Sem o coeficiente $c_0$ & 1,000 & 0,875 & 0,750 & 1,000 & 0,500 & \texttt{exp029, exp030} \\
+Normalização RMS por segmento & 1,000 & 0,875 & 0,750 & 1,000 & 0,500 & \texttt{exp219, exp014} \\
+Rótulos permutados por bloco (100 sorteios) & -- & 0,450 $\pm$ 0,060 & -- & -- & -- & \texttt{exp031--exp050, exp059--exp138} \\
+\midrule
+\multicolumn{6}{l}{\emph{Curva de aprendizado (segundos de treino por classe)}} & \texttt{exp139--exp218} \\
+\quad 2~s & 0,840 $\pm$ 0,050 & 0,757 $\pm$ 0,036 & 0,568 & 0,946 & 0,682 & \\
+\quad 5~s & 0,977 $\pm$ 0,017 & 0,836 $\pm$ 0,014 & 0,676 & 0,996 & 0,584 & \\
+\quad 10~s & 0,997 $\pm$ 0,003 & 0,800 $\pm$ 0,031 & 0,603 & 0,997 & 0,570 & \\
+\quad 30~s & 1,000 $\pm$ 0,000 & 0,867 $\pm$ 0,014 & 0,734 & 1,000 & 0,500 & \\
+\bottomrule
+\end{tabularx}
+\end{table}
