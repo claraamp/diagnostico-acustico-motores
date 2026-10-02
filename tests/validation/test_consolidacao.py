@@ -6,7 +6,9 @@ data/. Conferem as garantias que tornam as tabelas do relatório confiáveis:
 (1) número sem linha no registry, ou com valor diferente, aborta; (2) rodada no
 papel errado aborta; (3) a matriz de confusão soma os folds com a contagem certa;
 (4) a comparação de taxas aceita outra partição, mas não outro modelo nem
-features de outro commit.
+features de outro commit; (5) o aumento só entra com sementes distintas e o
+controle permutado com o mesmo aumento; (6) o controle dos harmônicos confere o
+registry e exige que a referência da intervenção seja o B da meta.
 """
 
 from __future__ import annotations
@@ -221,3 +223,102 @@ def test_comparacao_de_taxas_recusa(ambiente, sem_particoes, kw, motivo):
     ids = _taxas(pasta, rows, registry, **kw)
     with pytest.raises(SystemExit, match=motivo):
         C.gerar(pasta, registry, saida, ids, figuras=False)
+
+# --- aumento de dados (4/6) -------------------------------------------------
+
+AUM = {"aumento": "deslocamento+estiramento+ruido", "aumento_copias": 4,
+       "aumento_modo_estir": "tempo", "aumento_desloc_max_s": 0.4,
+       "aumento_estir_taxas": "0.95-1.05", "aumento_snr_db": "20.0-35.0"}
+
+
+def _aumento(pasta, rows, registry, semente_repetida=False, perm_aumento="deslocamento+estiramento+ruido"):
+    B = {**BASE, "protocolo": "B"}
+    _registrar(pasta, rows, "exp041", {**B, **AUM, "aumento_semente": 1}, _rodada_b(SENS_REF))
+    _registrar(pasta, rows, "exp042", {**B, **AUM, "aumento_semente": 1 if semente_repetida else 2},
+               _rodada_b(SENS_REF))
+    _registrar(pasta, rows, "exp043", {**B, **AUM, "aumento": "ruido"}, _rodada_b(SENS_REF))
+    _registrar(pasta, rows, "exp044", {**B, **AUM, "aumento": perm_aumento, "permutado": True},
+               _rodada_b({f: 0.2 for f in C.FALHAS}))
+    _escrever_registry(registry, rows)
+    return {**IDS, "aum_completo": ["exp041", "exp042"], "aum_ablacoes": ["exp043"],
+            "aum_permutado": "exp044"}
+
+
+def test_aumento_com_sementes(ambiente):
+    pasta, registry, rows, saida = ambiente
+    rod = C.gerar(pasta, registry, saida, _aumento(pasta, rows, registry), taxas=False, figuras=False)
+    tex = (saida / "tab_aumento_B.tex").read_text(encoding="utf-8")
+    assert r"\textbf{Três técnicas} (2 sementes)" in tex
+    assert "Só ruído" in tex and "rótulos permutados" in tex
+    assert {"exp041", "exp042", "exp043", "exp044"} <= {c.exp_id for c in rod.conferencias}
+
+
+@pytest.mark.parametrize("kw, motivo", [
+    ({"semente_repetida": True}, "semente"),                     # conferir do run_tabela_aumento
+    ({"perm_aumento": "ruido"}, "aumento difere"),               # permutado com outro aumento
+])
+def test_aumento_recusa(ambiente, kw, motivo):
+    pasta, registry, rows, saida = ambiente
+    ids = _aumento(pasta, rows, registry, **kw)
+    with pytest.raises(SystemExit, match=motivo):
+        C.gerar(pasta, registry, saida, ids, taxas=False, figuras=False)
+
+
+# --- harmônicos do eixo (controle) ------------------------------------------
+
+def _harmonicos(pasta, rows, registry, ref_sens=None, registry_sem_harm=None):
+    decomp = {"fracao_separacao_harm_mediana": -0.2, "fracao_separacao_harm_min": -0.4,
+              "fracao_separacao_harm_max": 0.0, "fracao_de_bandas_mediana": 0.2,
+              "fracao_desvio_mfcc_mediana": 0.024,
+              "por_falha": {f: {"fracao_bandas_harmonicos": -0.1} for f in C.FALHAS}}
+    ref = _rodada_b(ref_sens or SENS_REF)["resumo"]
+    intervencao = {"referencia": ref, "sem_harmonicos": _rodada_b(SENS_REF)["resumo"],
+                   "sorteios": [{}, {}], "acc_bal_sorteios_min": 0.8542, "acc_bal_sorteios_max": 0.875}
+    corpos = {"exp050": ("harm", None), "exp051": ("harm/interv", intervencao)}
+    for e, (sub, iv) in corpos.items():
+        d = pasta / sub
+        d.mkdir(parents=True, exist_ok=True)
+        corpo = {"resumo": decomp, "splits": BASE["splits"], "features_commit": "c1"}
+        if iv:
+            corpo["intervencao"] = iv
+        (d / "metrics.json").write_text(json.dumps(corpo), encoding="utf-8")
+        met = {k: float(C._pegar(corpo, cam)) for k, cam in C.METRICAS_HARM_DECOMP.items()}
+        if iv:
+            met.update({k: float(C._pegar(corpo, cam)) for k, cam in C.METRICAS_HARM_INTERV.items()})
+            if registry_sem_harm is not None:
+                met["acc_bal_sem_harm"] = registry_sem_harm
+        par = f"protocolo=B;splits={BASE['splits']};features_commit=c1" + (";intervencao=True;n_sorteios=2" if iv else "")
+        rows.append({"id": e, "data": "2026-10-01", "etapa": "controle_classificador",
+                     "script": C.SCRIPT_HARMONICOS, "git_commit": "abc1234", "parametros": par,
+                     "dataset": "teste", "metricas": ";".join(f"{k}={v:.4f}" for k, v in met.items()),
+                     "responsavel": "teste", "notas": ""})
+    _escrever_registry(registry, rows)
+    return {**IDS, "harm_decomp": "exp050", "harm_interv": "exp051",
+            "harm_pastas": {"exp050": "harm", "exp051": "harm/interv"}}
+
+
+def test_harmonicos(ambiente):
+    pasta, registry, rows, saida = ambiente
+    rod = C.gerar(pasta, registry, saida, _harmonicos(pasta, rows, registry), taxas=False, figuras=False)
+    tex = (saida / "tab_harmonicos.tex").read_text(encoding="utf-8")
+    assert "0,854 a 0,875" in tex and "(2 sorteios)" in tex
+    assert {"exp050", "exp051"} <= {c.exp_id for c in rod.conferencias}
+    assert "exp051" in (saida / "rastreabilidade.md").read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize("kw, motivo", [
+    ({"registry_sem_harm": 0.9}, "acc_bal_sem_harm"),                     # registry ≠ metrics.json
+    ({"ref_sens": {f: 1.0 for f in C.FALHAS}}, "referência da intervenção"),  # outra referência
+])
+def test_harmonicos_recusa(ambiente, kw, motivo):
+    pasta, registry, rows, saida = ambiente
+    ids = _harmonicos(pasta, rows, registry, **kw)
+    with pytest.raises(SystemExit, match=motivo):
+        C.gerar(pasta, registry, saida, ids, taxas=False, figuras=False)
+
+
+def test_harmonicos_papel_trocado(ambiente):
+    pasta, registry, rows, saida = ambiente
+    ids = {**_harmonicos(pasta, rows, registry), "harm_decomp": "exp051", "harm_interv": "exp050"}
+    with pytest.raises(SystemExit, match="intervenção"):
+        C.gerar(pasta, registry, saida, ids, taxas=False, figuras=False)

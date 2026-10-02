@@ -21,6 +21,8 @@ tab_matriz_confusao_B.tex    matriz de confusão do B somada nos 24 folds, por
 fig_matriz_confusao_B.png    classe verdadeira (normal e as 4 falhas) × previsão
 tab_controles.tex            ablação do ganho e permutação (a curva fica na figura)
 tab_taxas_B.tex              B a 12,8 × 25,6 kHz (tarefa 5/6)
+tab_aumento_B.tex            B com e sem aumento, três técnicas em 10 sementes (tarefa 4/6)
+tab_harmonicos.tex           intervenção nas bandas dos harmônicos do eixo (controle)
 fig_controles.png            permutação (histograma) e curva de aprendizado
 rastreabilidade.md           cada número das tabelas → rodada → linha do registry,
                              com o valor do registry conferido contra o metrics.json
@@ -68,7 +70,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))   # scripts/
 import numpy as np
 
 import config
-from validation import run_tabela_taxas
+from validation import run_tabela_aumento, run_tabela_taxas
 
 FALHAS = ("bpfi_0.3mm", "bpfi_1.0mm", "bpfo_0.3mm", "bpfo_1.0mm")
 CLASSES = ("normal",) + FALHAS
@@ -111,7 +113,36 @@ PADRAO = {
     "curva": _intervalo(139, 218),
     "taxa_ref": "exp234",                 # 12,8 kHz, mesmo commit da rodada a 25,6 kHz
     "taxa_alt": "exp235",                 # 25,6 kHz (tarefa 5/6)
+    # aumento de dados (tarefa 4/6): referência é o ref_b
+    "aum_completo": _intervalo(224, 233),  # três técnicas, 10 sementes do sorteio das variantes
+    "aum_ablacoes": ["exp019", "exp020", "exp021", "exp022"],   # técnica isolada e modo velocidade
+    "aum_permutado": "exp017",             # três técnicas com rótulos permutados (controle)
+    # harmônicos do eixo (controle): pastas sem o prefixo expNNN
+    "harm_decomp": "exp220",
+    "harm_interv": "exp221",
 }
+PASTAS_HARMONICOS = {"exp220": "controle_harmonicos", "exp221": "controle_harmonicos/intervencao"}
+SCRIPT_HARMONICOS = "exploration/inspect_lda_harmonicos.py"
+
+# Registry do controle dos harmônicos → caminho no metrics.json. A decomposição grava
+# 3 casas no registry; a intervenção, 4.
+METRICAS_HARM_DECOMP = {
+    "frac_sep_harm_mediana": ("resumo", "fracao_separacao_harm_mediana"),
+    "frac_sep_harm_min": ("resumo", "fracao_separacao_harm_min"),
+    "frac_sep_harm_max": ("resumo", "fracao_separacao_harm_max"),
+    "frac_bandas_mediana": ("resumo", "fracao_de_bandas_mediana"),
+    "frac_desvio_mfcc_mediana": ("resumo", "fracao_desvio_mfcc_mediana"),
+    **{f"frac_sep_harm_{f}": ("resumo", "por_falha", f, "fracao_bandas_harmonicos") for f in FALHAS},
+}
+METRICAS_HARM_INTERV = {
+    "acc_bal_referencia": ("intervencao", "referencia", "acuracia_balanceada_media"),
+    "acc_bal_sem_harm": ("intervencao", "sem_harmonicos", "acuracia_balanceada_media"),
+    "sens_sem_harm": ("intervencao", "sem_harmonicos", "sensibilidade_media"),
+    "espec_sem_harm": ("intervencao", "sem_harmonicos", "especificidade_media"),
+    "acc_bal_sorteios_min": ("intervencao", "acc_bal_sorteios_min"),
+    "acc_bal_sorteios_max": ("intervencao", "acc_bal_sorteios_max"),
+}
+TOL_REGISTRY_3 = 6e-4    # métricas gravadas com 3 casas
 
 
 # ---------------------------------------------------------------------------
@@ -168,12 +199,19 @@ class Rodadas:
     curva: list[dict]
     taxa_ref: dict | None = None
     taxa_alt: dict | None = None
+    aum_completo: list[dict] = field(default_factory=list)
+    aum_ablacoes: list[dict] = field(default_factory=list)
+    aum_permutado: dict | None = None
+    harm_decomp: dict | None = None
+    harm_interv: dict | None = None
     conferencias: list[Conferencia] = field(default_factory=list)
 
     def todas(self) -> list[dict]:
+        """Rodadas do run_protocol (os harmônicos têm conferência própria)."""
         r = [self.ref_b, *self.reproducoes_b, self.ref_a, self.ref_a_multi, self.semc0_a,
-             self.semc0_b, self.norm_a, self.norm_b, *self.permutacao, *self.curva]
-        return r + [d for d in (self.taxa_ref, self.taxa_alt) if d]
+             self.semc0_b, self.norm_a, self.norm_b, *self.permutacao, *self.curva,
+             *self.aum_completo, *self.aum_ablacoes]
+        return r + [d for d in (self.aum_permutado, self.taxa_ref, self.taxa_alt) if d]
 
 
 def _comparavel(p: dict, campo: str) -> str:
@@ -223,6 +261,24 @@ def conferir_parametros(rod: Rodadas) -> None:
     if len(set(ids)) != len(ids):
         erros.append("o mesmo id aparece em mais de um papel")
 
+    if rod.aum_completo:
+        # mesmas conferências do run_tabela_aumento: referência sem aumento, completo só
+        # difere pela semente, ablações sem controles
+        try:
+            run_tabela_aumento.conferir((rod.ref_b["id"], rod.ref_b),
+                                        [(d["id"], d) for d in rod.aum_completo],
+                                        [(d["id"], d) for d in rod.aum_ablacoes])
+        except SystemExit as e:
+            erros.append(str(e))
+        if rod.aum_permutado:
+            esperar(rod.aum_permutado, protocolo="B", tarefa="binario", permutado=True)
+            chaves = ("aumento", "aumento_copias", "aumento_modo_estir", "aumento_desloc_max_s",
+                      "aumento_estir_taxas", "aumento_snr_db")
+            ref_aum = rod.aum_completo[0]["parametros"]
+            for k in chaves:
+                if str(rod.aum_permutado["parametros"].get(k)) != str(ref_aum.get(k)):
+                    erros.append(f"{rod.aum_permutado['id']}: {k} difere do aumento completo")
+
     if rod.taxa_alt:
         # mesma partição e taxa da referência do B, e não um controle
         esperar(rod.taxa_ref, protocolo="B", tarefa="binario", aumento="nenhum", **base)
@@ -260,6 +316,65 @@ def conferir_registry(rod: Rodadas, registry: dict[str, dict]) -> None:
         raise SystemExit("Abortado: registry e metrics.json não batem:\n  " + "\n  ".join(erros))
 
 
+def carregar_harmonicos(pasta: Path, exp_id: str, pastas: dict[str, str]) -> dict:
+    caminho = pasta / pastas[exp_id] / "metrics.json"
+    if not caminho.exists():
+        raise SystemExit(f"Abortado: não achei {caminho} ({exp_id})")
+    d = json.loads(caminho.read_text(encoding="utf-8"))
+    d["id"], d["_pasta"] = exp_id, pastas[exp_id]
+    return d
+
+
+def conferir_harmonicos(rod: Rodadas, registry: dict[str, dict]) -> None:
+    """
+    Controle dos harmônicos do eixo (inspect_lda_harmonicos.py), que não é rodada do
+    run_protocol: confere a linha do registry (script, partição, commit das features,
+    intervenção ligada só no exp da intervenção) e as métricas contra o metrics.json,
+    e que a referência da intervenção é o mesmo B da meta.
+    """
+    if not rod.harm_decomp:
+        return
+    erros = []
+    for d, interv in ((rod.harm_decomp, False), (rod.harm_interv, True)):
+        linha = registry.get(d["id"])
+        if linha is None:
+            erros.append(f"{d['id']}: sem linha no registry")
+            continue
+        if linha["script"] != SCRIPT_HARMONICOS:
+            erros.append(f"{d['id']}: registry diz script {linha['script']}")
+        p_reg = _kv(linha["parametros"])
+        if p_reg.get("splits") != str(d.get("splits")) or d.get("splits") != rod.ref_b["parametros"]["splits"]:
+            erros.append(f"{d['id']}: partição diferente da referência do B")
+        if p_reg.get("features_commit") != str(d.get("features_commit")):
+            erros.append(f"{d['id']}: features_commit do registry ≠ metrics.json")
+        if (p_reg.get("intervencao") == "True") != interv or (d.get("intervencao") is not None) != interv:
+            erros.append(f"{d['id']}: {'deveria' if interv else 'não deveria'} ser a intervenção")
+            continue
+        m_reg = _kv(linha["metricas"])
+        mapas = [(METRICAS_HARM_DECOMP, TOL_REGISTRY_3)]
+        if interv:
+            mapas.append((METRICAS_HARM_INTERV, TOL_REGISTRY))
+        for mapa, tol in mapas:
+            for chave, caminho in mapa.items():
+                v_json = float(_pegar(d, caminho))
+                v_reg = float(m_reg[chave]) if chave in m_reg else None
+                ok = v_reg is not None and abs(v_reg - v_json) <= tol
+                rod.conferencias.append(Conferencia(d["id"], chave, v_json, v_reg, ok))
+                if not ok:
+                    erros.append(f"{d['id']}: {chave} registry={v_reg} metrics.json={v_json:.4f}")
+    if rod.harm_interv and not erros:
+        iv = rod.harm_interv["intervencao"]
+        if p := _kv(registry[rod.harm_interv["id"]]["parametros"]).get("n_sorteios"):
+            if int(p) != len(iv["sorteios"]):
+                erros.append(f"{rod.harm_interv['id']}: n_sorteios do registry ≠ metrics.json")
+        a, b = iv["referencia"], rod.ref_b["resumo"]
+        for k in ("acuracia_balanceada_media", "sensibilidade_media", "especificidade_media"):
+            if abs(a[k] - b[k]) > 1e-9:
+                erros.append(f"{rod.harm_interv['id']}: referência da intervenção ≠ {rod.ref_b['id']} ({k})")
+    if erros:
+        raise SystemExit("Abortado: controle dos harmônicos não confere:\n  " + "\n  ".join(erros))
+
+
 def montar_rodadas(pasta: Path, ids: dict, taxas: bool = True) -> Rodadas:
     def um(k):
         return carregar(pasta, ids[k])
@@ -273,6 +388,14 @@ def montar_rodadas(pasta: Path, ids: dict, taxas: bool = True) -> Rodadas:
         norm_a=um("norm_a"), norm_b=um("norm_b"), permutacao=varios("permutacao"),
         curva=varios("curva"),
         taxa_ref=um("taxa_ref") if taxas else None, taxa_alt=um("taxa_alt") if taxas else None,
+        # os grupos abaixo são opcionais: sem a chave em `ids`, ficam de fora
+        aum_completo=[carregar(pasta, e) for e in ids.get("aum_completo", [])],
+        aum_ablacoes=[carregar(pasta, e) for e in ids.get("aum_ablacoes", [])],
+        aum_permutado=carregar(pasta, ids["aum_permutado"]) if ids.get("aum_permutado") else None,
+        harm_decomp=(carregar_harmonicos(pasta, ids["harm_decomp"], ids.get("harm_pastas", PASTAS_HARMONICOS))
+                     if ids.get("harm_decomp") else None),
+        harm_interv=(carregar_harmonicos(pasta, ids["harm_interv"], ids.get("harm_pastas", PASTAS_HARMONICOS))
+                     if ids.get("harm_interv") else None),
     )
 
 
@@ -563,6 +686,110 @@ def tex_taxas(rod: Rodadas) -> str:
     ])
 
 
+def resumo_aumento(rs: list[dict]) -> dict:
+    """Média entre rodadas (sementes) e o maior desvio entre elas, em qualquer coluna."""
+    def col(f):
+        v = [f(r["resumo"]) for r in rs]
+        return statistics.mean(v), (statistics.stdev(v) if len(v) > 1 else 0.0)
+    cols = {"ab": col(lambda r: r["acuracia_balanceada_media"]),
+            "sens": col(lambda r: r["sensibilidade_media"]),
+            "espec": col(lambda r: r["especificidade_media"]),
+            **{f: col(lambda r, f=f: r["por_falha"][f]["acuracia_balanceada"]) for f in FALHAS}}
+    return {"media": {k: v[0] for k, v in cols.items()}, "desvio_max": max(v[1] for v in cols.values()),
+            "n": len(rs)}
+
+
+def tex_aumento(rod: Rodadas) -> str:
+    """
+    Mesma tabela do relatório (tab:res-aumento), com as três técnicas em 10 sementes. Uma
+    coluna por falha em 2 casas; em negrito, a falha que muda ≥ 0,1 em relação à referência
+    numa rodada que não é controle.
+    """
+    ref = resumo_aumento([rod.ref_b])["media"]
+
+    def linha(rotulo, rs, negrito_ab=False, controle=False):
+        x = resumo_aumento(rs)["media"]
+        ab = br(x["ab"])
+        cel = []
+        for f in FALHAS:
+            v = br(x[f], 2)
+            if not controle and abs(x[f] - ref[f]) >= 0.1:
+                v = f"\\textbf{{{v}}}"
+            cel.append(v)
+        return (f"{rotulo} & {f'\\textbf{{{ab}}}' if negrito_ab else ab} & {br(x['sens'])} & "
+                f"{br(x['espec'])} & " + " & ".join(cel) + " \\\\")
+
+    nomes = {"deslocamento": "Só deslocamento", "estiramento": r"Só estiramento (\emph{tempo})",
+             "ruido": "Só ruído"}
+
+    def rotulo(d):
+        p = d["parametros"]
+        t = p["aumento"].split("+")
+        if len(t) == 1:
+            return nomes.get(t[0], t[0])
+        return r"Três técnicas, estiramento \emph{velocidade}" if p.get("aumento_modo_estir") == "velocidade" \
+            else "Três técnicas"
+
+    completo = resumo_aumento(rod.aum_completo)
+    linhas = [linha("Sem aumento (referência)", [rod.ref_b]),
+              linha(f"\\textbf{{Três técnicas}} ({completo['n']} sementes)", rod.aum_completo, negrito_ab=True)]
+    so = [d for d in rod.aum_ablacoes if len(d["parametros"]["aumento"].split("+")) == 1]
+    outras = [d for d in rod.aum_ablacoes if d not in so]
+    linhas += [linha(rotulo(d), [d]) for d in so]
+    if rod.aum_permutado:
+        linhas.append(linha("Três técnicas, rótulos permutados", [rod.aum_permutado], controle=True))
+    linhas += [linha(rotulo(d), [d]) for d in outras]
+    copias = rod.aum_completo[0]["parametros"].get("aumento_copias")
+    return "\n".join([
+        r"\begin{table}[H]",
+        r"\centering",
+        f"\\caption{{Protocolo B com e sem aumento de dados (LDA, {'quatro' if str(copias) == '4' else copias} "
+        r"variantes por segmento). Colunas por falha: acurácia balanceada com aquela falha deixada de "
+        r"fora.}",
+        r"\label{tab:res-aumento}",
+        r"\small",
+        r"\begin{tabularx}{\textwidth}{X C{1.1cm} C{1.1cm} C{1.1cm} C{1.3cm} C{1.3cm} C{1.3cm} C{1.3cm}}",
+        r"\toprule",
+        r"\textbf{Rodada} & \textbf{AB} & \textbf{Sens.} & \textbf{Espec.} & \textbf{BPFI 0,3~mm} & "
+        r"\textbf{BPFI 1,0~mm} & \textbf{BPFO 0,3~mm} & \textbf{BPFO 1,0~mm} \\",
+        r"\midrule",
+        *linhas,
+        r"\bottomrule",
+        r"\end{tabularx}",
+        r"\end{table}",
+        "",
+    ])
+
+
+def tex_harmonicos(rod: Rodadas) -> str:
+    """Mesma tabela do relatório (tab:harmonicos), a partir do exp da intervenção."""
+    iv = rod.harm_interv["intervencao"]
+
+    def linha(rotulo, r):
+        return (f"{rotulo} & {br(r['acuracia_balanceada_media'])} & {br(r['sensibilidade_media'])} & "
+                f"{br(r['especificidade_media'])} & "
+                f"{br(r['por_falha']['bpfo_0.3mm']['acuracia_balanceada'])} \\\\")
+
+    return "\n".join([
+        r"\begin{table}[H]",
+        r"\centering",
+        r"\caption{Intervenção nas bandas dos harmônicos do eixo (Protocolo B).}",
+        r"\label{tab:harmonicos}",
+        r"\begin{tabularx}{\textwidth}{X C{1.8cm} C{1.6cm} C{1.6cm} C{2.2cm}}",
+        r"\toprule",
+        r"\textbf{Rodada} & \textbf{AB} & \textbf{Sens.} & \textbf{Espec.} & \textbf{\texttt{bpfo\_0.3mm}} \\",
+        r"\midrule",
+        linha("Referência", iv["referencia"]),
+        linha("Bandas dos harmônicos apagadas", iv["sem_harmonicos"]),
+        f"Mesmo número de bandas sorteadas fora dos harmônicos ({len(iv['sorteios'])} sorteios) & "
+        f"{br(iv['acc_bal_sorteios_min'])} a {br(iv['acc_bal_sorteios_max'])} & -- & -- & -- \\\\",
+        r"\bottomrule",
+        r"\end{tabularx}",
+        r"\end{table}",
+        "",
+    ])
+
+
 # ---------------------------------------------------------------------------
 # figuras
 # ---------------------------------------------------------------------------
@@ -687,7 +914,13 @@ def md_rastreabilidade(rod: Rodadas) -> str:
         ("Permutação por bloco", rod.permutacao),
         ("Curva de aprendizado", rod.curva),
     ] + ([("Comparação de taxas (5/6): 12,8 × 25,6 kHz", [rod.taxa_ref, rod.taxa_alt])]
-         if rod.taxa_alt else [])
+         if rod.taxa_alt else []) + [
+        ("Aumento (4/6): três técnicas, 10 sementes", rod.aum_completo),
+        ("Aumento (4/6): técnica isolada e modo velocidade", rod.aum_ablacoes),
+        ("Aumento (4/6): rótulos permutados", [d for d in (rod.aum_permutado,) if d]),
+        ("Harmônicos do eixo: decomposição (inspect_lda_harmonicos.py)", [d for d in (rod.harm_decomp,) if d]),
+        ("Harmônicos do eixo: intervenção (inspect_lda_harmonicos.py)", [d for d in (rod.harm_interv,) if d]),
+    ]
     por_id: dict[str, list[Conferencia]] = {}
     for c in rod.conferencias:
         por_id.setdefault(c.exp_id, []).append(c)
@@ -696,9 +929,12 @@ def md_rastreabilidade(rod: Rodadas) -> str:
         "",
         "Gerado por `scripts/validation/run_consolidacao.py`. Cada rodada usada nas tabelas e "
         "figuras de `reports/validation/consolidacao/` tem linha no `experiments/registry.csv`, "
-        "com o mesmo script (`validation/run_protocol.py`) e a mesma partição, e as métricas da "
-        "linha batem com o `resumo` do `metrics.json` (tolerância de 6e-5, porque o registry "
-        "grava 4 casas). Se alguma não bater, o script aborta sem gravar nada.",
+        "com o mesmo script e a mesma partição, e as métricas da linha batem com o `metrics.json` "
+        "(tolerância de 6e-5 para as gravadas com 4 casas e de 6e-4 para as de 3 casas da "
+        "decomposição dos harmônicos). As rodadas do `run_protocol.py` são conferidas pelo "
+        "`resumo`; o controle dos harmônicos (`inspect_lda_harmonicos.py`, que grava fora das "
+        "pastas `expNNN_*`), pelo `resumo` e pelo bloco `intervencao`, e a referência da "
+        "intervenção tem que ser o B da meta. Se alguma não bater, o script aborta sem gravar nada.",
         "",
         "## Rodadas por papel",
         "",
@@ -713,13 +949,14 @@ def md_rastreabilidade(rod: Rodadas) -> str:
                      f"{'todas batem' if all(c.ok for c in cs) else 'DIVERGE'} |")
     texto += [
         "",
-        "## Rodadas citadas uma a uma (exceto permutação e curva)",
+        "## Rodadas citadas uma a uma (exceto permutação, curva e as 10 sementes do aumento)",
         "",
         "| rodada | pasta | métrica | registry | metrics.json |",
         "|---|---|---|---:|---:|",
     ]
     soltas = [rod.ref_b, *rod.reproducoes_b, rod.ref_a, rod.ref_a_multi, rod.semc0_a,
-              rod.semc0_b, rod.norm_a, rod.norm_b] + [d for d in (rod.taxa_ref, rod.taxa_alt) if d]
+              rod.semc0_b, rod.norm_a, rod.norm_b] + [d for d in (rod.taxa_ref, rod.taxa_alt) if d] \
+        + rod.aum_ablacoes + [d for d in (rod.aum_permutado, rod.harm_decomp, rod.harm_interv) if d]
     for d in soltas:
         for c in por_id.get(d["id"], []):
             texto.append(f"| {c.exp_id} | `{d['_pasta']}` | `{c.chave}` | {c.valor_registry:.4f} "
@@ -827,6 +1064,43 @@ def md_consolidacao(rod: Rodadas, m: dict, perm: dict, curva: dict) -> str:
         "Figura: `fig_controles.png`.",
         "",
     ]
+    if rod.aum_completo:
+        ra = resumo_aumento(rod.aum_completo)
+        x = ra["media"]
+        texto += ["## Aumento de dados (tarefa 4/6)", "",
+                  f"Três técnicas (deslocamento, estiramento por phase vocoder e ruído) em "
+                  f"{ra['n']} sementes do sorteio das variantes ({_faixa([d['id'] for d in rod.aum_completo])}): "
+                  f"acc. bal. {x['ab']:.3f}, sensib. {x['sens']:.3f}, especif. {x['espec']:.3f}, "
+                  f"bpfo_0.3mm {x['bpfo_0.3mm']:.3f}; desvio máximo entre sementes {ra['desvio_max']:.3f}. "
+                  f"Referência sem aumento: {rod.ref_b['id']}. Conferido pelo `conferir` do "
+                  "`run_tabela_aumento.py` (tabela completa em `reports/validation/tabela_aumento.md`).",
+                  "",
+                  "| rodada | id | acc. bal. | sensib. | especif. | " + " | ".join(FALHAS) + " |",
+                  "|---|---|---:|---:|---:|" + "---:|" * len(FALHAS)]
+        grupos = [("sem aumento", [rod.ref_b]), (f"três técnicas ({ra['n']} sementes)", rod.aum_completo)]
+        grupos += [(d["parametros"]["aumento"] + ("" if d["parametros"].get("aumento_modo_estir") != "velocidade"
+                    else ", estiramento velocidade"), [d]) for d in rod.aum_ablacoes]
+        if rod.aum_permutado:
+            grupos.append(("três técnicas, rótulos permutados", [rod.aum_permutado]))
+        for nome, ds in grupos:
+            y = resumo_aumento(ds)["media"]
+            texto.append(f"| {nome} | {_faixa([d['id'] for d in ds])} | {y['ab']:.3f} | {y['sens']:.3f} "
+                         f"| {y['espec']:.3f} | " + " | ".join(f"{y[f]:.3f}" for f in FALHAS) + " |")
+        texto.append("")
+    if rod.harm_interv:
+        iv = rod.harm_interv["intervencao"]
+        rd = rod.harm_decomp["resumo"] if rod.harm_decomp else rod.harm_interv["resumo"]
+        texto += ["## Harmônicos do eixo (controle)", "",
+                  f"Intervenção ({rod.harm_interv['id']}): com as bandas dos harmônicos apagadas, o B fica em "
+                  f"{iv['sem_harmonicos']['acuracia_balanceada_media']:.3f} (referência "
+                  f"{iv['referencia']['acuracia_balanceada_media']:.3f}); apagando o mesmo número de bandas "
+                  f"sorteadas fora delas ({len(iv['sorteios'])} sorteios), {iv['acc_bal_sorteios_min']:.3f} a "
+                  f"{iv['acc_bal_sorteios_max']:.3f}. Decomposição por banda "
+                  f"({rod.harm_decomp['id'] if rod.harm_decomp else rod.harm_interv['id']}): as bandas dos "
+                  f"harmônicos somam {rd['fracao_separacao_harm_mediana']:.2f} da separação (mediana dos folds), "
+                  f"contra {rd['fracao_de_bandas_mediana']:.0%} das bandas; o desvio dos coeficientes responde "
+                  f"por {rd['fracao_desvio_mfcc_mediana']:.0%}.",
+                  ""]
     if rod.taxa_alt:
         texto += ["## Taxa de amostragem (tarefa 5/6)", "",
                   "Mesma LDA e mesmo MFCC, features no mesmo commit; as 20 bandas Mel vão até o "
@@ -855,7 +1129,9 @@ def gerar(pasta: Path, registry: Path, saida: Path, ids: dict, taxas: bool = Tru
         run_tabela_taxas.conferir_particoes(
             [(d["id"], d) for d in (rod.taxa_ref, rod.taxa_alt)],
             [raiz / config.arquivo_splits(int(d["parametros"]["fs_hz"])) for d in (rod.taxa_ref, rod.taxa_alt)])
-    conferir_registry(rod, ler_registry(registry))
+    reg = ler_registry(registry)
+    conferir_registry(rod, reg)
+    conferir_harmonicos(rod, reg)
 
     m = matriz_confusao_b(rod.ref_b)
     perm = resumo_permutacao(rod.permutacao, rod.ref_b)
@@ -872,6 +1148,10 @@ def gerar(pasta: Path, registry: Path, saida: Path, ids: dict, taxas: bool = Tru
     }
     if rod.taxa_alt:
         arquivos["tab_taxas_B.tex"] = tex_taxas(rod)
+    if rod.aum_completo:
+        arquivos["tab_aumento_B.tex"] = tex_aumento(rod)
+    if rod.harm_interv:
+        arquivos["tab_harmonicos.tex"] = tex_harmonicos(rod)
     for nome, texto in arquivos.items():
         (saida / nome).write_text(texto, encoding="utf-8")
     if figuras:
