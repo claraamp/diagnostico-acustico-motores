@@ -13,7 +13,7 @@ Sistema embarcado que classifica, em tempo real e a partir de sinal acústico, o
 
 ## Status
 
-Fase 1 — Protótipo em Python (em andamento). Conversão, decimação, protocolo de validação, extração de MFCC, aumento de dados, caracterização da assinatura acústica e estudo de escolha do classificador concluídos (fica a LDA: empata com a CNN 2D na validação interna e sai mais barata; ver "Escolha do classificador" abaixo). Próximo passo: modelo final e exportação dos pesos para o firmware. Ver o quadro de tarefas no Notion para o estado detalhado de cada etapa.
+Fase 1 — Protótipo em Python (em andamento). Conversão, decimação, protocolo de validação, extração de MFCC, aumento de dados, caracterização da assinatura acústica e estudo de escolha do classificador concluídos (fica a LDA: empata com a CNN 2D na validação interna e sai mais barata; ver "Escolha do classificador" abaixo). O modelo final (LDA treinada com os 295 segmentos) sai do `05_train_classifier.py` em `reports/modelo_final/`; o próximo passo é a geração do `.h` para C e o porte, na Fase 2. Ver o quadro de tarefas no Notion para o estado detalhado de cada etapa.
 
 ## Decisões técnicas fixadas
  
@@ -99,6 +99,8 @@ diagnostico-acustico-motores/
 │   ├── augmentation/         # aumento de dados do treino
 │   │   ├── transformacoes.py              # estiramento (phase vocoder / reamostragem), ruído, recorte
 │   │   └── variantes.py                   # sorteio reprodutível, janela lida e filtro por fold
+│   ├── models/               # modelo final do classificador
+│   │   └── lda.py                         # treino com todos os segmentos e parâmetros em JSON (escore > 0 → falha)
 │   ├── exploration/          # estudos e inspeções, sem numeração
 │   │   ├── inspect_mat_keys.py
 │   │   ├── inspect_signal_data.py
@@ -118,7 +120,7 @@ diagnostico-acustico-motores/
 │   │   ├── 02_decimate_pcm.py             # aplica a taxa definida em config.py
 │   │   ├── 03_make_splits.py              # segmenta e gera a partição, uma única vez
 │   │   ├── 04_extract_features.py         # MFCC por segmento da partição (+ variantes do aumento) → .npz
-│   │   └── 05_train_classifier.py         # (previsto) modelo final para o firmware
+│   │   └── 05_train_classifier.py         # modelo final para o firmware (não mede desempenho) → reports/modelo_final/
 │   └── validation/           # protocolo de validação do classificador
 │       ├── particao.py                    # segmentos, folds A e B, verificação
 │       ├── metricas.py                    # sensibilidade, especificidade, acurácia balanceada
@@ -136,6 +138,10 @@ diagnostico-acustico-motores/
 │   ├── augmentation/
 │   │   ├── test_transformacoes.py
 │   │   └── test_variantes.py              # inclui: variante aceita nunca lê teste/descarte
+│   ├── models/
+│   │   └── test_lda.py                    # o JSON reproduz o sklearn nas duas formas; escore > 0 é falha
+│   ├── pipeline/
+│   │   └── test_train_classifier.py       # o 05 só aceita as features de referência da partição
 │   ├── exploration/
 │   │   └── test_compare_classifiers.py    # critério de escolha: mais barato na margem, em qualquer ordem (pula sem torch)
 │   └── validation/
@@ -159,6 +165,7 @@ diagnostico-acustico-motores/
 │   ├── classifier/           # estudo de escolha do classificador (compare_classifiers.json)
 │   ├── decimation/           # métricas, figuras e relatório da escolha da taxa
 │   ├── exploration/          # figuras dos scripts exploratórios
+│   ├── modelo_final/         # lda_final.json (parâmetros para o firmware) e escores_referencia.csv, do 05
 │   ├── signature/            # caracterização da assinatura acústica
 │   └── validation/           # uma pasta por rodada: metrics.json e folds.csv
 │       └── consolidacao/     # tabelas .tex, figuras e rastreabilidade do relatório (run_consolidacao.py)
@@ -185,7 +192,10 @@ python scripts/pipeline/01_convert_mat_to_pcm.py   # .mat → PCM int16 a 51,2 k
 python scripts/pipeline/02_decimate_pcm.py         # decima para a taxa de trabalho
 python scripts/pipeline/03_make_splits.py          # confere que a partição versionada bate
 python scripts/pipeline/04_extract_features.py     # MFCC de cada segmento → data/processed/features/
+python scripts/pipeline/05_train_classifier.py --responsavel <nome>   # modelo final → reports/modelo_final/
 ```
+
+O `05` treina a LDA uma única vez, com os 295 segmentos e sem aumento, e grava em `reports/modelo_final/lda_final.json` os parâmetros nas duas formas equivalentes de `models/lda.py`: a padronizada (média, escala, coeficientes e intercepto) e a dobrada, `escore = pesos · x + bias`, que é a que o firmware usa. A convenção é **escore > 0 → falha**, e as 26 features seguem a ordem do `04` (as 13 médias, depois os 13 desvios, populacionais). Antes de gravar, o script confere que o JSON reproduz o sklearn em todos os segmentos. O `escores_referencia.csv` traz o escore de cada segmento para conferir a implementação em C. Esses segmentos são os do próprio treino: **o `05` não mede desempenho**, que continua sendo o do Protocolo B (`exp015`). Ele exige as features de referência (sem `--norm-clipe`); se o `04` foi rodado com outra opção, rode-o de novo sem opções antes.
 
 O `03` é determinístico: num clone novo, ele reconstrói exatamente o `splits.json` versionado e avisa que "já existe e é idêntico". Se disser que o arquivo é **diferente**, os dados reconstruídos não são os mesmos das rodadas registradas — pare e investigue antes de seguir.
 

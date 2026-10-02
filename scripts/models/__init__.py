@@ -1,0 +1,1 @@
+"""Modelo final do classificador: treino com todos os segmentos e parâmetros exportáveis."""
