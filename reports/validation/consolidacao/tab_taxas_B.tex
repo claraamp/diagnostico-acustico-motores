@@ -1,17 +1,17 @@
 \begin{table}[H]
 \centering
-\caption{Protocolo B com a mesma LDA e o mesmo MFCC a duas taxas de amostragem, com as características extraídas no mesmo \emph{commit} e partições que descrevem os mesmos segmentos e \emph{folds}. Colunas por falha: AB com aquela falha deixada de fora. As 20 bandas de Mel vão até o Nyquist de cada taxa, de modo que a comparação mede a taxa junto com o banco de Mel padrão.}
+\caption{Protocolo B a duas taxas de amostragem. Colunas por falha: AB com aquela falha deixada de fora.}
 \label{tab:taxasB}
 \footnotesize
 \setlength{\tabcolsep}{4pt}
-\begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}X C{1.15cm} C{1.15cm} C{1.2cm} C{1.35cm} C{1.35cm} C{1.35cm} C{1.35cm} C{1.5cm}}
+\begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}X C{1.15cm} C{1.15cm} C{1.2cm} C{1.35cm} C{1.35cm} C{1.35cm} C{1.35cm}}
 \toprule
-\textbf{Taxa} & \textbf{AB} & \textbf{Sens.} & \textbf{Espec.} & \textbf{BPFI 0,3~mm} & \textbf{BPFI 1,0~mm} & \textbf{BPFO 0,3~mm} & \textbf{BPFO 1,0~mm} & \textbf{Rodada} \\
+\textbf{Taxa} & \textbf{AB} & \textbf{Sens.} & \textbf{Espec.} & \textbf{BPFI 0,3~mm} & \textbf{BPFI 1,0~mm} & \textbf{BPFO 0,3~mm} & \textbf{BPFO 1,0~mm} \\
 \midrule
-12.800~Hz & 0,875 & 0,750 & 1,000 & 1,000 & 1,000 & 0,500 & 1,000 & \texttt{exp234} \\
-25.600~Hz & 0,870 & 0,741 & 1,000 & 0,982 & 1,000 & 0,500 & 1,000 & \texttt{exp235} \\
+12.800~Hz & 0,875 & 0,750 & 1,000 & 1,000 & 1,000 & 0,500 & 1,000 \\
+25.600~Hz & 0,870 & 0,741 & 1,000 & 0,982 & 1,000 & 0,500 & 1,000 \\
 \midrule
-Diferença & $-$0,005 & $-$0,009 & 0 & $-$0,018 & 0 & 0 & 0 & \\
+Diferença & $-$0,005 & $-$0,009 & 0 & $-$0,018 & 0 & 0 & 0 \\
 \bottomrule
 \end{tabularx}
 \end{table}

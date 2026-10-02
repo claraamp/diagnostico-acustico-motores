@@ -19,7 +19,7 @@ tab_protocoloA_folds.tex     os 6 folds do A, binário e multiclasse, rotulados
                              como limite superior otimista
 tab_matriz_confusao_B.tex    matriz de confusão do B somada nos 24 folds, por
 fig_matriz_confusao_B.png    classe verdadeira (normal e as 4 falhas) × previsão
-tab_controles.tex            ablação do ganho, permutação e curva de aprendizado
+tab_controles.tex            ablação do ganho e permutação (a curva fica na figura)
 tab_taxas_B.tex              B a 12,8 × 25,6 kHz (tarefa 5/6)
 fig_controles.png            permutação (histograma) e curva de aprendizado
 rastreabilidade.md           cada número das tabelas → rodada → linha do registry,
@@ -389,17 +389,11 @@ def tex_protocolo_b(rod: Rodadas) -> str:
                       f"{br(pf['especificidade'])} & {br(pf['acuracia_balanceada'])} \\\\")
     media_bloco = " & ".join(
         br(statistics.mean(fb[(f, b)]["acuracia_balanceada"] for f in FALHAS)) for b in blocos)
-    repro = ", ".join(x["id"] for x in rod.reproducoes_b)
-    pior = r["pior_fold"].replace("_", r"\_")
     return "\n".join([
         r"\begin{table}[H]",
         r"\centering",
-        r"\caption{Protocolo B, \emph{fold} a \emph{fold}: acurácia balanceada da LDA para cada "
-        r"gravação de falha deixada de fora (linhas) combinada com cada bloco da gravação normal "
-        r"(colunas). À direita, a média dos seis blocos. Pior \emph{fold}: "
-        f"\\texttt{{{pior}}} ({br(r['pior_fold_acuracia_balanceada'])}). "
-        f"Rodada \\texttt{{{d['id']}}}"
-        + (f"; \\texttt{{{repro}}} reproduz os mesmos valores." if repro else ".") + "}",
+        r"\caption{Protocolo B, \emph{fold} a \emph{fold}: acurácia balanceada por falha deixada "
+        r"de fora e bloco normal no teste.}",
         r"\label{tab:protocoloB-folds}",
         r"\footnotesize",
         r"\begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}X " + "C{0.95cm} " * len(blocos)
@@ -439,11 +433,8 @@ def tex_protocolo_a(rod: Rodadas) -> str:
     return "\n".join([
         r"\begin{table}[H]",
         r"\centering",
-        r"\caption{Protocolo A (blocos temporais), \emph{fold} a \emph{fold}. "
-        r"\textbf{Limite superior otimista}: treino e teste vêm das mesmas gravações, e o "
-        r"resultado não é usado para aferir a meta. Na multiclasse, a última coluna é o menor "
-        r"acerto entre as cinco classes. Rodadas "
-        f"\\texttt{{{a['id']}}} (binário) e \\texttt{{{m['id']}}} (multiclasse).}}",
+        r"\caption{Protocolo A, \emph{fold} a \emph{fold} (limite superior otimista, não usado "
+        r"para aferir a meta).}",
         r"\label{tab:protocoloA-folds}",
         r"\begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}X C{1.4cm} C{1.4cm} C{1.4cm} C{2.4cm} C{2.4cm} C{1.9cm}}",
         r"\toprule",
@@ -472,18 +463,11 @@ def tex_matriz(rod: Rodadas, m: dict) -> str:
         linhas.append(f"{tt(c)} & {br_int(n)} & {cel[0]} & {cel[1]} \\\\")
         if c == "normal":
             linhas.append(r"\midrule")
-    vp = sum(m[f]["falha"] for f in FALHAS)
-    fn = sum(m[f]["normal"] for f in FALHAS)
-    vn, fp = m["normal"]["normal"], m["normal"]["falha"]
     return "\n".join([
         r"\begin{table}[H]",
         r"\centering",
-        r"\caption{Matriz de confusão do Protocolo B, somada nos 24 \emph{folds} (rodada "
-        f"\\texttt{{{rod.ref_b['id']}}}). Linhas: classe verdadeira do segmento; colunas: "
-        r"previsão do detector binário. Cada segmento de falha é testado seis vezes (uma por "
-        r"bloco normal) e cada segmento normal quatro vezes (uma por falha deixada de fora); as "
-        r"porcentagens são por linha. Total: "
-        f"VP = {br_int(vp)}, FN = {br_int(fn)}, VN = {br_int(vn)}, FP = {br_int(fp)}.}}",
+        r"\caption{Matriz de confusão do Protocolo B, somada nos 24 \emph{folds} (porcentagens "
+        r"por linha).}",
         r"\label{tab:confusaoB}",
         r"\begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}X C{2.4cm} C{3.4cm} C{3.4cm}}",
         r"\toprule",
@@ -499,7 +483,10 @@ def tex_matriz(rod: Rodadas, m: dict) -> str:
     ])
 
 
-def tex_controles(rod: Rodadas, perm: dict, curva: dict) -> str:
+def tex_controles(rod: Rodadas, perm: dict) -> str:
+    """Ablação do ganho e permutação. A curva de aprendizado tem tabela própria no relatório
+    (`tab:curva`) e está na figura dos controles; os ids das rodadas ficam no
+    rastreabilidade.md e no texto."""
     def b(d):
         r = d["resumo"]
         return (f"{br(r['acuracia_balanceada_media'])} & {br(r['sensibilidade_media'])} & "
@@ -509,48 +496,25 @@ def tex_controles(rod: Rodadas, perm: dict, curva: dict) -> str:
     def a(d):
         return br(d["resumo"]["acuracia_balanceada_media"])
 
-    def cid(*ds):
-        return r"\texttt{" + ", ".join(x["id"] for x in ds) + "}"
-
-    linhas = [
-        f"Referência (MFCC completo) & {a(rod.ref_a)} & {b(rod.ref_b)} & {cid(rod.ref_a, rod.ref_b)} \\\\",
-        f"Sem o coeficiente $c_0$ & {a(rod.semc0_a)} & {b(rod.semc0_b)} & {cid(rod.semc0_a, rod.semc0_b)} \\\\",
-        f"Normalização RMS por segmento & {a(rod.norm_a)} & {b(rod.norm_b)} & {cid(rod.norm_a, rod.norm_b)} \\\\",
-        f"Rótulos permutados por bloco ({perm['n']} sorteios) & -- & {br(perm['media'])} $\\pm$ "
-        f"{br(perm['desvio'])} & -- & -- & -- & {_tex_faixa([x['id'] for x in rod.permutacao])} \\\\",
-        r"\midrule",
-        r"\multicolumn{6}{l}{\emph{Curva de aprendizado (segundos de treino por classe)}} & "
-        + _tex_faixa([x["id"] for x in rod.curva]) + r" \\",
-    ]
-    for s in sorted(set(curva.get("A", {})) | set(curva.get("B", {}))):
-        ea, eb = curva.get("A", {}).get(s), curva.get("B", {}).get(s)
-        cel_a = f"{br(ea['ab'][0])} $\\pm$ {br(ea['ab'][1])}" if ea else "--"
-        cel_b = (f"{br(eb['ab'][0])} $\\pm$ {br(eb['ab'][1])} & {br(eb['sens'][0])} & "
-                 f"{br(eb['espec'][0])} & {br(eb['bpfo03'][0])}") if eb else "-- & -- & -- & --"
-        linhas.append(f"\\quad {s:g}~s & {cel_a} & {cel_b} & \\\\")
-    n_sem = sorted({e["n"] for prot in curva.values() for e in prot.values()})
     return "\n".join([
         r"\begin{table}[H]",
         r"\centering",
-        r"\caption{Controles do protocolo (LDA, binário, sem aumento). A: acurácia balanceada "
-        r"média; B: acurácia balanceada (AB), sensibilidade e especificidade médias, e AB da "
-        r"\texttt{bpfo\_0.3mm}. Na permutação, o p empírico da referência é "
-        f"{br(perm['p_emp'], 4)} ({perm['acima']} de {perm['n']} sorteios $\\geq$ "
-        f"{br(rod.ref_b['resumo']['acuracia_balanceada_media'])}). Na curva de aprendizado, os "
-        r"segmentos de treino são repartidos entre as gravações de cada classe, com "
-        f"{'/'.join(map(str, n_sem))} sorteios por ponto; sensibilidade, especificidade e "
-        r"\texttt{bpfo\_0.3mm} são médias entre os sorteios.}",
+        r"\caption{Ablação do ganho e permutação de rótulos (AB: acurácia balanceada).}",
         r"\label{tab:controles-completa}",
-        r"\footnotesize",
-        r"\setlength{\tabcolsep}{4pt}",
-        r"\begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}X C{2.1cm} C{2.1cm} C{1.1cm} C{1.2cm} C{1.3cm} C{2.6cm}}",
+        r"\small",
+        r"\begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}X C{1.5cm} C{2.3cm} C{1.3cm} "
+        r"C{1.3cm} C{1.7cm}}",
         r"\toprule",
-        r" & \textbf{A} & \multicolumn{4}{c}{\textbf{B}} & \\",
+        r" & \textbf{A} & \multicolumn{4}{c}{\textbf{B}} \\",
         r"\cmidrule(lr){2-2}\cmidrule(lr){3-6}",
         r"\textbf{Rodada} & \textbf{AB} & \textbf{AB} & \textbf{Sens.} & \textbf{Espec.} & "
-        r"\textbf{BPFO 0,3~mm} & \textbf{Registro} \\",
+        r"\textbf{BPFO 0,3~mm} \\",
         r"\midrule",
-        *linhas,
+        f"Referência (MFCC completo) & {a(rod.ref_a)} & {b(rod.ref_b)} \\\\",
+        f"Sem o coeficiente $c_0$ & {a(rod.semc0_a)} & {b(rod.semc0_b)} \\\\",
+        f"Normalização RMS por segmento & {a(rod.norm_a)} & {b(rod.norm_b)} \\\\",
+        f"Rótulos permutados por bloco ({perm['n']} sorteios) & -- & {br(perm['media'])} $\\pm$ "
+        f"{br(perm['desvio'])} & -- & -- & -- \\\\",
         r"\bottomrule",
         r"\end{tabularx}",
         r"\end{table}",
@@ -563,8 +527,7 @@ def tex_taxas(rod: Rodadas) -> str:
         r = d["resumo"]
         por = " & ".join(br(r["por_falha"][f]["acuracia_balanceada"]) for f in FALHAS)
         return (f"{br_int(int(d['parametros']['fs_hz']))}~Hz & {br(r['acuracia_balanceada_media'])} & "
-                f"{br(r['sensibilidade_media'])} & {br(r['especificidade_media'])} & {por} & "
-                f"\\texttt{{{d['id']}}} \\\\")
+                f"{br(r['sensibilidade_media'])} & {br(r['especificidade_media'])} & {por} \\\\")
 
     def dif(a, b):
         v = b - a
@@ -578,24 +541,21 @@ def tex_taxas(rod: Rodadas) -> str:
     return "\n".join([
         r"\begin{table}[H]",
         r"\centering",
-        r"\caption{Protocolo B com a mesma LDA e o mesmo MFCC a duas taxas de amostragem, com "
-        r"as características extraídas no mesmo \emph{commit} e partições que descrevem os mesmos "
-        r"segmentos e \emph{folds}. Colunas por falha: AB com aquela falha deixada de fora. As 20 "
-        r"bandas de Mel vão até o Nyquist de cada taxa, de modo que a comparação mede a taxa junto "
-        r"com o banco de Mel padrão.}",
+        r"\caption{Protocolo B a duas taxas de amostragem. Colunas por falha: AB com aquela "
+        r"falha deixada de fora.}",
         r"\label{tab:taxasB}",
         r"\footnotesize",
         r"\setlength{\tabcolsep}{4pt}",
         r"\begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}X C{1.15cm} C{1.15cm} C{1.2cm} "
-        r"C{1.35cm} C{1.35cm} C{1.35cm} C{1.35cm} C{1.5cm}}",
+        r"C{1.35cm} C{1.35cm} C{1.35cm} C{1.35cm}}",
         r"\toprule",
         r"\textbf{Taxa} & \textbf{AB} & \textbf{Sens.} & \textbf{Espec.} & \textbf{BPFI 0,3~mm} & "
-        r"\textbf{BPFI 1,0~mm} & \textbf{BPFO 0,3~mm} & \textbf{BPFO 1,0~mm} & \textbf{Rodada} \\",
+        r"\textbf{BPFI 1,0~mm} & \textbf{BPFO 0,3~mm} & \textbf{BPFO 1,0~mm} \\",
         r"\midrule",
         linha(rod.taxa_ref),
         linha(rod.taxa_alt),
         r"\midrule",
-        f"Diferença & {difs} & \\\\",
+        f"Diferença & {difs} \\\\",
         r"\bottomrule",
         r"\end{tabularx}",
         r"\end{table}",
@@ -906,7 +866,7 @@ def gerar(pasta: Path, registry: Path, saida: Path, ids: dict, taxas: bool = Tru
         "tab_protocoloB_folds.tex": tex_protocolo_b(rod),
         "tab_protocoloA_folds.tex": tex_protocolo_a(rod),
         "tab_matriz_confusao_B.tex": tex_matriz(rod, m),
-        "tab_controles.tex": tex_controles(rod, perm, curva),
+        "tab_controles.tex": tex_controles(rod, perm),
         "rastreabilidade.md": md_rastreabilidade(rod),
         "consolidacao.md": md_consolidacao(rod, m, perm, curva),
     }
