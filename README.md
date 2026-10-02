@@ -47,6 +47,10 @@ Com a LDA, o Protocolo B com aumento aplicado só no treino de cada fold dá o m
 
 Com a LDA, o Protocolo B a 25,6 kHz não melhora o de 12,8 kHz: 0,870 de acurácia balanceada média contra 0,875 (`exp235` × `exp234`, no mesmo commit e com a mesma partição em segundos; a de 25,6 kHz é a `splits_25600.json`). A `bpfo_0.3mm` continua sem ser detectada nas duas taxas (sensibilidade 0,000). A única diferença é a `bpfi_0.3mm`, que a 25,6 kHz perde 13 dos 59 segmentos num dos seis folds (acurácia balanceada 0,982). O classificador não indica perda com a decimação; somado ao `exp023` (nenhuma energia a mais que a normal entre 6,4 e 12,8 kHz) e ao `exp026` (linhas de BPFO abaixo de ~3,8 kHz, que o MFCC a 12,8 kHz recebe), não há indício de que a faixa cortada carregue a informação da `bpfo_0.3mm`. O `exp235` sozinho não isola a banda alta: a 25,6 kHz as mesmas 20 bandas Mel se redistribuem até 12,8 kHz, e as bandas com centro abaixo de 3,8 kHz, onde ficam as linhas de BPFO, caem de 16 para 13, enquanto só 4 cobrem a faixa de 6,4 a 12,8 kHz. A comparação mede, portanto, a taxa junto com o MFCC padrão; isolar a banda alta pediria uma rodada a 25,6 kHz com as bandas abaixo de 6,4 kHz iguais às de 12,8 kHz e bandas extras na faixa alta. A tabela está em `reports/validation/tabela_taxas.md`.
 
+### Resultados consolidados para o relatório
+
+O `run_consolidacao.py` reúne, a partir dos `metrics.json` e do registry, as tabelas e figuras finais do classificador em `reports/validation/consolidacao/`, com o LaTeX já no formato do relatório (vírgula decimal, `tabularx`/`booktabs`). O número da meta é o do `exp015` (reproduzido pelo `exp013` e pelo `exp234`): acurácia balanceada média de 0,875 no Protocolo B, com sensibilidade 0,750, especificidade 1,000 e pior caso na `bpfo_0.3mm` (0,500 em todos os 6 folds). Somados os 24 folds, a matriz de confusão tem 0 falsos positivos em 236 testes de segmentos normais e 354 falsos negativos, todos da `bpfo_0.3mm`; as outras três falhas são detectadas em todos os testes. O Protocolo A (`exp027`, `exp028`) sai rotulado como limite otimista, e a comparação de taxas (`exp234` × `exp235`) entra com as mesmas conferências do `run_tabela_taxas.py`. O script confere, antes de gravar qualquer saída, que cada rodada tem linha no registry com as mesmas métricas (`rastreabilidade.md`, 190 rodadas).
+
 ### Assinatura acústica
 
 As frequências de falha **medidas** no áudio são BPFI ≈ 268,3 Hz e BPFO ≈ 182,7–183,4 Hz (eixo a 50,20 Hz). A BPFI e a BPFO da falha de 1,0 mm foram confirmadas por um segundo sensor: no espectro de envelope, a vibração as mostra a menos de 0,25 Hz do áudio. Na `bpfo_0.3mm` a confirmação é **parcial**: a vibração tem energia em 182,65 Hz, mas o pico do envelope dela fica em 181,5 Hz, e o envelope do áudio não mostra a linha. As medidas diferem das frequências **cinemáticas** da Tabela 1 do artigo (272,1 e 179,4 Hz), calculadas para ângulo de contato θ = 0°. Use as medidas quando precisar de uma frequência de falha, e chame as do artigo de "cinemáticas", não de "frequências da bancada". Abaixo de 6,4 kHz, cada falha aparece no espectro como uma série harmônica estreita da própria pista, e essas linhas sobrevivem à decimação. A impulsividade clássica, no áudio, fica acima de 6,4 kHz (9–22 kHz nas classes de falha), e a decimação a remove.
@@ -122,7 +126,8 @@ diagnostico-acustico-motores/
 │       ├── run_tabela_comparativa.py      # executável: tabela provisório × oficial a partir dos metrics.json
 │       ├── run_tabela_controles.py        # executável: tabela dos controles (sem c0, permutação, curva)
 │       ├── run_tabela_aumento.py          # executável: tabela do B com e sem aumento de dados
-│       └── run_tabela_taxas.py            # executável: tabela do B em duas taxas de amostragem
+│       ├── run_tabela_taxas.py            # executável: tabela do B em duas taxas de amostragem
+│       └── run_consolidacao.py            # executável: tabelas .tex e figuras finais para o relatório
 │
 ├── tests/                    # pytest; não dependem de data/
 │   ├── conftest.py
@@ -137,6 +142,7 @@ diagnostico-acustico-motores/
 │       ├── test_curva_aprendizado.py      # subamostra só treino, n por classe, reprodutível
 │       ├── test_tabela_aumento.py         # tabela do aumento: comparabilidade e fator de expansão
 │       ├── test_tabela_taxas.py           # tabela das taxas: comparabilidade e mesma partição em segundos
+│       ├── test_consolidacao.py           # consolidação: número sem registry ou rodada no papel errado aborta
 │       └── test_particao.py               # inclui: outra taxa dá os mesmos segmentos em segundos
 │
 ├── notebooks/                # notebooks de análise/visualização
@@ -155,6 +161,7 @@ diagnostico-acustico-motores/
 │   ├── exploration/          # figuras dos scripts exploratórios
 │   ├── signature/            # caracterização da assinatura acústica
 │   └── validation/           # uma pasta por rodada: metrics.json e folds.csv
+│       └── consolidacao/     # tabelas .tex, figuras e rastreabilidade do relatório (run_consolidacao.py)
 │
 └── docs/                     # proposta, documentação técnica complementar
 ```
@@ -244,6 +251,13 @@ python scripts/validation/run_protocol.py --protocolo B --fs 25600 --responsavel
 python scripts/pipeline/04_extract_features.py            # a referência, a 12,8 kHz
 python scripts/validation/run_protocol.py --protocolo B --responsavel <nome>
 python scripts/validation/run_tabela_taxas.py --rodadas <exp 12,8 kHz> <exp 25,6 kHz>
+
+# resultados consolidados para o relatório: tabelas .tex (vírgula decimal), matriz de
+# confusão do B, figura dos controles, comparação de taxas e rastreabilidade (cada
+# número → rodada → registry). Aborta se alguma rodada não tiver linha no registry ou se
+# as métricas não baterem. Não treina nem registra.
+python scripts/validation/run_consolidacao.py
+python scripts/validation/run_consolidacao.py --sem-taxas    # sem a tabela 12,8 × 25,6 kHz
 ```
 
 O teste nunca é aumentado: todo fold é avaliado nos segmentos originais. Rodar o `04` sem `--aumento` apaga o `mfcc_aumento.npz` de uma rodada anterior, para que ele não seja lido como se fosse da extração atual.
