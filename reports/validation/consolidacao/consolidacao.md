@@ -49,6 +49,24 @@ VP = 1062, FN = 354, VN = 236, FP = 0. Figura: `fig_matriz_confusao_B.png`.
 
 Permutação: p empírico da referência 0.0099 (0 de 100 sorteios ≥ 0.875); mín. 0.329, máx. 0.571. Figura: `fig_controles.png`.
 
+## Aumento de dados (tarefa 4/6)
+
+Três técnicas (deslocamento, estiramento por phase vocoder e ruído) em 10 sementes do sorteio das variantes (exp224–exp233): acc. bal. 0.875, sensib. 0.750, especif. 1.000, bpfo_0.3mm 0.500; desvio máximo entre sementes 0.000. Referência sem aumento: exp015. Conferido pelo `conferir` do `run_tabela_aumento.py` (tabela completa em `reports/validation/tabela_aumento.md`).
+
+| rodada | id | acc. bal. | sensib. | especif. | bpfi_0.3mm | bpfi_1.0mm | bpfo_0.3mm | bpfo_1.0mm |
+|---|---|---:|---:|---:|---:|---:|---:|---:|
+| sem aumento | exp015 | 0.875 | 0.750 | 1.000 | 1.000 | 1.000 | 0.500 | 1.000 |
+| três técnicas (10 sementes) | exp224–exp233 | 0.875 | 0.750 | 1.000 | 1.000 | 1.000 | 0.500 | 1.000 |
+| deslocamento | exp019 | 0.875 | 0.750 | 1.000 | 1.000 | 1.000 | 0.500 | 1.000 |
+| estiramento | exp020 | 0.875 | 0.750 | 1.000 | 1.000 | 1.000 | 0.500 | 1.000 |
+| ruido | exp021 | 0.875 | 0.750 | 1.000 | 1.000 | 1.000 | 0.500 | 1.000 |
+| deslocamento+estiramento+ruido, estiramento velocidade | exp022 | 0.788 | 0.576 | 1.000 | 0.651 | 1.000 | 0.500 | 1.000 |
+| três técnicas, rótulos permutados | exp017 | 0.528 | 0.572 | 0.484 | 0.601 | 0.485 | 0.639 | 0.386 |
+
+## Harmônicos do eixo (controle)
+
+Intervenção (exp221): com as bandas dos harmônicos apagadas, o B fica em 0.875 (referência 0.875); apagando o mesmo número de bandas sorteadas fora delas (5 sorteios), 0.854 a 0.875. Decomposição por banda (exp220): as bandas dos harmônicos somam -0.20 da separação (mediana dos folds), contra 20% das bandas; o desvio dos coeficientes responde por 2%.
+
 ## Taxa de amostragem (tarefa 5/6)
 
 Mesma LDA e mesmo MFCC, features no mesmo commit; as 20 bandas Mel vão até o Nyquist de cada taxa. Partições conferidas em segundos pelo `run_tabela_taxas.py` (tabela completa em `reports/validation/tabela_taxas.md`).

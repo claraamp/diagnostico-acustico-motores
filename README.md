@@ -49,7 +49,7 @@ Com a LDA, o Protocolo B a 25,6 kHz não melhora o de 12,8 kHz: 0,870 de acurác
 
 ### Resultados consolidados para o relatório
 
-O `run_consolidacao.py` reúne, a partir dos `metrics.json` e do registry, as tabelas e figuras finais do classificador em `reports/validation/consolidacao/`, com o LaTeX já no formato do relatório (vírgula decimal, `tabularx`/`booktabs`). O número da meta é o do `exp015` (reproduzido pelo `exp013` e pelo `exp234`): acurácia balanceada média de 0,875 no Protocolo B, com sensibilidade 0,750, especificidade 1,000 e pior caso na `bpfo_0.3mm` (0,500 em todos os 6 folds). Somados os 24 folds, a matriz de confusão tem 0 falsos positivos em 236 testes de segmentos normais e 354 falsos negativos, todos da `bpfo_0.3mm`; as outras três falhas são detectadas em todos os testes. O Protocolo A (`exp027`, `exp028`) sai rotulado como limite otimista, e a comparação de taxas (`exp234` × `exp235`) entra com as mesmas conferências do `run_tabela_taxas.py`. O script confere, antes de gravar qualquer saída, que cada rodada tem linha no registry com as mesmas métricas (`rastreabilidade.md`, 190 rodadas).
+O `run_consolidacao.py` reúne, a partir dos `metrics.json` e do registry, as tabelas e figuras finais do classificador em `reports/validation/consolidacao/`, com o LaTeX já no formato do relatório (vírgula decimal, `tabularx`/`booktabs`). O número da meta é o do `exp015` (reproduzido pelo `exp013` e pelo `exp234`): acurácia balanceada média de 0,875 no Protocolo B, com sensibilidade 0,750, especificidade 1,000 e pior caso na `bpfo_0.3mm` (0,500 em todos os 6 folds). Somados os 24 folds, a matriz de confusão tem 0 falsos positivos em 236 testes de segmentos normais e 354 falsos negativos, todos da `bpfo_0.3mm`; as outras três falhas são detectadas em todos os testes. O Protocolo A (`exp027`, `exp028`) sai rotulado como limite otimista. O aumento com 10 sementes (`exp224`–`exp233`, mais as ablações `exp019`–`exp022` e o controle permutado `exp017`) e a comparação de taxas (`exp234` × `exp235`) entram com as mesmas conferências do `run_tabela_aumento.py` e do `run_tabela_taxas.py`. O controle dos harmônicos do eixo (`exp220`, `exp221`), que é do `inspect_lda_harmonicos.py` e grava fora das pastas `expNNN_*`, é conferido pelo bloco `intervencao` do seu `metrics.json`, e a referência da intervenção tem que ser o B da meta. O script confere, antes de gravar qualquer saída, que cada rodada tem linha no registry com as mesmas métricas (`rastreabilidade.md`, 207 rodadas).
 
 ### Assinatura acústica
 
@@ -253,7 +253,7 @@ python scripts/validation/run_protocol.py --protocolo B --responsavel <nome>
 python scripts/validation/run_tabela_taxas.py --rodadas <exp 12,8 kHz> <exp 25,6 kHz>
 
 # resultados consolidados para o relatório: tabelas .tex (vírgula decimal), matriz de
-# confusão do B, figura dos controles, comparação de taxas e rastreabilidade (cada
+# confusão do B, figura dos controles, aumento, harmônicos, taxas e rastreabilidade (cada
 # número → rodada → registry). Aborta se alguma rodada não tiver linha no registry ou se
 # as métricas não baterem. Não treina nem registra.
 python scripts/validation/run_consolidacao.py
