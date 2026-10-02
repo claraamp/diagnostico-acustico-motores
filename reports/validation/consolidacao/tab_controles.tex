@@ -1,0 +1,18 @@
+\begin{table}[H]
+\centering
+\caption{Ablação do ganho e permutação de rótulos (AB: acurácia balanceada).}
+\label{tab:controles-completa}
+\small
+\begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}X C{1.5cm} C{2.3cm} C{1.3cm} C{1.3cm} C{1.7cm}}
+\toprule
+ & \textbf{A} & \multicolumn{4}{c}{\textbf{B}} \\
+\cmidrule(lr){2-2}\cmidrule(lr){3-6}
+\textbf{Rodada} & \textbf{AB} & \textbf{AB} & \textbf{Sens.} & \textbf{Espec.} & \textbf{BPFO 0,3~mm} \\
+\midrule
+Referência (MFCC completo) & 1,000 & 0,875 & 0,750 & 1,000 & 0,500 \\
+Sem o coeficiente $c_0$ & 1,000 & 0,875 & 0,750 & 1,000 & 0,500 \\
+Normalização RMS por segmento & 1,000 & 0,875 & 0,750 & 1,000 & 0,500 \\
+Rótulos permutados por bloco (100 sorteios) & -- & 0,450 $\pm$ 0,060 & -- & -- & -- \\
+\bottomrule
+\end{tabularx}
+\end{table}

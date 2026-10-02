@@ -1,0 +1,19 @@
+\begin{table}[H]
+\centering
+\caption{Protocolo B com e sem aumento de dados (LDA, quatro variantes por segmento). Colunas por falha: acurácia balanceada com aquela falha deixada de fora.}
+\label{tab:res-aumento}
+\small
+\begin{tabularx}{\textwidth}{X C{1.1cm} C{1.1cm} C{1.1cm} C{1.3cm} C{1.3cm} C{1.3cm} C{1.3cm}}
+\toprule
+\textbf{Rodada} & \textbf{AB} & \textbf{Sens.} & \textbf{Espec.} & \textbf{BPFI 0,3~mm} & \textbf{BPFI 1,0~mm} & \textbf{BPFO 0,3~mm} & \textbf{BPFO 1,0~mm} \\
+\midrule
+Sem aumento (referência) & 0,875 & 0,750 & 1,000 & 1,00 & 1,00 & 0,50 & 1,00 \\
+\textbf{Três técnicas} (10 sementes) & \textbf{0,875} & 0,750 & 1,000 & 1,00 & 1,00 & 0,50 & 1,00 \\
+Só deslocamento & 0,875 & 0,750 & 1,000 & 1,00 & 1,00 & 0,50 & 1,00 \\
+Só estiramento (\emph{tempo}) & 0,875 & 0,750 & 1,000 & 1,00 & 1,00 & 0,50 & 1,00 \\
+Só ruído & 0,875 & 0,750 & 1,000 & 1,00 & 1,00 & 0,50 & 1,00 \\
+Três técnicas, rótulos permutados & 0,528 & 0,572 & 0,484 & 0,60 & 0,49 & 0,64 & 0,39 \\
+Três técnicas, estiramento \emph{velocidade} & 0,788 & 0,576 & 1,000 & \textbf{0,65} & 1,00 & 0,50 & 1,00 \\
+\bottomrule
+\end{tabularx}
+\end{table}

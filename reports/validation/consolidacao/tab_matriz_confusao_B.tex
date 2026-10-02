@@ -1,0 +1,19 @@
+\begin{table}[H]
+\centering
+\caption{Matriz de confusão do Protocolo B, somada nos 24 \emph{folds} (porcentagens por linha).}
+\label{tab:confusaoB}
+\begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}X C{2.4cm} C{3.4cm} C{3.4cm}}
+\toprule
+ & & \multicolumn{2}{c}{\textbf{Previsto}} \\
+\cmidrule(lr){3-4}
+\textbf{Classe verdadeira} & \textbf{Testes} & \textbf{normal} & \textbf{falha} \\
+\midrule
+\texttt{normal} & 236 & 236 (100,0\%) & 0 (0,0\%) \\
+\midrule
+\texttt{bpfi\_0.3mm} & 354 & 0 (0,0\%) & 354 (100,0\%) \\
+\texttt{bpfi\_1.0mm} & 354 & 0 (0,0\%) & 354 (100,0\%) \\
+\texttt{bpfo\_0.3mm} & 354 & 354 (100,0\%) & 0 (0,0\%) \\
+\texttt{bpfo\_1.0mm} & 354 & 0 (0,0\%) & 354 (100,0\%) \\
+\bottomrule
+\end{tabularx}
+\end{table}
