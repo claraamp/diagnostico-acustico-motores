@@ -2,8 +2,8 @@
 Testes do modelo final (models/lda.py), com dados sintéticos; não dependem de data/.
 
 Garantias: (1) os parâmetros exportados reproduzem o sklearn nas duas formas,
-inclusive depois de passar por JSON; (2) escore > 0 é falha, qualquer que seja a
-ordem das classes no sklearn; (3) o modelo é o mesmo `novo_modelo` do protocolo;
+inclusive depois de passar por JSON; (2) escore ≥ 0 é falha, qualquer que seja a
+ordem das classes no sklearn, e o empate exato segue o sklearn (falha); (3) o modelo é o mesmo `novo_modelo` do protocolo;
 (4) o modelo final só aceita a tarefa binária.
 """
 
@@ -73,3 +73,13 @@ def test_recusa_numero_de_coeficientes_errado():
     X, y = _dados()
     with pytest.raises(ValueError):
         lda.parametros(lda.treinar(X, y), 12)
+
+def test_empate_segue_o_sklearn():
+    """No binário, o sklearn só escolhe classes_[1] com decision_function > 0; o empate é classes_[0]."""
+    X, y = _dados()
+    modelo = lda.treinar(X, y)
+    p = lda.parametros(modelo, 13)
+    assert p["escore_zero"] == str(modelo[-1].classes_[0]) == "falha"
+    assert p["escore"].startswith("escore >= 0")
+    zerado = {**p, "dobrada": {"pesos": [0.0] * 26, "bias": 0.0}}   # escore exatamente 0
+    assert lda.prever(zerado, X[:3]).tolist() == ["falha"] * 3

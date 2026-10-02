@@ -17,7 +17,7 @@ Saídas (em reports/modelo_final/)
 --------------------------------
 lda_final.json           parâmetros nas formas padronizada e dobrada (ver
                          `models/lda.py`), a ordem das 26 features, a convenção do
-                         escore (> 0 → falha) e o que foi usado no treino
+                         escore (≥ 0 → falha) e o que foi usado no treino
 escores_referencia.csv   escore e previsão de cada segmento pela forma dobrada:
                          referência para conferir a implementação em C. Os
                          segmentos são os do próprio treino; não é desempenho.

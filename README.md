@@ -100,7 +100,7 @@ diagnostico-acustico-motores/
 │   │   ├── transformacoes.py              # estiramento (phase vocoder / reamostragem), ruído, recorte
 │   │   └── variantes.py                   # sorteio reprodutível, janela lida e filtro por fold
 │   ├── models/               # modelo final do classificador
-│   │   └── lda.py                         # treino com todos os segmentos e parâmetros em JSON (escore > 0 → falha)
+│   │   └── lda.py                         # treino com todos os segmentos e parâmetros em JSON (escore ≥ 0 → falha)
 │   ├── exploration/          # estudos e inspeções, sem numeração
 │   │   ├── inspect_mat_keys.py
 │   │   ├── inspect_signal_data.py
@@ -139,7 +139,7 @@ diagnostico-acustico-motores/
 │   │   ├── test_transformacoes.py
 │   │   └── test_variantes.py              # inclui: variante aceita nunca lê teste/descarte
 │   ├── models/
-│   │   └── test_lda.py                    # o JSON reproduz o sklearn nas duas formas; escore > 0 é falha
+│   │   └── test_lda.py                    # o JSON reproduz o sklearn nas duas formas; escore ≥ 0 é falha, como o empate do sklearn
 │   ├── pipeline/
 │   │   └── test_train_classifier.py       # o 05 só aceita as features de referência da partição
 │   ├── exploration/
@@ -195,7 +195,7 @@ python scripts/pipeline/04_extract_features.py     # MFCC de cada segmento → d
 python scripts/pipeline/05_train_classifier.py --responsavel <nome>   # modelo final → reports/modelo_final/
 ```
 
-O `05` treina a LDA uma única vez, com os 295 segmentos e sem aumento, e grava em `reports/modelo_final/lda_final.json` os parâmetros nas duas formas equivalentes de `models/lda.py`: a padronizada (média, escala, coeficientes e intercepto) e a dobrada, `escore = pesos · x + bias`, que é a que o firmware usa. A convenção é **escore > 0 → falha**, e as 26 features seguem a ordem do `04` (as 13 médias, depois os 13 desvios, populacionais). Antes de gravar, o script confere que o JSON reproduz o sklearn em todos os segmentos. O `escores_referencia.csv` traz o escore de cada segmento para conferir a implementação em C. Esses segmentos são os do próprio treino: **o `05` não mede desempenho**, que continua sendo o do Protocolo B (`exp015`). Ele exige as features de referência (sem `--norm-clipe`); se o `04` foi rodado com outra opção, rode-o de novo sem opções antes.
+O `05` treina a LDA uma única vez, com os 295 segmentos e sem aumento, e grava em `reports/modelo_final/lda_final.json` os parâmetros nas duas formas equivalentes de `models/lda.py`: a padronizada (média, escala, coeficientes e intercepto) e a dobrada, `escore = pesos · x + bias`, que é a que o firmware usa. A convenção é **escore ≥ 0 → falha**: o empate exato segue o sklearn, que o classifica como falha (campo `escore_zero` do JSON). As 26 features seguem a ordem do `04` (as 13 médias, depois os 13 desvios, populacionais). Antes de gravar, o script confere que o JSON reproduz o sklearn em todos os segmentos. O `escores_referencia.csv` traz o escore de cada segmento para conferir a implementação em C. Esses segmentos são os do próprio treino: **o `05` não mede desempenho**, que continua sendo o do Protocolo B (`exp015`). O modelo final classifica corretamente os 295 segmentos, inclusive os da `bpfo_0.3mm`, porque todos estão no treino; **uma demonstração com trechos dessas gravações reproduz o treino, não o Protocolo B**, e não deve ser apresentada como desempenho. O tamanho do escore (±1.300 a ±1.600 nesses segmentos) também não é medida de confiança: ele vem de o treino ser separável. Ele exige as features de referência (sem `--norm-clipe`); se o `04` foi rodado com outra opção, rode-o de novo sem opções antes.
 
 O `03` é determinístico: num clone novo, ele reconstrói exatamente o `splits.json` versionado e avisa que "já existe e é idêntico". Se disser que o arquivo é **diferente**, os dados reconstruídos não são os mesmos das rodadas registradas — pare e investigue antes de seguir.
 

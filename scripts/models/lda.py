@@ -13,10 +13,14 @@ Os parâmetros saem em JSON, sem depender do sklearn, em duas formas equivalente
   bias = intercepto − Σ coef · média / escala. É a forma que o firmware usa:
   26 multiplicações-acumulações por segmento, sem guardar média e escala.
 
-Convenção do escore: **escore > 0 → falha**. O sklearn ordena as classes em ordem
+Convenção do escore: **escore ≥ 0 → falha**. O sklearn ordena as classes em ordem
 alfabética (`falha`, `normal`) e o seu `decision_function` é positivo para a
 segunda; aqui o sinal é invertido para que o escore positivo seja a falha, a mesma
-convenção do eixo da LDA no relatório. Escore exatamente 0 conta como normal.
+convenção do eixo da LDA no relatório. No empate exato, o sklearn binário escolhe
+`classes_[0]` (`decision_function > 0` é a única condição para `classes_[1]`), que é
+`falha`; o JSON registra essa classe em `escore_zero`, e `prever` a segue, para que o
+firmware decida exatamente como o modelo validado. (Até a versão 1 do formato, o
+docstring dizia que o empate era normal, o que não batia com o sklearn.)
 
 Este módulo não é executável: é importado.
 """
@@ -29,7 +33,7 @@ from validation.run_protocol import novo_modelo
 
 CLASSE_POSITIVA = "falha"
 CLASSE_NEGATIVA = "normal"
-VERSAO_FORMATO = 1
+VERSAO_FORMATO = 2
 
 
 def nomes_features(n_coefs: int) -> list[str]:
@@ -49,10 +53,12 @@ def treinar(X: np.ndarray, y: np.ndarray):
 
 
 def parametros(modelo, n_coefs: int) -> dict:
-    """Parâmetros do pipeline ajustado, nas duas formas, com escore > 0 → falha."""
+    """Parâmetros do pipeline ajustado, nas duas formas, com escore ≥ 0 → falha."""
     scaler, lda = modelo[0], modelo[-1]
     classes = list(lda.classes_)
     sinal = 1.0 if classes[1] == CLASSE_POSITIVA else -1.0
+    # empate: o sklearn só escolhe classes_[1] com decision_function > 0
+    escore_zero = str(classes[0])
     coef = sinal * lda.coef_.ravel()
     intercepto = float(sinal * lda.intercept_[0])
     media, escala = scaler.mean_, scaler.scale_
@@ -65,8 +71,10 @@ def parametros(modelo, n_coefs: int) -> dict:
     return {
         "versao_formato": VERSAO_FORMATO,
         "modelo": "lda",
-        "escore": "escore > 0 → falha; escore <= 0 → normal",
+        "escore": ("escore >= 0 → falha; escore < 0 → normal" if escore_zero == CLASSE_POSITIVA
+                   else "escore > 0 → falha; escore <= 0 → normal"),
         "classe_positiva": CLASSE_POSITIVA,
+        "escore_zero": escore_zero,
         "priors": [float(p) for p in lda.priors_],
         "features": nomes,
         "padronizada": {
@@ -91,8 +99,10 @@ def escore_padronizado(p: dict, X: np.ndarray) -> np.ndarray:
 
 
 def prever(p: dict, X: np.ndarray) -> np.ndarray:
-    """Previsão só com o JSON, como o firmware fará (forma dobrada)."""
-    return np.where(escore_dobrado(p, X) > 0, CLASSE_POSITIVA, CLASSE_NEGATIVA)
+    """Previsão só com o JSON, como o firmware fará (forma dobrada), com o empate do sklearn."""
+    s = escore_dobrado(p, X)
+    falha = s >= 0 if p["escore_zero"] == CLASSE_POSITIVA else s > 0
+    return np.where(falha, CLASSE_POSITIVA, CLASSE_NEGATIVA)
 
 
 def conferir(modelo, p: dict, X: np.ndarray) -> dict:
