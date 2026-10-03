@@ -17,7 +17,8 @@ Saídas (em reports/modelo_final/)
 --------------------------------
 lda_final.json           parâmetros nas formas padronizada e dobrada (ver
                          `models/lda.py`), a ordem das 26 features, a convenção do
-                         escore (≥ 0 → falha) e o que foi usado no treino
+                         escore (≥ 0 → falha), a cadeia que produz as features
+                         (escala, janela, FFT, Mel, log, DCT) e o que foi usado no treino
 escores_referencia.csv   escore e previsão de cada segmento pela forma dobrada:
                          referência para conferir a implementação em C. Os
                          segmentos são os do próprio treino; não é desempenho.
@@ -93,15 +94,19 @@ def montar_saida(p: dict, conferencia: dict, exp_id: str, hash_splits: str,
         "id": exp_id,
         **p,
         "entrada": {
-            "fs_hz": config.FS_TRABALHO,
-            "segmento_s": config.SEGMENTO_S,
-            "amostras_por_segmento": config.AMOSTRAS_POR_SEGMENTO,
             "mfcc_janela_ms": config.MFCC_WINDOW_MS,
             "mfcc_hop_ms": config.MFCC_HOP_MS,
             "mfcc_n_mels": config.MFCC_N_MELS,
             "mfcc_n_coefs": config.MFCC_N_COEFS,
-            "resumo_por_segmento": "média e desvio-padrão populacional (ddof=0) de cada "
-                                   "coeficiente ao longo dos quadros do segmento",
+            **lda.cadeia_entrada(config.FS_TRABALHO),
+        },
+        "uso_no_firmware": {
+            "decisao": "usar só o sinal do escore (regra em `escore`); o tamanho do escore não é "
+                       "confiança: vem de o treino conter as cinco gravações",
+            "conferencia_com_c": "comparar o escore do C com o escores_referencia.csv com tolerância "
+                                 "relativa (~1e-3): o MFCC em float32 difere um pouco do Python; "
+                                 "a previsão tem que ser idêntica",
+            "referencia_mfcc": "reports/c_reference/reference_data.h (entrada int16 e MFCC esperado)",
         },
         "treino": {
             "n_segmentos": int(len(y)),

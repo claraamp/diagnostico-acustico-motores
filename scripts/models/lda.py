@@ -22,6 +22,15 @@ convenção do eixo da LDA no relatório. No empate exato, o sklearn binário es
 firmware decida exatamente como o modelo validado. (Até a versão 1 do formato, o
 docstring dizia que o empate era normal, o que não batia com o sklearn.)
 
+Contrato com o firmware: além dos parâmetros, o JSON descreve a cadeia que produz
+as 26 features (`cadeia_entrada`), nos pontos em que uma implementação em C costuma
+divergir sem dar erro: escala da entrada, tipo de janela, FFT e espectro, banco de
+Mel (fórmula e bins), log, DCT e desvio-padrão. Os números saem do `config` e do
+`dsp`, não de literais, e um teste refaz o MFCC só a partir dessa descrição e
+compara com o `dsp.mfcc`. O `reports/c_reference/reference_data.h` continua sendo a
+referência numérica bloco a bloco. (Até a versão 2 do formato, o JSON não trazia
+essa descrição.)
+
 Este módulo não é executável: é importado.
 """
 
@@ -29,11 +38,66 @@ from __future__ import annotations
 
 import numpy as np
 
+import config
+import dsp
 from validation.run_protocol import novo_modelo
 
 CLASSE_POSITIVA = "falha"
 CLASSE_NEGATIVA = "normal"
-VERSAO_FORMATO = 2
+VERSAO_FORMATO = 3
+
+
+def cadeia_entrada(fs: int = config.FS_TRABALHO) -> dict:
+    """
+    Como as 26 features são calculadas a partir de um segmento de 1 s, com os números
+    tirados do config e do dsp (as mesmas fórmulas do `dsp.log_mel`).
+    """
+    n_quadro = int(round(config.MFCC_WINDOW_MS / 1000 * fs))
+    n_passo = int(round(config.MFCC_HOP_MS / 1000 * fs))
+    n_fft = 1 << (n_quadro - 1).bit_length()
+    n_amostras = config.amostras_por_segmento(fs)
+    fmin = 20.0   # padrão do dsp.mel_filterbank, o que o dsp.mfcc usa
+    mels = np.linspace(dsp.hz_to_mel(fmin), dsp.hz_to_mel(fs / 2), config.MFCC_N_MELS + 2)
+    bins = np.clip(np.floor((n_fft + 1) * dsp.mel_to_hz(mels) / fs).astype(int), 0, n_fft // 2)
+    return {
+        "fs_hz": fs,
+        "segmento_s": config.SEGMENTO_S,
+        "amostras_por_segmento": n_amostras,
+        "escala_entrada": {
+            "divisor": config.INT16_FULL,
+            "descricao": f"x = pcm_int16 / {config.INT16_FULL:g} (config.INT16_FULL); a conversão "
+                         "Q15 da CMSIS-DSP divide por 32768, e a diferença desloca o log-Mel",
+        },
+        "quadros": {
+            "amostras_por_quadro": n_quadro, "passo": n_passo,
+            "n_quadros": 1 + (n_amostras - n_quadro) // n_passo,
+            "descricao": "quadros só dentro do segmento, sem preenchimento nem pré-ênfase",
+        },
+        "janela": {"tipo": "hann", "simetrica": True,
+                   "descricao": f"np.hanning({n_quadro}): w[n] = 0,5 − 0,5·cos(2πn/(N−1)), "
+                                "simétrica, não a periódica"},
+        "fft": {"n_fft": n_fft,
+                "descricao": f"quadro de {n_quadro} amostras completado com zeros até {n_fft}; "
+                             f"espectro de potência |X[k]|², k = 0…{n_fft // 2}, sem normalizar por N"},
+        "mel": {
+            "n_filtros": config.MFCC_N_MELS, "fmin_hz": fmin, "fmax_hz": fs / 2,
+            "formula": "HTK: mel = 2595·log10(1 + f/700)",
+            "bins": bins.tolist(),
+            "bins_coincidentes": bool(np.any(np.diff(bins) == 0)),
+            "descricao": f"{config.MFCC_N_MELS + 2} pontos igualmente espaçados em mel; "
+                         "bin = floor((n_fft + 1)·f/fs), limitado a n_fft/2; o filtro m é um triângulo "
+                         "de pico 1 (sem normalizar a área): sobe de bins[m−1] a bins[m] e desce até "
+                         "bins[m+1], com o bin da borda direita fora. Com bins coincidentes, o dsp "
+                         "desloca o do meio de 1 (não ocorre nesta configuração se bins_coincidentes "
+                         "for false)",
+        },
+        "log": {"funcao": "ln", "epsilon": 1e-10, "descricao": "log natural de (energia Mel + 1e-10)"},
+        "dct": {"tipo": "II", "norma": "ortonormal", "coeficientes": config.MFCC_N_COEFS,
+                "descricao": f"scipy.fft.dct(type=2, norm='ortho'), mantidos c0…c{config.MFCC_N_COEFS - 1}, "
+                             "sem lifter"},
+        "resumo_por_segmento": "média e desvio-padrão populacional (ddof=0, dividir por N) de cada "
+                               "coeficiente ao longo dos quadros do segmento",
+    }
 
 
 def nomes_features(n_coefs: int) -> list[str]:

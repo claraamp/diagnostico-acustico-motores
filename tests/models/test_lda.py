@@ -83,3 +83,35 @@ def test_empate_segue_o_sklearn():
     assert p["escore"].startswith("escore >= 0")
     zerado = {**p, "dobrada": {"pesos": [0.0] * 26, "bias": 0.0}}   # escore exatamente 0
     assert lda.prever(zerado, X[:3]).tolist() == ["falha"] * 3
+
+def _mfcc_pela_descricao(pcm: np.ndarray, c: dict) -> np.ndarray:
+    """MFCC refeito só a partir da descrição do JSON, sem chamar o dsp (como o firmware fará)."""
+    from scipy.fft import dct
+    x = pcm.astype(float) / c["escala_entrada"]["divisor"]
+    q, n_fft = c["quadros"], c["fft"]["n_fft"]
+    n = q["amostras_por_quadro"]
+    w = 0.5 - 0.5 * np.cos(2 * np.pi * np.arange(n) / (n - 1))          # Hann simétrica
+    bins = c["mel"]["bins"]
+    fb = np.zeros((c["mel"]["n_filtros"], n_fft // 2 + 1))
+    for m in range(1, c["mel"]["n_filtros"] + 1):
+        l, k, r = bins[m - 1], bins[m], bins[m + 1]
+        fb[m - 1, l:k] = (np.arange(l, k) - l) / (k - l)
+        fb[m - 1, k:r] = (r - np.arange(k, r)) / (r - k)
+    linhas = []
+    for i in range(q["n_quadros"]):
+        quadro = x[i * q["passo"]: i * q["passo"] + n] * w
+        p = np.abs(np.fft.rfft(quadro, n=n_fft)) ** 2
+        linhas.append(np.log(fb @ p + c["log"]["epsilon"]))
+    return dct(np.array(linhas), type=2, axis=1, norm="ortho")[:, :c["dct"]["coeficientes"]]
+
+
+def test_descricao_da_cadeia_reproduz_o_dsp():
+    """Quem implementar o MFCC só pela descrição do JSON chega ao mesmo resultado do dsp."""
+    import config
+    import dsp
+    c = lda.cadeia_entrada()
+    assert not c["mel"]["bins_coincidentes"]
+    pcm = np.random.default_rng(1).integers(-20000, 20000, c["amostras_por_segmento"]).astype(np.int16)
+    ref = dsp.mfcc(pcm.astype(float) / config.INT16_FULL, c["fs_hz"])
+    assert ref.shape == (c["quadros"]["n_quadros"], c["dct"]["coeficientes"])
+    assert np.allclose(_mfcc_pela_descricao(pcm, c), ref, rtol=1e-9, atol=1e-9)
