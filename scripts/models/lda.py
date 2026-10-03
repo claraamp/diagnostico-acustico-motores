@@ -25,11 +25,16 @@ docstring dizia que o empate era normal, o que não batia com o sklearn.)
 Contrato com o firmware: além dos parâmetros, o JSON descreve a cadeia que produz
 as 26 features (`cadeia_entrada`), nos pontos em que uma implementação em C costuma
 divergir sem dar erro: escala da entrada, tipo de janela, FFT e espectro, banco de
-Mel (fórmula e bins), log, DCT e desvio-padrão. Os números saem do `config` e do
-`dsp`, não de literais, e um teste refaz o MFCC só a partir dessa descrição e
-compara com o `dsp.mfcc`. O `reports/c_reference/reference_data.h` continua sendo a
+Mel (fórmula e bins), log, DCT e desvio-padrão, e de onde vem o sinal a 12,8 kHz
+(decimação). Os parâmetros configuráveis (taxas, janela, passo, bandas,
+coeficientes, escala, projeto do FIR) saem do `config` e do `dsp`. Três valores
+são literais que espelham o código do `dsp`, sem constante própria: o `fmin` de
+20 Hz (padrão do `dsp.mel_filterbank`), o `1e-10` do log e a DCT-II ortonormal. O
+teste `test_descricao_da_cadeia_reproduz_o_dsp` refaz o MFCC só a partir da
+descrição e compara com o `dsp.mfcc`, então uma mudança no `dsp` sem atualizar
+esses literais faz o teste falhar. O `reports/c_reference/reference_data.h` continua sendo a
 referência numérica bloco a bloco. (Até a versão 2 do formato, o JSON não trazia
-essa descrição.)
+essa descrição; até a 3, não trazia a origem do sinal.)
 
 Este módulo não é executável: é importado.
 """
@@ -44,7 +49,7 @@ from validation.run_protocol import novo_modelo
 
 CLASSE_POSITIVA = "falha"
 CLASSE_NEGATIVA = "normal"
-VERSAO_FORMATO = 3
+VERSAO_FORMATO = 4
 
 
 def cadeia_entrada(fs: int = config.FS_TRABALHO) -> dict:
@@ -59,7 +64,27 @@ def cadeia_entrada(fs: int = config.FS_TRABALHO) -> dict:
     fmin = 20.0   # padrão do dsp.mel_filterbank, o que o dsp.mfcc usa
     mels = np.linspace(dsp.hz_to_mel(fmin), dsp.hz_to_mel(fs / 2), config.MFCC_N_MELS + 2)
     bins = np.clip(np.floor((n_fft + 1) * dsp.mel_to_hz(mels) / fs).astype(int), 0, n_fft // 2)
+    fir = dsp.design_decimation(config.FS_ORIGINAL, fs)
     return {
+        "origem_do_sinal": {
+            "fs_original_hz": config.FS_ORIGINAL,
+            "fator_decimacao": fir.down,
+            "fir": {"tipo": "Kaiser (scipy.signal.firwin)", "numtaps": fir.numtaps,
+                    "corte_hz": fir.cutoff_hz, "transicao_hz": fir.transition_hz,
+                    "atenuacao_alvo_db": config.FIR_ATTENUATION,
+                    "atenuacao_medida_db": round(fir.stopband_atten_db, 2)},
+            "descricao": f"PCM a {config.FS_ORIGINAL} Hz / {config.INT16_FULL:g}, FIR passa-baixa causal "
+                         f"(lfilter) de {fir.numtaps} taps, descarte das primeiras {(fir.numtaps - 1) // 2} "
+                         f"amostras (atraso de grupo), uma amostra a cada {fir.down} a partir da primeira, "
+                         "requantizado para int16 (round(y·32767)); é o 02_decimate_pcm.py "
+                         "(dsp.design_decimation e dsp.resample_clip). Se o firmware ler o PCM já decimado, "
+                         "esta etapa já está feita. Se decimar no STM32 (arm_fir_decimate_f32), usar os mesmos "
+                         "taps e conferir a fase: qual das 4 amostras é mantida e o descarte do atraso podem "
+                         "diferir do Python e deslocar os segmentos. Se amostrar em outra taxa ou usar outro "
+                         "filtro, a entrada do MFCC muda",
+            "referencia": "reports/decimation/ (estudo da taxa e do filtro) e "
+                          "data/processed/pcm_decimated/12800/manifest.json",
+        },
         "fs_hz": fs,
         "segmento_s": config.SEGMENTO_S,
         "amostras_por_segmento": n_amostras,

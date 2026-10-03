@@ -84,6 +84,7 @@ def test_empate_segue_o_sklearn():
     zerado = {**p, "dobrada": {"pesos": [0.0] * 26, "bias": 0.0}}   # escore exatamente 0
     assert lda.prever(zerado, X[:3]).tolist() == ["falha"] * 3
 
+
 def _mfcc_pela_descricao(pcm: np.ndarray, c: dict) -> np.ndarray:
     """MFCC refeito só a partir da descrição do JSON, sem chamar o dsp (como o firmware fará)."""
     from scipy.fft import dct
@@ -115,3 +116,14 @@ def test_descricao_da_cadeia_reproduz_o_dsp():
     ref = dsp.mfcc(pcm.astype(float) / config.INT16_FULL, c["fs_hz"])
     assert ref.shape == (c["quadros"]["n_quadros"], c["dct"]["coeficientes"])
     assert np.allclose(_mfcc_pela_descricao(pcm, c), ref, rtol=1e-9, atol=1e-9)
+
+
+def test_origem_do_sinal():
+    """A origem descrita é o projeto do 02 (147 taps, corte 5.760 Hz, fator 4, como em reports/decimation/)."""
+    import config
+    import dsp
+    o = lda.cadeia_entrada()["origem_do_sinal"]
+    fir = dsp.design_decimation(config.FS_ORIGINAL, config.FS_TRABALHO)
+    assert (o["fir"]["numtaps"], o["fir"]["corte_hz"], o["fator_decimacao"]) == (fir.numtaps, fir.cutoff_hz, fir.down)
+    assert (fir.numtaps, fir.cutoff_hz, fir.down) == (147, 5760.0, 4)
+    assert "73 amostras" in o["descricao"]                          # atraso de grupo descartado
