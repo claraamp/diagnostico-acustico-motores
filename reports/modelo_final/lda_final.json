@@ -1,6 +1,6 @@
 {
-  "id": "exp237",
-  "versao_formato": 2,
+  "id": "exp238",
+  "versao_formato": 3,
   "modelo": "lda",
   "escore": "escore >= 0 → falha; escore < 0 → normal",
   "classe_positiva": "falha",
@@ -156,14 +156,81 @@
     "bias": 2527.683205093837
   },
   "entrada": {
-    "fs_hz": 12800,
-    "segmento_s": 1.0,
-    "amostras_por_segmento": 12800,
     "mfcc_janela_ms": 25,
     "mfcc_hop_ms": 10,
     "mfcc_n_mels": 20,
     "mfcc_n_coefs": 13,
-    "resumo_por_segmento": "média e desvio-padrão populacional (ddof=0) de cada coeficiente ao longo dos quadros do segmento"
+    "fs_hz": 12800,
+    "segmento_s": 1.0,
+    "amostras_por_segmento": 12800,
+    "escala_entrada": {
+      "divisor": 32767.0,
+      "descricao": "x = pcm_int16 / 32767 (config.INT16_FULL); a conversão Q15 da CMSIS-DSP divide por 32768, e a diferença desloca o log-Mel"
+    },
+    "quadros": {
+      "amostras_por_quadro": 320,
+      "passo": 128,
+      "n_quadros": 98,
+      "descricao": "quadros só dentro do segmento, sem preenchimento nem pré-ênfase"
+    },
+    "janela": {
+      "tipo": "hann",
+      "simetrica": true,
+      "descricao": "np.hanning(320): w[n] = 0,5 − 0,5·cos(2πn/(N−1)), simétrica, não a periódica"
+    },
+    "fft": {
+      "n_fft": 512,
+      "descricao": "quadro de 320 amostras completado com zeros até 512; espectro de potência |X[k]|², k = 0…256, sem normalizar por N"
+    },
+    "mel": {
+      "n_filtros": 20,
+      "fmin_hz": 20.0,
+      "fmax_hz": 6400.0,
+      "formula": "HTK: mel = 2595·log10(1 + f/700)",
+      "bins": [
+        0,
+        4,
+        7,
+        11,
+        16,
+        21,
+        27,
+        33,
+        40,
+        48,
+        57,
+        67,
+        78,
+        90,
+        104,
+        119,
+        136,
+        155,
+        177,
+        200,
+        227,
+        256
+      ],
+      "bins_coincidentes": false,
+      "descricao": "22 pontos igualmente espaçados em mel; bin = floor((n_fft + 1)·f/fs), limitado a n_fft/2; o filtro m é um triângulo de pico 1 (sem normalizar a área): sobe de bins[m−1] a bins[m] e desce até bins[m+1], com o bin da borda direita fora. Com bins coincidentes, o dsp desloca o do meio de 1 (não ocorre nesta configuração se bins_coincidentes for false)"
+    },
+    "log": {
+      "funcao": "ln",
+      "epsilon": 1e-10,
+      "descricao": "log natural de (energia Mel + 1e-10)"
+    },
+    "dct": {
+      "tipo": "II",
+      "norma": "ortonormal",
+      "coeficientes": 13,
+      "descricao": "scipy.fft.dct(type=2, norm='ortho'), mantidos c0…c12, sem lifter"
+    },
+    "resumo_por_segmento": "média e desvio-padrão populacional (ddof=0, dividir por N) de cada coeficiente ao longo dos quadros do segmento"
+  },
+  "uso_no_firmware": {
+    "decisao": "usar só o sinal do escore (regra em `escore`); o tamanho do escore não é confiança: vem de o treino conter as cinco gravações",
+    "conferencia_com_c": "comparar o escore do C com o escores_referencia.csv com tolerância relativa (~1e-3): o MFCC em float32 difere um pouco do Python; a previsão tem que ser idêntica",
+    "referencia_mfcc": "reports/c_reference/reference_data.h (entrada int16 e MFCC esperado)"
   },
   "treino": {
     "n_segmentos": 295,
