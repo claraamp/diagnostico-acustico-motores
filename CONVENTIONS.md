@@ -29,6 +29,7 @@ diagnostico-acustico-motores/
 │   ├── experimentos.py       # escrita do registry (ver seção 4)
 │   ├── exploration/          # estudos e inspeções, um-off, sem numeração
 │   ├── pipeline/             # pipeline reprodutível, numerado pela ordem de execução
+│   ├── models/               # pasta por assunto: modelo final do classificador (ver seção 5)
 │   └── validation/           # pasta por assunto: protocolo de validação do classificador (ver seção 5)
 │
 ├── tests/                    # testes automáticos (pytest), espelhando scripts/ (ver seção 7)
@@ -47,6 +48,7 @@ diagnostico-acustico-motores/
 │   ├── exploration/          # figuras dos scripts de scripts/exploration/
 │   ├── signature/            # caracterização da assinatura acústica (BPFI/BPFO medidas, envelope, Mel)
 │   ├── c_reference/          # reference_data.h do 04 --ref-c, VERSIONADO (referência da Fase 2)
+│   ├── modelo_final/         # lda_final.json e escores_referencia.csv do 05, VERSIONADOS (referência da Fase 2)
 │   └── validation/           # uma pasta por rodada dos protocolos: metrics.json e folds.csv
 │
 └── docs/                     # documentação técnica complementar (ex.: notas sobre o formato do .mat)
@@ -164,6 +166,7 @@ Módulos importáveis ficam na raiz de `scripts/` quando praticamente toda etapa
 | `validation/particao.py` | segmentação das gravações, folds dos protocolos A e B, verificação das garantias, leitura e escrita do `splits.json` |
 | `validation/metricas.py` | sensibilidade, especificidade, acurácia balanceada e resumos dos protocolos |
 | `augmentation/transformacoes.py` | transformações de sinal do aumento: estiramento temporal (phase vocoder ou reamostragem), ruído com SNR fixada, recorte central |
+| `models/lda.py` | modelo final: o mesmo `novo_modelo` do `run_protocol` treinado com todos os segmentos, parâmetros em JSON nas formas padronizada e dobrada (escore ≥ 0 → falha, o empate do sklearn), descrição da cadeia de features para o firmware (`cadeia_entrada`, tirada do `config` e do `dsp`) e conferência contra o sklearn |
 | `augmentation/variantes.py` | variantes por segmento (sorteio reprodutível por segmento e cópia), intervalo lido da gravação e filtro que aceita, em cada fold, só as variantes que leem segmentos de treino |
 
 A regra vale em particular para a segmentação: qualquer etapa que opere sobre segmentos — extração de features, aumento de dados, treino — obtém os segmentos de `particao.segmentos_de(particao.carregar(...))`, nunca recorta o sinal por conta própria. Uma segunda segmentação poderia divergir da partição sem erro nenhum, e o teste deixaria de estar separado do treino.
