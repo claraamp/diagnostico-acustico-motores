@@ -1,6 +1,6 @@
 {
-  "id": "exp238",
-  "versao_formato": 3,
+  "id": "exp239",
+  "versao_formato": 4,
   "modelo": "lda",
   "escore": "escore >= 0 → falha; escore < 0 → normal",
   "classe_positiva": "falha",
@@ -160,6 +160,20 @@
     "mfcc_hop_ms": 10,
     "mfcc_n_mels": 20,
     "mfcc_n_coefs": 13,
+    "origem_do_sinal": {
+      "fs_original_hz": 51200,
+      "fator_decimacao": 4,
+      "fir": {
+        "tipo": "Kaiser (scipy.signal.firwin)",
+        "numtaps": 147,
+        "corte_hz": 5760.0,
+        "transicao_hz": 640.0,
+        "atenuacao_alvo_db": 60,
+        "atenuacao_medida_db": 60.36
+      },
+      "descricao": "PCM a 51200 Hz / 32767, FIR passa-baixa causal (lfilter) de 147 taps, descarte das primeiras 73 amostras (atraso de grupo), uma amostra a cada 4 a partir da primeira, requantizado para int16 (round(y·32767)); é o 02_decimate_pcm.py (dsp.design_decimation e dsp.resample_clip). Se o firmware ler o PCM já decimado, esta etapa já está feita. Se decimar no STM32 (arm_fir_decimate_f32), usar os mesmos taps e conferir a fase: qual das 4 amostras é mantida e o descarte do atraso podem diferir do Python e deslocar os segmentos. Se amostrar em outra taxa ou usar outro filtro, a entrada do MFCC muda",
+      "referencia": "reports/decimation/ (estudo da taxa e do filtro) e data/processed/pcm_decimated/12800/manifest.json"
+    },
     "fs_hz": 12800,
     "segmento_s": 1.0,
     "amostras_por_segmento": 12800,
