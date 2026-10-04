@@ -1,0 +1,979 @@
+\documentclass[12pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[brazilian]{babel}
+\usepackage[a4paper,top=3cm,left=3cm,bottom=2cm,right=2cm]{geometry}
+\usepackage{setspace}
+\usepackage{indentfirst}
+\usepackage{titlesec}
+\usepackage{graphicx}
+\usepackage{fancyhdr}
+\usepackage{enumitem}
+\usepackage{array}
+\usepackage{tabularx}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{amsmath}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,fit,backgrounds}
+\usepackage[hidelinks]{hyperref}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{float}
+\usepackage{tabularray}
+
+\titleformat{\section}{\normalfont\sffamily\bfseries\Large}{\thesection}{1em}{}
+\titleformat{\subsection}{\normalfont\sffamily\bfseries\large}{\thesubsection}{1em}{}
+\titleformat{\subsubsection}{\normalfont\sffamily\bfseries\normalsize}{\thesubsubsection}{1em}{}
+
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[R]{\thepage}
+\renewcommand{\headrulewidth}{0pt}
+\setlength{\headheight}{14.5pt}
+
+\onehalfspacing
+
+\newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
+\newcolumntype{C}[1]{>{\centering\arraybackslash}p{#1}}
+
+% ---------- Marcador de pendência (apagar o \renewcommand antes de entregar) ----------
+\newcommand{\pendente}[1]{\textcolor{red}{\textbf{[A FAZER: #1]}}}
+% \renewcommand{\pendente}[1]{}   % <- descomente para sumir com tudo na versão final
+
+% ---------- Estilo para trechos de código ----------
+\lstset{
+  basicstyle=\ttfamily\footnotesize,
+  breaklines=true,
+  frame=single,
+  framesep=4pt,
+  rulecolor=\color{black!30},
+  numbers=left,
+  numberstyle=\tiny\color{black!50},
+  keywordstyle=\color{black!80}\bfseries,
+  commentstyle=\itshape\color{black!55},
+  captionpos=b
+}
+
+\begin{document}
+
+% ======================================================================
+% CAPA
+% ======================================================================
+\begin{titlepage}
+\singlespacing
+\centering
+
+\begin{minipage}[c]{0.16\textwidth}
+  \centering
+  \includegraphics[width=2.1cm]{assets/ufba.jpg}
+\end{minipage}
+\begin{minipage}[c]{0.66\textwidth}
+  \centering
+  \sffamily\bfseries
+  UNIVERSIDADE FEDERAL DA BAHIA\\
+  ESCOLA POLITÉCNICA\\
+  DEPARTAMENTO DE ENGENHARIA ELÉTRICA\\
+  E DE COMPUTAÇÃO\\
+  ENGG54 -- LABORATÓRIO INTEGRADO III-A
+\end{minipage}
+\begin{minipage}[c]{0.16\textwidth}
+  \centering
+  \includegraphics[width=2.1cm]{assets/escola-politecnica.jpg}
+\end{minipage}
+
+\vspace{3cm}
+{\sffamily\bfseries\large Amanda Bastos de Melo Correia\par}
+{\sffamily\bfseries\large Júlia Teixeira Gonçalves\par}
+{\sffamily\bfseries\large Maria Clara Andrade Magalhães Paternostro D'Oliveira\par}
+\vfill
+
+{\sffamily\bfseries\Huge Diagnóstico Acústico de Falhas em Motores Rotativos com Processamento Digital de Sinais Embarcado\par}
+
+\vspace{1cm}
+{\sffamily\bfseries\LARGE 1\textordmasculine\ Relatório Parcial\par}
+
+\vfill
+
+{\sffamily\bfseries
+Salvador -- BA -- Brasil\\
+2026\par}
+
+\end{titlepage}
+
+% ======================================================================
+% SUMÁRIO
+% ======================================================================
+\newpage
+\singlespacing
+\tableofcontents
+\newpage
+\onehalfspacing
+
+% ======================================================================
+% 1. INTRODUÇÃO
+% ======================================================================
+\section{Introdução}
+\label{sec:introducao}
+
+O diagnóstico de falhas em rolamentos é um dos problemas mais estudados em manutenção preditiva, e a análise acústica é uma alternativa não invasiva e de baixo custo à vibração, à corrente elétrica e à termografia; os métodos acústicos consolidados, porém, dependem de computadores de propósito geral, e poucos trabalhos examinam a execução da cadeia completa -- da extração de características à classificação -- num microcontrolador de baixo custo. Este projeto tem como objetivo geral desenvolver e demonstrar, no microcontrolador STM32F411CEU6, um sistema que distinga a operação normal da operação em falha de um motor rotativo a partir de áudio pré-gravado, com toda a extração de características e a inferência executadas embarcadas; a discriminação do tipo de falha é objetivo estendido. A solução tem duas fases: o treino, feito em computador, e a inferência, feita no microcontrolador sobre clipes gravados em memória não volátil, o que dispensa \emph{front-end} analógico de captura. No sistema final, o computador apenas recebe o resultado pela porta serial e o exibe; ele não participa do processamento do sinal.
+
+\textbf{Período coberto e metas cumpridas.} Este relatório cobre a primeira fase do cronograma da proposta, de 15/09 a 05/10, dedicada à construção do protótipo em software. Para esse período, a proposta previa três metas físicas, todas cumpridas no prazo (Tabela~\ref{tab:metas}). O classificador adotado atinge acurácia balanceada média de 87,5\% em gravações de falha que não participaram do treino, acima da meta de 85\%, sem nenhum alarme falso; a falha incipiente de pista externa (\texttt{bpfo\_0.3mm}), porém, não é detectada, e essa limitação é tratada como a principal dificuldade do período. O modelo final que será portado para o microcontrolador também já foi treinado e teve seus parâmetros exportados, adiantando o primeiro passo da fase seguinte.
+
+\begin{table}[H]
+\centering
+\caption{Metas físicas previstas na proposta para o período e situação na entrega.}
+\label{tab:metas}
+\begin{tabularx}{\textwidth}{X C{2.6cm} C{2.2cm} C{2.2cm}}
+\toprule
+\textbf{Meta física (proposta)} & \textbf{Período previsto} & \textbf{Situação} & \textbf{Seções} \\
+\midrule
+Subconjunto acústico preparado e convertido para PCM & 15--21/09 & concluída & \ref{sec:base}, \ref{sec:res-base} \\
+\emph{Pipeline} de pré-processamento e extração de MFCC em Python, com aumento de dados & 22--28/09 & concluída & \ref{sec:decimacao}--\ref{sec:aumento}, \ref{sec:res-decimacao} \\
+Classificador binário treinado e validado em software & 29/09--05/10 & concluída & \ref{sec:classificador}, \ref{sec:controles}, \ref{sec:res-classificador}--\ref{sec:res-controles} \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\textbf{Uso do computador nesta fase.} Todo o trabalho deste período foi executado em computador, em Python: conversão dos dados, decimação, extração de características, aumento de dados, treino e validação do classificador. Isso corresponde à fase de treino da arquitetura proposta e não contradiz o objetivo embarcado: o computador é o ambiente de desenvolvimento e de treino, enquanto a inferência, a partir da próxima fase, será executada inteiramente no microcontrolador. Para que essa passagem seja verificável, cada etapa da cadeia em Python foi escrita para ser reproduzida em C -- mesmos parâmetros, mesma ordem de operações e um arquivo de referência com a saída esperada (Seção~\ref{sec:mfcc}).
+
+\textbf{Ajustes de rota.} Três ajustes se destacam. O primeiro é metodológico: como o conjunto de dados tem uma única gravação por classe, a validação prevista na proposta (uma partição de teste separada) mostrou-se insuficiente, e foi substituída por um protocolo que testa o classificador em gravações de falha nunca vistas; com ele, a meta de desempenho passou a ser medida pela acurácia balanceada. O segundo é a adoção de um classificador linear, a análise discriminante linear (LDA), no lugar das redes neurais consideradas, por empatar com a melhor delas a um custo muito menor. O terceiro é a investigação, não prevista no cronograma, da falha não detectada. Esses e os demais ajustes estão na Seção~\ref{sec:dificuldades}.
+
+\textbf{Organização do documento.} A Seção~\ref{sec:metodos} descreve os métodos: preparação dos dados, decimação, protocolo de validação, extração de características, aumento de dados, classificador e controles. A Seção~\ref{sec:resultados} apresenta os resultados correspondentes. A Seção~\ref{sec:dificuldades} reúne as dificuldades e os ajustes de rota; nela, o caso da \texttt{bpfo\_0.3mm} é tratado de forma autocontida, com o método e o resultado de cada tentativa de resolvê-lo. A Seção~\ref{sec:proximas} traz as próximas etapas.
+
+% ======================================================================
+% 2. MÉTODOS
+% ======================================================================
+\section{Métodos}
+\label{sec:metodos}
+
+\subsection{Base de Dados e Conversão para PCM}
+\label{sec:base}
+
+\textbf{Origem dos dados.} O subconjunto acústico utilizado é o publicado por Jung et al. (2023), disponível no Mendeley Data sob o DOI \texttt{10.17632/ztmf3m7h5x.6}. São cinco arquivos \texttt{.mat}, um por condição do rolamento (\texttt{0Nm\_Normal}, \texttt{0Nm\_BPFI\_03}, \texttt{0Nm\_BPFI\_10}, \texttt{0Nm\_BPFO\_03} e \texttt{0Nm\_BPFO\_10}), cada um com 60~s de um único canal de microfone, amostrado a 51.200~Hz. Neste relatório, as classes são designadas \texttt{normal}, \texttt{bpfi\_0.3mm}, \texttt{bpfi\_1.0mm}, \texttt{bpfo\_0.3mm} e \texttt{bpfo\_1.0mm}, conforme a pista com defeito (interna ou externa) e o tamanho do defeito.
+
+Todas as gravações são sem carga (0~Nm), e essa restrição é um limite do próprio conjunto de dados: embora o dataset completo inclua ensaios sob 2 e 4~Nm, os autores registraram o canal acústico apenas sem carga, porque o freio de histerese que aplica o torque é resfriado a ar e seu ruído seria captado pelo microfone. Os cinco arquivos constituem, portanto, todo o áudio disponível.
+
+\textbf{Verificação.} Como o dataset não documenta a estrutura interna dos arquivos, ela foi identificada por inspeção programática: cada arquivo é uma exportação do software Siemens LMS Test.Lab, com o vetor de amostras e os metadados do canal. Antes da conversão, conferiu-se em cada arquivo que o canal é o acústico, que a taxa é de 51.200~Hz, que a duração é de 60~s e que a unidade é o pascal. A conferência é feita por asserções no script de conversão, que interrompe o processamento em caso de divergência.
+
+\textbf{Conversão para PCM.} Cada gravação foi convertida de ponto flutuante de 64~bits (em Pa) para um vetor de inteiros de 16~bits (\texttt{int16}) sem cabeçalho. O formato atende a três necessidades do porte: é lido diretamente em C, ao contrário do contêiner \texttt{.mat}; ocupa um quarto da memória do original; e garante que o protótipo em Python e o firmware leiam exatamente o mesmo dado, condição para comparar as duas implementações. O \texttt{int16} é um formato de \emph{armazenamento}. Seus valores podem ser lidos como números em ponto fixo Q15 (inteiro dividido por $2^{15}$, no intervalo $[-1,1)$), formato aceito pelas funções da biblioteca CMSIS-DSP, que também fazem a conversão para ponto flutuante. O processamento no STM32F411CEU6, porém, será feito em ponto flutuante de 32~bits, aproveitando a unidade de ponto flutuante do Cortex-M4F, como previsto na proposta; o Q15 é apenas a interpretação natural das amostras armazenadas.
+
+\textbf{Fator de escala.} O fator de quantização foi calculado a partir do pico de amplitude \emph{global}, o maior valor absoluto entre os cinco arquivos, e não por arquivo. Um fator por arquivo levaria o pico de todas as classes ao mesmo nível digital e apagaria diferenças de amplitude física que podem estar ligadas à severidade da falha; qualquer normalização de nível fica, assim, para uma etapa posterior e explícita da cadeia (avaliada na Seção~\ref{sec:controles}). O fator é $0{,}98 \times 32.767 / \text{pico global}$, em que $32.767 = 2^{15}-1$ é o maior valor do \texttt{int16} e a margem de 2\% evita estouro por arredondamento. Cada arquivo convertido é acompanhado de um manifesto com a origem, a taxa, a duração, os picos antes e depois da conversão e dois rótulos: o de cinco classes e o binário (normal ou falha), mantido para a extensão multiclasse prevista na proposta.
+
+\subsection{Decimação}
+\label{sec:decimacao}
+
+A 51.200~Hz, 60~s de áudio em \texttt{int16} ocupam cerca de 6~MB, e cada janela de análise exige uma FFT de 2.048 pontos -- valores incompatíveis com os 128~KB de RAM e os 512~KB de \emph{flash} do STM32F411CEU6. A proposta previa reduzir a taxa para algo entre 8 e 16~kHz, com o argumento de que as frequências de falha do rolamento ficam abaixo de 300~Hz. A tarefa foi escolher essa taxa e demonstrar que a redução preserva a informação que distingue motor normal de motor com defeito. A literatura indica que essa informação se concentra em sub-bandas identificáveis do espectro (Tian et al., 2023), o que torna a decimação viável desde que a banda relevante seja medida, e não suposta.
+
+\textbf{Taxas candidatas e filtros.} Foram avaliadas cinco taxas: 25.600, 16.000, 12.800, 8.000 e 6.400~Hz, as duas extremas como referência fora da faixa da proposta. Para cada uma projetou-se um filtro FIR passa-baixa anti-\emph{aliasing} pelo método de Kaiser, com corte em $0{,}45 f_s$ (10\% de margem até o Nyquist), atenuação-alvo de 60~dB na banda de rejeição e número ímpar de coeficientes, para fase linear e atraso de grupo inteiro (Tabela~\ref{tab:filtros} e Figura~\ref{fig:filtros}). Taxas que não são obtidas de 51.200~Hz por fator inteiro (16.000 e 8.000~Hz) exigem reamostragem racional -- interpolação por 5 seguida de decimação por 16 ou 32 --, com o filtro operando a 256~kHz, o que explica o número muito maior de coeficientes. O \emph{aliasing} residual foi verificado comparando a densidade espectral de potência do sinal decimado com a do original, entre 30\% e 98\% do novo Nyquist: a diferença ficou dentro de $\pm 1$~dB em todas as taxas ($-0{,}17$~dB a 12.800~Hz).
+
+\begin{table}[H]
+\centering
+\caption{Filtros anti-\emph{aliasing} projetados para cada taxa candidata. A atenuação de 59,3~dB a 25.600~Hz, 0,7~dB abaixo da meta, é irrelevante por se tratar de taxa de referência.}
+\label{tab:filtros}
+\begin{tabularx}{\textwidth}{X C{2cm} C{2.6cm} C{2.2cm} C{2.6cm}}
+\toprule
+\textbf{Taxa} & \textbf{Fator} & \textbf{Coeficientes} & \textbf{Corte} & \textbf{Atenuação} \\
+\midrule
+25.600~Hz & /2 & 75 & 11.520~Hz & 59,3~dB \\
+16.000~Hz & $\times 5/16$ & 583 & 7.200~Hz & 60,4~dB \\
+\textbf{12.800~Hz} & \textbf{/4} & \textbf{147} & \textbf{5.760~Hz} & \textbf{60,4~dB} \\
+8.000~Hz & $\times 5/32$ & 1.163 & 3.600~Hz & 60,4~dB \\
+6.400~Hz & /8 & 293 & 2.880~Hz & 60,4~dB \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.85\textwidth]{assets/fig3_filtros_antialiasing.png}
+\caption{Resposta em frequência dos cinco filtros anti-\emph{aliasing} projetados.}
+\label{fig:filtros}
+\end{figure}
+
+\textbf{Critério de validação.} Para cada classe de falha definiu-se a \emph{densidade discriminante}
+\begin{equation}
+D(f) = \max\!\left(0,\; \mathrm{PSD}_{\text{falha}}(f) - \mathrm{PSD}_{\text{normal}}(f)\right),
+\label{eq:discriminante}
+\end{equation}
+isto é, a potência que a classe apresenta a mais que a condição normal em cada frequência. A densidade espectral de potência foi estimada pelo método de Welch, com segmentos de 16.384 amostras (resolução de 3,12~Hz) e janela de Hann. A integral de $D(f)$ de zero até o Nyquist de uma taxa, dividida pela integral total, é a fração da \emph{energia discriminante} preservada por aquela taxa. O critério de aceitação é preservar ao menos 95\% em \emph{todas} as classes de falha.
+
+Duas escolhas merecem registro. O critério é aplicado por classe, e não à média: as classes de 1,0~mm têm valor eficaz seis a sete vezes maior que o da condição normal (Tabela~\ref{tab:tempo}) e dominariam qualquer média, mascarando as classes incipientes de 0,3~mm. E o recorte em zero da Equação~\ref{eq:discriminante} descarta as faixas em que a falha tem \emph{menos} energia que a condição normal; é uma simplificação deliberada, adotada porque o modo de falha esperado é de adição de energia, e foi verificada depois com a diferença espectral sem recorte (Seção~\ref{sec:res-decimacao}).
+
+\subsection{Segmentação, Partição e Protocolo de Validação}
+\label{sec:particao}
+
+O conjunto tem uma única gravação contínua por classe. Qualquer divisão feita dentro de uma gravação deixa treino e teste no mesmo registro, e o classificador pode então separar as classes pela identidade da gravação -- ganho, ruído de fundo, ponto de operação -- em vez da condição do rolamento (Seção~\ref{sec:dif-validacao}). Nenhuma partição elimina esse problema por completo; o protocolo adotado elimina os vazamentos evitáveis e mede separadamente o que depende da identidade da gravação e o que se generaliza para uma gravação nunca vista.
+
+\textbf{Unidade de classificação.} Cada gravação decimada é cortada em segmentos consecutivos de 1~s (12.800 amostras), sem sobreposição, e as características são calculadas dentro de cada segmento. Descontado o transiente inicial do filtro de decimação, cabem 59 segmentos por gravação, 295 no total. Os segmentos de cada gravação são agrupados em seis blocos temporais contíguos (cinco de 10 segmentos e um de 9). Em cada \emph{fold}, os segmentos de treino imediatamente vizinhos, de um lado e do outro, a um segmento de teste da mesma gravação são removidos -- a \emph{faixa de descarte} --, para não treinar com o trecho colado ao teste.
+
+\textbf{Protocolo A -- blocos temporais.} Em cada um dos seis \emph{folds}, o bloco $k$ de todas as gravações vai para teste e o restante, descontada a faixa de descarte, para treino. Como treino e teste vêm das mesmas gravações, o resultado é um \emph{limite superior otimista} do desempenho e não é usado para aferir a meta. É, no entanto, o único protocolo possível para a extensão multiclasse, já que cada classe tem uma única gravação.
+
+\textbf{Protocolo B -- gravação de falha deixada de fora.} Na tarefa binária, cada uma das quatro gravações de falha é retirada inteira do treino e usada como teste, e o modelo é treinado com as outras três. A gravação normal, única, é dividida por blocos: cada falha deixada de fora é combinada com cada um dos seis blocos normais, o que dá 24 \emph{folds}. É o único teste possível, neste conjunto, em que o classificador avalia uma gravação de falha que nunca viu. A parte normal do teste, por outro lado, vem sempre da mesma gravação usada no treino: o protocolo mede a generalização a falhas novas, mas não a uma condição normal nova. A Tabela~\ref{tab:folds} resume a composição dos \emph{folds}.
+
+\begin{table}[H]
+\centering
+\caption{Composição dos \emph{folds} dos protocolos de validação, em segmentos de 1~s.}
+\label{tab:folds}
+\begin{tabularx}{\textwidth}{X C{1.6cm} C{4.2cm} C{3.6cm}}
+\toprule
+\textbf{Protocolo} & \textbf{Folds} & \textbf{Treino} & \textbf{Teste} \\
+\midrule
+A -- blocos temporais & 6 & 235 a 245 (as 5 gravações) & 45 a 50 (um bloco de cada gravação) \\
+B -- falha deixada de fora & 24 & 177 de falha e 47 a 49 normais & 59 da falha inédita e 9 ou 10 normais \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\textbf{Métrica e meta.} No Protocolo B, cada teste reúne 59 segmentos de falha e apenas 9 ou 10 normais; um modelo que classificasse tudo como falha teria acurácia simples de cerca de 86\%. Adota-se por isso a \emph{acurácia balanceada}, média da sensibilidade (fração dos segmentos de falha detectados) e da especificidade (fração dos segmentos normais classificados como normais):
+\begin{equation}
+\mathrm{AB} = \frac{1}{2}\left(\frac{\mathrm{VP}}{\mathrm{VP}+\mathrm{FN}} + \frac{\mathrm{VN}}{\mathrm{VN}+\mathrm{FP}}\right).
+\label{eq:acbal}
+\end{equation}
+A proposta pedia o melhor desempenho possível sobre o conjunto de teste, sem fixar um valor. Com a definição do protocolo, a equipe fixou a meta em \textbf{85\% de acurácia balanceada média no Protocolo B}, sempre reportada junto com a sensibilidade, a especificidade e o resultado por falha deixada de fora, porque a média pode ocultar uma falha que o modelo não detecta.
+
+\textbf{Regras comuns.} Toda normalização de características é ajustada apenas no treino de cada \emph{fold}; o aumento de dados atua só sobre o treino e depois da partição; e a escolha de modelo e de hiperparâmetros não consulta o teste do Protocolo B. A partição é gerada uma única vez, por uma etapa própria da cadeia de processamento, e gravada em arquivo lido por todos os experimentos, de modo que rodadas diferentes são avaliadas exatamente sobre os mesmos \emph{folds}. Testes automáticos conferem as garantias do protocolo: nenhum segmento no treino e no teste do mesmo \emph{fold}, respeito à faixa de descarte e ausência, no treino, da gravação de falha deixada de fora.
+
+\subsection{Extração de Características (MFCC)}
+\label{sec:mfcc}
+
+A extração segue a cadeia que será portada para o microcontrolador: janelamento de Hann, FFT, banco de filtros triangulares na escala Mel, logaritmo da energia de cada filtro e transformada discreta do cosseno (DCT-II), da qual se mantêm os primeiros coeficientes. Os parâmetros estão na Tabela~\ref{tab:parametros}. Eles são definidos num único arquivo de configuração, lido tanto pela extração quanto pelo estudo de decimação, e servirão de referência para a implementação em C.
+
+\begin{table}[H]
+\centering
+\caption{Parâmetros da extração de características.}
+\label{tab:parametros}
+\begin{tabularx}{\textwidth}{X L{6.2cm}}
+\toprule
+\textbf{Parâmetro} & \textbf{Valor adotado} \\
+\midrule
+Taxa de amostragem após decimação & 12.800~Hz (Seção~\ref{sec:res-decimacao}) \\
+Unidade de classificação & segmento de 1~s (12.800 amostras) \\
+Comprimento da janela & 25~ms (320 amostras) \\
+Avanço entre janelas & 10~ms (128 amostras) \\
+Sobreposição entre janelas & 60\% (192 amostras) \\
+Quadros por segmento & 98 \\
+Tipo de janela & Hann \\
+Tamanho da FFT & 512 pontos (janela completada com zeros) \\
+Número de filtros de Mel & 20 \\
+Faixa do banco de Mel & 20 a 6.400~Hz \\
+Número de coeficientes MFCC & 13 (incluindo $c_0$) \\
+Coeficientes dinâmicos (delta) & não utilizados \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\textbf{Resumo por segmento.} Cada segmento é representado pela média e pelo desvio-padrão de cada coeficiente ao longo dos seus 98 quadros, o que resulta em 26 valores. O resumo foi escolhido pelo custo embarcado: ele pode ser calculado quadro a quadro, acumulando a soma e a soma dos quadrados de cada coeficiente, sem guardar a matriz de $98 \times 13$ coeficientes. Apenas no estudo de escolha do classificador as redes convolucionais receberam a matriz completa ou o log-Mel anterior à DCT (Seção~\ref{sec:classificador}).
+
+\textbf{Rastreabilidade e referência para o porte.} A extração opera sobre os segmentos definidos pela partição, na ordem em que ela os numera. Junto das características, grava-se um manifesto com a versão do código, a assinatura (\emph{hash}) da partição e os parâmetros utilizados; o avaliador se recusa a executar se algum deles divergir da configuração vigente. A extração também exporta um arquivo de referência para o porte em C, com as 12.800 amostras \texttt{int16} do primeiro segmento normal e a matriz de $98 \times 13$ coeficientes esperada. É a mitigação prevista na proposta para o risco de erro no porte das operações matemáticas: cada bloco da cadeia em C poderá ser comparado com a saída correspondente em Python.
+
+\subsection{Aumento de Dados}
+\label{sec:aumento}
+
+O treino foi ampliado com as três técnicas previstas na proposta -- deslocamento de janela, estiramento temporal e adição de ruído sintético --, na linha de Carrera et al. (2022). O objetivo é expor o classificador a variações plausíveis que não alteram o rótulo -- o instante em que a janela começa, pequenas variações de ritmo e o ruído de fundo --, para reduzir a dependência de detalhes de cada gravação. Como há uma única gravação por classe, o aumento não cria informação sobre condições que o treino não contém.
+
+\textbf{Técnicas.} Cada \emph{variante} é uma janela de 1~s tirada da mesma gravação do segmento de origem, à qual se aplicam, nesta ordem, as transformações da Tabela~\ref{tab:aumento}, com parâmetros sorteados uniformemente. No ruído, a relação sinal-ruído (SNR) é definida em relação à potência do próprio trecho, para que gravações de nível alto e baixo recebam o mesmo ruído relativo e o ruído não se torne uma pista da classe. Foram geradas quatro variantes por segmento, valor fixado de antemão.
+
+\begin{table}[H]
+\centering
+\caption{Técnicas de aumento de dados e parâmetros adotados.}
+\label{tab:aumento}
+\begin{tabularx}{\textwidth}{L{3.2cm} X L{3.8cm}}
+\toprule
+\textbf{Técnica} & \textbf{O que faz} & \textbf{Parâmetro} \\
+\midrule
+Deslocamento de janela & lê a janela de 1~s deslocada na mesma gravação & até $\pm 0{,}4$~s (5.120 amostras) \\
+Estiramento temporal & estica ($r<1$) ou comprime ($r>1$) o trecho por \emph{phase vocoder}, preservando o espectro & $r \in [0{,}95;\ 1{,}05]$; quadro de 512 amostras (40~ms), passo de 128 (10~ms) \\
+Ruído sintético & soma ruído branco gaussiano com potência $P_{\text{trecho}} / 10^{\mathrm{SNR}/10}$ & SNR $\in [20;\ 35]$~dB \\
+\midrule
+Variantes por segmento & \multicolumn{2}{l}{4 (1.180 variantes para os 295 segmentos)} \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\textbf{Dois modos de estiramento.} O estiramento foi implementado de duas formas, que fazem coisas fisicamente diferentes. O modo \emph{tempo}, por \emph{phase vocoder} -- a técnica de Carrera et al. (2022) --, muda a escala de tempo e preserva o espectro, inclusive as linhas em múltiplos da frequência de falha, que os quadros de 40~ms resolvem como tons. O modo \emph{velocidade}, por reamostragem, equivale a tocar a gravação mais rápido ou mais devagar e multiplica todas as frequências pela taxa. A diferença foi conferida num sinal sintético de defeito, com impactos a 107~Hz excitando uma ressonância de 3~kHz, estirado pela taxa 0,9 (Tabela~\ref{tab:estiramento}). Nenhum dos dois modos reproduz uma variação real de rotação, em que a frequência dos impactos muda e a ressonância estrutural permanece; por isso a faixa de taxas é estreita. O modo \emph{tempo} é o padrão, pelo resultado da Seção~\ref{sec:bpfo-aumento}.
+
+\begin{table}[H]
+\centering
+\caption{Efeito dos dois modos de estiramento sobre um sinal sintético de defeito (taxa 0,9).}
+\label{tab:estiramento}
+\begin{tabularx}{\textwidth}{X C{4.2cm} C{4.2cm}}
+\toprule
+\textbf{Modo} & \textbf{Frequência dos impactos} & \textbf{Ressonância} \\
+\midrule
+\emph{tempo} (\emph{phase vocoder}) & 107~Hz $\rightarrow$ 107~Hz & 3.000~Hz $\rightarrow$ 3.000~Hz \\
+\emph{velocidade} (reamostragem) & 107~Hz $\rightarrow$ 96~Hz & 3.000~Hz $\rightarrow$ 2.700~Hz \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\textbf{Aplicação só no treino, sem vazamento.} O deslocamento e o estiramento leem amostras além dos limites do segmento de origem, e uma variante de um segmento de treino poderia conter amostras do teste. Para impedir isso, cada variante guarda o intervalo exato da gravação que leu e só entra no treino de um \emph{fold} se todos os segmentos tocados por esse intervalo forem de treino naquele \emph{fold} (Figura~\ref{fig:aumento-fold}). O teste é sempre feito sobre os segmentos originais. Na prática, só as variantes de borda são recusadas, e o treino de cada \emph{fold} do Protocolo B passa de 224 para cerca de 1.118 exemplos. Um teste automático confere, em todos os \emph{folds} dos dois protocolos, que nenhuma variante aceita lê amostra de teste ou de descarte. O sorteio de cada variante usa uma semente derivada do segmento e do número da cópia, de modo que as comparações entre técnicas usam exatamente as mesmas variantes e medem a técnica, e não o sorteio.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+  seg/.style={draw, minimum width=1.5cm, minimum height=0.7cm, font=\footnotesize},
+  x=1.5cm, y=1cm]
+  % segmentos de uma gravação
+  \foreach \i/\tipo/\cor/\txt in {0/treino/white/black, 1/treino/white/black, 2/treino/white/black, 3/descarte/black!20/black, 4/teste/black!55/white, 5/teste/black!55/white, 6/descarte/black!20/black, 7/treino/white/black} {
+    \node[seg, fill=\cor, text=\txt] at (\i+0.5, 0) {\tipo};
+  }
+  \node[font=\footnotesize, anchor=east] at (-0.1, 0) {gravação};
+  % variante aceita: origem no segmento 1, deslocada, dentro do treino
+  \draw[{Bar[width=6pt]}-{Bar[width=6pt]}, thick] (0.75, 0.75) -- (1.75, 0.75);
+  \node[font=\footnotesize, anchor=south] at (1.25, 0.85) {aceita};
+  % variante recusada: origem no segmento 2, deslocada para o descarte
+  \draw[{Bar[width=6pt]}-{Bar[width=6pt]}, thick, dashed] (2.4, 1.55) -- (3.4, 1.55);
+  \node[font=\footnotesize, anchor=south] at (2.9, 1.65) {recusada (lê o descarte)};
+  % marcações de origem
+  \draw[-{Latex}, black!60] (1.5, 0.62) -- (1.5, 0.38);
+  \draw[-{Latex}, black!60] (2.5, 1.42) -- (2.5, 0.38);
+\end{tikzpicture}
+\caption{Filtro das variantes por \emph{fold}, numa gravação. Cada barra é a janela de 1~s lida por uma variante; a seta indica o segmento de origem. A variante só entra no treino se todas as amostras que ela lê estiverem em segmentos de treino daquele \emph{fold}.}
+\label{fig:aumento-fold}
+\end{figure}
+
+\subsection{Classificador}
+\label{sec:classificador}
+
+\textbf{Candidatos.} A proposta previa um classificador leve e tomava como referência a rede convolucional (CNN) pequena de Luo et al. (2024); a literatura de reconhecimento de palavras-chave em microcontroladores também favorece CNNs pequenas sobre MFCC em relação a perceptrons multicamadas (MLP) de mesmo orçamento de memória (Zhang et al., 2017). Foram comparados quatro modelos, todos na tarefa binária e sobre o mesmo segmento de 1~s (Tabela~\ref{tab:candidatos}): um MLP raso, duas CNNs pequenas e a análise discriminante linear (LDA). A LDA entrou como referência por ser o classificador mais simples que usa toda a estrutura das 26 características: ela projeta o vetor de características $\mathbf{x}$ na direção $\mathbf{w}$ que maximiza a separação entre as médias das duas classes em relação à variância dentro de cada classe, estimada como uma covariância comum, e decide pelo sinal de $\mathbf{w}^{\top}\mathbf{x} + b$. É treinada em forma fechada, sem hiperparâmetros nem sementes, e foi usada com probabilidades \emph{a priori} iguais, o que compensa o desbalanceamento do treino no Protocolo B.
+
+\begin{table}[H]
+\centering
+\caption{Modelos comparados na escolha do classificador.}
+\label{tab:candidatos}
+\begin{tabularx}{\textwidth}{L{2.4cm} L{4.4cm} X}
+\toprule
+\textbf{Modelo} & \textbf{Entrada} & \textbf{Arquitetura} \\
+\midrule
+LDA & média e desvio dos 13 MFCC (26 valores) & discriminante linear, probabilidades \emph{a priori} iguais \\
+MLP raso & os mesmos 26 valores & $26 \rightarrow 16$ (ReLU) $\rightarrow 2$ \\
+CNN 1D & matriz MFCC $13 \times 98$ & convolução no tempo (16 filtros, núcleo 5), \emph{max pooling} por 2, segunda convolução, \emph{pooling} global e camada densa \\
+CNN 2D & log-Mel $20 \times 98$ (sem a DCT) & duas convoluções $3 \times 3$ (8 e 16 filtros), cada uma seguida de \emph{max pooling} por 2, \emph{pooling} global e camada densa \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\textbf{Treinamento das redes.} Perda de entropia cruzada com pesos de classe inversamente proporcionais à frequência, otimizador Adam (taxa de aprendizado $3 \times 10^{-3}$, decaimento de pesos $10^{-3}$), lotes de 32 exemplos e 120 épocas, com a padronização das entradas ajustada apenas no treino. Cada rede foi treinada com três sementes. Os hiperparâmetros foram fixados de antemão, sem busca.
+
+\textbf{Escolha sem consultar o teste.} O modelo usado para testar cada falha foi escolhido por uma validação que nunca viu essa falha. A validação é interna ao treino de cada \emph{fold} do Protocolo B e repete a sua lógica: das três falhas e dos cinco blocos normais do treino, cada falha é deixada de fora uma vez e combinada com cada bloco normal, com a mesma faixa de descarte, o que dá 15 treinos internos por \emph{fold}. Para os \emph{folds} em que uma falha está fora do treino, contam apenas os treinos internos desses mesmos \emph{folds}. São candidatos os modelos cuja acurácia balanceada interna média fica a até 0,02 da melhor, ou dentro da soma das dispersões entre sementes dos dois modelos, se esta for maior; entre os candidatos, fica o de menor custo computacional. Esse critério foi fixado depois da primeira rodada, que desempatava pela ordem de listagem; aplicado aos mesmos números, não altera a escolha.
+
+\textbf{Custo embarcado.} Para cada modelo foram calculados, a partir da arquitetura, o número de parâmetros, as multiplicações-acumulações (MACs) por segmento e o maior par entrada--saída de uma camada, que aproxima o pico de memória de ativação. O tempo de inferência foi estimado em ordem de grandeza, supondo de 2 a 5 ciclos por MAC a 100~MHz. A estimativa cobre apenas o classificador; a extração de MFCC é comum a todos os modelos e será medida no porte.
+
+\textbf{Modelo final.} A avaliação por \emph{folds} treina e descarta um modelo por \emph{fold}. O modelo que será portado foi treinado uma única vez, com os 295 segmentos e sem aumento de dados (Seção~\ref{sec:bpfo-aumento}), por uma etapa própria da cadeia, que não mede desempenho: o desempenho do classificador é o do Protocolo B. Os parâmetros são exportados em formato independente da biblioteca de aprendizado de máquina, com a padronização das características incorporada aos pesos, de modo que a decisão no firmware se reduz ao produto escalar das 26 características com 26 pesos, somado a um termo constante; escore maior ou igual a zero indica falha. Antes da exportação, confere-se que esses parâmetros reproduzem o escore e a decisão do modelo original em todos os segmentos, e os escores de referência ficam gravados para a comparação com a implementação em C.
+
+\subsection{Controles do Classificador}
+\label{sec:controles}
+
+Com uma única gravação por classe, um resultado alto no Protocolo B pode ter origens que não são a condição do rolamento: o nível do sinal, um vazamento de informação do teste para o treino ou uma particularidade da gravação normal. Esse é o risco de sobreajuste previsto na proposta, numa forma mais específica: o modelo pode aprender a reconhecer a gravação, e não a falha. Três controles testam cada uma dessas origens, e um quarto mede quanto treino o modelo exige. Todos usam as mesmas partições, a LDA com as características da Tabela~\ref{tab:parametros} e nenhum aumento de dados.
+
+\textbf{Ablação do ganho.} Uma variação de ganho multiplica todas as energias do banco de Mel pelo mesmo fator; após o logaritmo, isso soma uma constante a todos os filtros, e a DCT-II concentra essa constante inteiramente no coeficiente $c_0$. O nível do sinal foi retirado de duas formas independentes: descartando $c_0$ (sua média e seu desvio, o que deixa 24 valores) e normalizando cada segmento pelo próprio valor eficaz antes do MFCC. As duas ablações foram aplicadas aos Protocolos A e B.
+
+\textbf{Permutação de rótulos por bloco.} Em cada \emph{fold}, os rótulos de treino são sorteados de novo por grupo (gravação e bloco temporal), mantendo quantos grupos há de cada classe: a estrutura temporal fica igual e só a relação entre rótulo e sinal é desfeita; o teste mantém os rótulos verdadeiros. Foram feitos 100 sorteios. O critério é o valor-$p$ empírico da referência contra essa distribuição,
+\begin{equation}
+p = \frac{1 + \#\{\mathrm{AB}_{\text{perm}} \ge \mathrm{AB}_{\text{ref}}\}}{n + 1},
+\label{eq:pempirico}
+\end{equation}
+em que $n$ é o número de sorteios; com $n = 100$, o menor valor possível é $1/101 \approx 0{,}0099$.
+
+\textbf{Harmônicos do eixo.} A gravação normal tem harmônicos da rotação do eixo mais fortes que as de falha (Seção~\ref{sec:bpfo-assinatura}), e o classificador poderia ter aprendido ``harmônicos fortes = normal''. Em cada \emph{fold}, marcaram-se as bandas de Mel em que a potência nos múltiplos da rotação é, na condição normal, ao menos 3~dB maior que nas falhas de treino; o log-Mel dessas bandas foi substituído pela média do treino em todos os segmentos, a média dos MFCC foi recalculada e o Protocolo B foi treinado de novo. Como controle, apagou-se o mesmo número de bandas sorteadas fora dos harmônicos, em cinco sorteios. O método foi antes aplicado a um sinal sintético em que a condição normal difere das falhas apenas por harmônicos mais fortes, para conferir que detecta a dependência quando ela existe.
+
+\textbf{Curva de aprendizado.} Em cada \emph{fold}, o treino é reduzido a $N$ segundos por classe ($N$ = 2, 5, 10 e 30), sorteados entre os segmentos de treino e repartidos entre as gravações da classe, e o teste é mantido inteiro. Cada ponto foi repetido com 10 sementes. A curva começa em 2~s porque, com um único segmento por classe, não há covariância dentro da classe para a LDA estimar.
+
+% ======================================================================
+% 3. RESULTADOS
+% ======================================================================
+\section{Resultados}
+\label{sec:resultados}
+
+\subsection{Base de Dados Convertida}
+\label{sec:res-base}
+
+As cinco gravações passaram nas verificações de metadados. O fator de escala aplicado foi de 9.707,32, correspondente ao pico global de 3,307983~Pa, observado na classe \texttt{bpfi\_1.0mm}, e nenhum arquivo saturou: o maior pico obtido, 32.112, é coerente com a margem de 2\% (Tabela~\ref{tab:conversao}). A Figura~\ref{fig:formas} mostra um trecho de cada condição na mesma escala.
+
+\begin{table}[H]
+\centering
+\caption{Resultado da conversão dos cinco registros para PCM \texttt{int16}.}
+\label{tab:conversao}
+\begin{tabularx}{\textwidth}{X C{2.2cm} C{2.8cm} C{3cm}}
+\toprule
+\textbf{Classe} & \textbf{Duração} & \textbf{Pico original (Pa)} & \textbf{Pico PCM (\texttt{int16})} \\
+\midrule
+\texttt{normal}      & 60~s & 0,876099 & 8.505 / 32.767 \\
+\texttt{bpfi\_0.3mm} & 60~s & 1,724902 & 16.744 / 32.767 \\
+\texttt{bpfi\_1.0mm} & 60~s & 3,307983 & 32.112 / 32.767 \\
+\texttt{bpfo\_0.3mm} & 60~s & 0,753613 & 7.316 / 32.767 \\
+\texttt{bpfo\_1.0mm} & 60~s & 3,054688 & 29.653 / 32.767 \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.85\textwidth]{assets/fig_formas_de_onda.png}
+\caption{Formas de onda das cinco condições de operação, em trecho de 120~ms e mesma escala vertical.}
+\label{fig:formas}
+\end{figure}
+
+O pico da classe \texttt{bpfi\_1.0mm} é cerca de 4,4 vezes o da \texttt{bpfo\_0.3mm}, diferença preservada pelo fator de escala global. A \texttt{bpfo\_0.3mm} tem pico (0,7536~Pa) \emph{inferior} ao da condição normal (0,8761~Pa) e forma de onda semelhante à dela: a amplitude do sinal bruto não basta para separar as classes deste conjunto, o que reforça a extração de conteúdo espectral.
+
+\subsection{Taxa de Decimação}
+\label{sec:res-decimacao}
+
+A Figura~\ref{fig:psd} mostra a densidade espectral das cinco classes com o Nyquist de cada taxa candidata, e a Tabela~\ref{tab:preservacao}, a fração da energia discriminante preservada por taxa e por classe. Pelo critério da Seção~\ref{sec:decimacao}, decide a coluna de pior caso.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.85\textwidth]{assets/fig1_psd_por_classe.png}
+\caption{Densidade espectral de potência das cinco classes, com as frequências de Nyquist das taxas candidatas assinaladas.}
+\label{fig:psd}
+\end{figure}
+
+\begin{table}[H]
+\centering
+\caption{Fração da energia discriminante preservada por taxa e por classe de falha.}
+\label{tab:preservacao}
+\begin{tabularx}{\textwidth}{X C{2.1cm} C{2.1cm} C{2.1cm} C{2.1cm} C{2.1cm}}
+\toprule
+\textbf{Taxa} & \texttt{bpfi\_0.3} & \texttt{bpfi\_1.0} & \texttt{bpfo\_0.3} & \texttt{bpfo\_1.0} & \textbf{Pior caso} \\
+\midrule
+6.400~Hz  & 82,2\% & 99,1\%  & 83,3\% & 97,7\% & \textbf{82,2\%} \\
+8.000~Hz  & 89,1\% & 99,4\%  & 86,5\% & 98,4\% & \textbf{86,5\%} \\
+\textbf{12.800~Hz} & \textbf{96,1\%} & \textbf{99,9\%} & \textbf{96,1\%} & \textbf{99,5\%} & \textbf{96,1\%} \\
+16.000~Hz & 97,8\% & 99,9\%  & 96,8\% & 99,7\% & \textbf{96,8\%} \\
+25.600~Hz & 99,4\% & 100,0\% & 99,9\% & 99,9\% & \textbf{99,4\%} \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+O achado mais relevante desta etapa está na Tabela~\ref{tab:banda} e na Figura~\ref{fig:discriminante}: \textbf{as classes de defeito incipiente exigem mais banda que as severas} -- cerca de 6~kHz contra 2,3~kHz para 95\% da energia discriminante. Isso corrige o raciocínio da proposta, que justificava a faixa de 8 a 16~kHz pelas frequências de falha abaixo de 300~Hz: a frequência de falha é baixa, mas a energia que distingue a falha incipiente se estende até cerca de 6~kHz. Uma análise feita só com as classes de 1,0~mm concluiria que 6.400~Hz bastariam, degradando justamente a detecção precoce, o caso de maior valor prático.
+
+\begin{table}[H]
+\centering
+\caption{Largura de banda necessária para preservar a energia discriminante, por classe.}
+\label{tab:banda}
+\begin{tabularx}{\textwidth}{X C{4cm} C{4cm}}
+\toprule
+\textbf{Classe} & \textbf{95\% até} & \textbf{99\% até} \\
+\midrule
+\texttt{bpfi\_0.3mm} & 5.634~Hz & 9.155~Hz \\
+\texttt{bpfi\_1.0mm} & 2.260~Hz & 3.006~Hz \\
+\texttt{bpfo\_0.3mm} & 5.999~Hz & 9.151~Hz \\
+\texttt{bpfo\_1.0mm} & 2.387~Hz & 4.220~Hz \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.85\textwidth]{assets/fig_energia_discriminante_acumulada.png}
+\caption{Fração da energia discriminante preservada em função da frequência de corte, por classe de falha.}
+\label{fig:discriminante}
+\end{figure}
+
+A simplificação do recorte em zero foi verificada com a diferença espectral sem recorte, por faixa de frequência. Na classe \texttt{bpfo\_0.3mm}, a mais sensível a ela, os déficits de energia são pequenos e espalhados (até 2,8~dB por faixa), e parte deles vem de componentes próprias da gravação normal, como os harmônicos do eixo; a única faixa com diferença consistente é de energia a mais, entre 500 e 1.000~Hz ($+11{,}4$~dB). O recorte, portanto, não esconde a assinatura dessa classe.
+
+\textbf{Taxa adotada.} Adotou-se a taxa de trabalho de \textbf{12.800~Hz}, obtida por decimação de fator inteiro 4, com base em dois argumentos.
+
+O primeiro é de validação. A 12.800~Hz preservam-se 96,1\% da energia discriminante no pior caso, acima do critério de 95\%. A alternativa de 16.000~Hz recupera apenas 0,7 ponto percentual e exige reamostragem racional, com cerca de quatro vezes mais coeficientes e 25\% mais memória por segundo de sinal. As taxas de 8.000 e 6.400~Hz reprovam no critério (86,5\% e 82,2\%). Atingir 99\% nas classes de 0,3~mm exigiria Nyquist de cerca de 9,2~kHz, isto é, $f_s \approx 18{,}3$~kHz, fora da faixa da proposta.
+
+O segundo é aritmético. Das taxas obtidas de 51.200~Hz por fator inteiro, três caem na faixa de 8 a 16~kHz: 12.800~Hz (fator 4), 10.240~Hz (fator 5) e 8.533~Hz (fator 6). As duas últimas têm Nyquist de 5.120 e 4.267~Hz, abaixo dos 5.634~Hz de que a \texttt{bpfi\_0.3mm} precisa para 95\% da energia discriminante (Tabela~\ref{tab:banda}), e reprovam no critério. O fator inteiro, por sua vez, permite filtrar e descartar amostras numa única operação, como a da função \texttt{arm\_fir\_decimate\_f32} da CMSIS-DSP, com um filtro de 147 coeficientes, contra 583 e 1.163 das taxas racionais (Tabela~\ref{tab:filtros}).
+
+Uma ressalva de margem: a fração preservada é calculada até o Nyquist (6.400~Hz), mas o filtro anti-\emph{aliasing} corta em 5.760~Hz, e a \texttt{bpfo\_0.3mm} só atinge 95\% em 5.999~Hz. A margem real dessa classe é, portanto, mais estreita do que os 96,1\% sugerem. A repetição do Protocolo B a 25.600~Hz, que preserva essa faixa inteira, não melhora o resultado (Seção~\ref{sec:bpfo-taxa}), o que indica que a margem estreita não afetou o classificador. A Tabela~\ref{tab:custo} e a Figura~\ref{fig:custo} resumem o ganho embarcado da decimação.
+
+\begin{table}[H]
+\centering
+\caption{Custo embarcado antes e depois da decimação.}
+\label{tab:custo}
+\begin{tabularx}{\textwidth}{X C{3.5cm} C{3.5cm}}
+\toprule
+ & \textbf{51.200~Hz} & \textbf{12.800~Hz} \\
+\midrule
+Amostras por janela de 25~ms & 1.280 & 320 \\
+Tamanho da FFT & 2.048 & 512 \\
+Memória para 1~s de sinal (\texttt{int16}) & 100~KB & 25~KB \\
+Memória para 60~s de sinal (\texttt{int16}) & 6,0~MB & 1,5~MB \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.85\textwidth]{assets/fig4_assinatura_vs_custo.png}
+\caption{Compromisso entre preservação da assinatura de falha, por classe, e consumo de memória, com a taxa adotada assinalada.}
+\label{fig:custo}
+\end{figure}
+
+A decimação torna o processamento compatível com o microcontrolador: o \emph{buffer} de 1~s ocupa 25~KB dos 128~KB de RAM. Ela não resolve, porém, o armazenamento: uma gravação de 60~s a 12.800~Hz ainda ocupa cerca de 1,5~MB, três vezes a \emph{flash} inteira. Os clipes que irão para o hardware terão de ser selecionados, o que está nas próximas etapas (Seção~\ref{sec:proximas}).
+
+\subsection{Escolha do Classificador}
+\label{sec:res-classificador}
+
+A Tabela~\ref{tab:interna} apresenta a validação interna dos quatro modelos, agregada sobre os 24 \emph{folds} do Protocolo B. Os valores internos são pessimistas em termos absolutos, porque o treino interno contém só duas falhas, contra três no Protocolo B; o que conta é a comparação entre os modelos.
+
+\begin{table}[H]
+\centering
+\caption{Validação interna ao treino do Protocolo B: acurácia balanceada (AB) média, dispersão entre sementes, sensibilidade, especificidade e AB por falha deixada de fora no treino interno. As falhas de 1,0~mm têm AB de 1,000 em todos os modelos e foram omitidas.}
+\label{tab:interna}
+\begin{tabularx}{\textwidth}{X C{1.6cm} C{1.6cm} C{1.4cm} C{1.4cm} C{1.6cm} C{1.6cm}}
+\toprule
+\textbf{Modelo} & \textbf{AB interna} & \textbf{$\pm$ sementes} & \textbf{Sens.} & \textbf{Espec.} & \textbf{BPFI 0,3~mm} & \textbf{BPFO 0,3~mm} \\
+\midrule
+\textbf{LDA} & \textbf{0,875} & -- & 0,750 & 1,000 & 1,000 & 0,500 \\
+MLP raso & 0,828 & 0,008 & 0,655 & 1,000 & 0,808 & 0,503 \\
+CNN 1D & 0,824 & 0,002 & 0,648 & 1,000 & 0,796 & 0,500 \\
+CNN 2D & 0,875 & 0,000 & 0,750 & 1,000 & 1,000 & 0,500 \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+A Tabela~\ref{tab:aninhada} mostra a escolha aninhada. Nas quatro escolhas, a LDA e a CNN 2D empatam exatamente, e a LDA fica pelo custo. Na linha da \texttt{bpfo\_0.3mm}, os valores altos não indicam que essa falha seja detectada: como ela está fora do treino desses \emph{folds}, a validação interna contém apenas as outras três falhas.
+
+\begin{table}[H]
+\centering
+\caption{Escolha aninhada: AB interna média nos \emph{folds} em que cada falha está fora do treino.}
+\label{tab:aninhada}
+\begin{tabularx}{\textwidth}{X C{1.6cm} C{1.6cm} C{1.6cm} C{1.6cm} C{2.2cm}}
+\toprule
+\textbf{Falha fora do treino} & \textbf{LDA} & \textbf{MLP} & \textbf{CNN 1D} & \textbf{CNN 2D} & \textbf{Escolhido} \\
+\midrule
+\texttt{bpfi\_0.3mm} & 0,833 & 0,833 & 0,833 & 0,833 & LDA \\
+\texttt{bpfi\_1.0mm} & 0,833 & 0,680 & 0,668 & 0,833 & LDA \\
+\texttt{bpfo\_0.3mm} & 1,000 & 0,980 & 0,962 & 1,000 & LDA \\
+\texttt{bpfo\_1.0mm} & 0,833 & 0,817 & 0,833 & 0,833 & LDA \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+A Tabela~\ref{tab:custo-modelos} traz o custo estimado de cada modelo no STM32F411CEU6, com pesos e ativações em ponto flutuante de 32~bits.
+
+\begin{table}[H]
+\centering
+\caption{Custo estimado dos classificadores no STM32F411CEU6 (512~KB de \emph{flash}, 128~KB de RAM), por segmento de 1~s, sem a extração de MFCC. Ativação: maior par entrada--saída de uma camada, sem fusão de camadas.}
+\label{tab:custo-modelos}
+\begin{tabularx}{\textwidth}{X C{2.2cm} C{1.6cm} C{1.8cm} C{1.8cm} C{2.2cm}}
+\toprule
+\textbf{Modelo} & \textbf{Parâmetros} & \textbf{Pesos} & \textbf{MACs} & \textbf{Ativação} & \textbf{Tempo estimado} \\
+\midrule
+\textbf{LDA} & \textbf{106} & \textbf{0,4~KB} & \textbf{52} & \textbf{0,1~KB} & \textbf{1 a 3~$\mu$s} \\
+MLP raso & 466 & 1,8~KB & 448 & 0,2~KB & 10 a 20~$\mu$s \\
+CNN 1D & 2.386 & 9,3~KB & 164.672 & 11,1~KB & 3 a 8~ms \\
+CNN 2D & 1.282 & 5,0~KB & 705.632 & 76,6~KB & 14 a 35~ms \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\textbf{Justificativa da escolha da LDA.} Quatro observações sustentam a escolha.
+\begin{itemize}[leftmargin=*]
+  \item \emph{Desempenho:} a LDA empata com o melhor modelo, a CNN 2D, em todas as escolhas aninhadas, e supera o MLP e a CNN 1D. Toda a perda destes dois está na \texttt{bpfi\_0.3mm}, cuja sensibilidade média cai para cerca de 0,6, com treinos internos em que nenhum segmento dessa falha é detectado: os modelos não lineares se ajustam às falhas de treino e generalizam pior para uma falha que não viram.
+  \item \emph{Custo:} a CNN 2D exige cerca de 13.000 vezes mais MACs e 700 vezes mais memória de ativação que a LDA para o mesmo resultado.
+  \item \emph{Porte:} os quatro modelos cabem na memória e rodariam em tempo real -- mesmo a CNN 2D usaria de 1,5\% a 3,5\% do segundo disponível --, mas a LDA se reduz a um produto escalar de 26 termos, implementável diretamente em C sobre características acumuladas quadro a quadro, enquanto as CNNs exigem guardar os 98 quadros e, na prática, uma ferramenta de geração de código para redes.
+  \item \emph{Robustez com poucos dados:} sem hiperparâmetros a ajustar e com cerca de uma centena de parâmetros estimados em forma fechada, a LDA tem pouco espaço para sobreajuste com os cerca de 224 segmentos de treino por \emph{fold}.
+\end{itemize}
+
+\subsection{Desempenho do Classificador}
+\label{sec:desempenho}
+
+No Protocolo A, a LDA atinge acurácia balanceada de 1,000 em todos os seis \emph{folds}, tanto na tarefa binária quanto na multiclasse. O resultado é esperado para um protocolo em que treino e teste compartilham as mesmas gravações e confirma o seu papel de limite otimista; é também a única evidência disponível para a meta estendida, já que a discriminação multiclasse não pode ser testada em gravações novas com este conjunto.
+
+A Tabela~\ref{tab:protocoloB-folds} apresenta o Protocolo B em cada um dos 24 \emph{folds}.
+
+\begin{table}[H]
+\centering
+\caption{Protocolo B, \emph{fold} a \emph{fold}: acurácia balanceada por falha deixada de fora e bloco normal no teste.}
+\label{tab:protocoloB-folds}
+\footnotesize
+\begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}X C{0.95cm} C{0.95cm} C{0.95cm} C{0.95cm} C{0.95cm} C{0.95cm} C{1.15cm} C{1.15cm} C{1.15cm}}
+\toprule
+ & \multicolumn{6}{c}{\textbf{Bloco normal no teste}} & \multicolumn{3}{c}{\textbf{Média dos blocos}} \\
+\cmidrule(lr){2-7}\cmidrule(lr){8-10}
+\textbf{Falha de fora} & \textbf{1} & \textbf{2} & \textbf{3} & \textbf{4} & \textbf{5} & \textbf{6} & \textbf{Sens.} & \textbf{Espec.} & \textbf{AB} \\
+\midrule
+\texttt{bpfi\_0.3mm} & 1,000 & 1,000 & 1,000 & 1,000 & 1,000 & 1,000 & 1,000 & 1,000 & 1,000 \\
+\texttt{bpfi\_1.0mm} & 1,000 & 1,000 & 1,000 & 1,000 & 1,000 & 1,000 & 1,000 & 1,000 & 1,000 \\
+\texttt{bpfo\_0.3mm} & 0,500 & 0,500 & 0,500 & 0,500 & 0,500 & 0,500 & 0,000 & 1,000 & 0,500 \\
+\texttt{bpfo\_1.0mm} & 1,000 & 1,000 & 1,000 & 1,000 & 1,000 & 1,000 & 1,000 & 1,000 & 1,000 \\
+\midrule
+\textbf{Média} & 0,875 & 0,875 & 0,875 & 0,875 & 0,875 & 0,875 & \textbf{0,750} & \textbf{1,000} & \textbf{0,875} \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+A acurácia balanceada média é de \textbf{87,5\%}, acima da meta de 85\%. O resultado é composto de dois extremos: três das quatro gravações de falha são detectadas em todos os seus segmentos, mesmo sem terem sido vistas no treino, e a falha incipiente de pista externa (\texttt{bpfo\_0.3mm}) não é detectada em nenhum segmento de nenhum \emph{fold}. Como cada gravação de falha é detectada por inteiro ou não é detectada, o resultado se lê melhor como \emph{três de quatro gravações de falha detectadas}; a amostra que mede generalização tem, na prática, quatro gravações de falha e uma normal.
+
+Somados os 24 \emph{folds}, os 354 erros são todos falsos negativos da \texttt{bpfo\_0.3mm}, e nenhum dos 236 testes de segmentos normais gera alarme falso (Figura~\ref{fig:confusao}). Como cada segmento de falha é testado seis vezes (uma por bloco normal) e cada segmento normal quatro (uma por falha deixada de fora), as contagens da matriz não são números de segmentos distintos. A especificidade integral deve ser lida com a ressalva do protocolo: os segmentos normais testados vêm da mesma gravação normal usada no treino.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.6\textwidth]{assets/fig_matriz_confusao_B.png}
+\caption{Matriz de confusão do Protocolo B, somada nos 24 \emph{folds}.}
+\label{fig:confusao}
+\end{figure}
+
+\subsection{Controles do Classificador}
+\label{sec:res-controles}
+
+A Tabela~\ref{tab:controles-completa} reúne a ablação do ganho e a permutação de rótulos.
+
+\begin{table}[H]
+\centering
+\caption{Ablação do ganho e permutação de rótulos (AB: acurácia balanceada).}
+\label{tab:controles-completa}
+\small
+\begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}X C{1.5cm} C{2.3cm} C{1.3cm} C{1.3cm} C{1.7cm}}
+\toprule
+ & \textbf{A} & \multicolumn{4}{c}{\textbf{B}} \\
+\cmidrule(lr){2-2}\cmidrule(lr){3-6}
+\textbf{Rodada} & \textbf{AB} & \textbf{AB} & \textbf{Sens.} & \textbf{Espec.} & \textbf{BPFO 0,3~mm} \\
+\midrule
+Referência (MFCC completo) & 1,000 & 0,875 & 0,750 & 1,000 & 0,500 \\
+Sem o coeficiente $c_0$ & 1,000 & 0,875 & 0,750 & 1,000 & 0,500 \\
+Normalização RMS por segmento & 1,000 & 0,875 & 0,750 & 1,000 & 0,500 \\
+Rótulos permutados por bloco (100 sorteios) & -- & 0,450 $\pm$ 0,060 & -- & -- & -- \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\textbf{Ablação do ganho.} Sem $c_0$ ou com normalização por valor eficaz, os Protocolos A e B ficam idênticos à referência, \emph{fold} a \emph{fold}. A detecção não se apoia no nível do sinal, o que é relevante porque as três falhas detectadas são justamente as de valor eficaz mais alto que a condição normal (Tabela~\ref{tab:tempo}). A separação é espectral. Como a normalização não alterou nenhum resultado, a cadeia adotada não a utiliza, o que também a dispensa no firmware.
+
+\textbf{Permutação de rótulos.} Nos 100 sorteios, a acurácia balanceada ficou em $0{,}450 \pm 0{,}060$ (de 0,329 a 0,571), longe da referência de 0,875 (Figura~\ref{fig:controles}a), com valor-$p$ empírico de 0,0099, o menor possível (Equação~\ref{eq:pempirico}). Um vazamento de informação do teste para o treino elevaria esses valores. Eles ficam, ao contrário, abaixo do acaso, porque há uma única gravação normal: mantida a contagem de blocos por rótulo, a maior parte dos blocos normais recebe o rótulo de falha no treino, e o modelo aprende uma regra invertida em relação ao teste.
+
+\textbf{Harmônicos do eixo.} As bandas dos harmônicos ficam em torno de 100, 410, 1.960 e 2.270~Hz (de uma a quatro por \emph{fold}). Apagá-las deixa o Protocolo B idêntico à referência, enquanto apagar o mesmo número de bandas sorteadas fora delas dá entre 0,854 e 0,875 (Tabela~\ref{tab:harmonicos}). No sinal sintético, a mesma intervenção derruba o resultado de 1,000 para 0,837, e os sorteios fora dos harmônicos permanecem em 1,000: o método detecta a dependência quando ela existe. O classificador adotado não depende, portanto, dos harmônicos do eixo da gravação normal.
+
+\begin{table}[H]
+\centering
+\caption{Intervenção nas bandas dos harmônicos do eixo (Protocolo B).}
+\label{tab:harmonicos}
+\begin{tabularx}{\textwidth}{X C{1.8cm} C{1.6cm} C{1.6cm} C{2.2cm}}
+\toprule
+\textbf{Rodada} & \textbf{AB} & \textbf{Sens.} & \textbf{Espec.} & \textbf{\texttt{bpfo\_0.3mm}} \\
+\midrule
+Referência & 0,875 & 0,750 & 1,000 & 0,500 \\
+Bandas dos harmônicos apagadas & 0,875 & 0,750 & 1,000 & 0,500 \\
+Mesmo número de bandas sorteadas fora dos harmônicos (5 sorteios) & 0,854 a 0,875 & -- & -- & -- \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\textbf{Curva de aprendizado.} A Tabela~\ref{tab:curva} e a Figura~\ref{fig:controles}b mostram o desempenho com o treino reduzido. No Protocolo A, 5 a 10~s por classe já dão resultado próximo do final (0,977 e 0,997). No Protocolo B, a curva vai de 0,757 com 2~s a 0,867 com 30~s, sem crescer de forma monótona. Com pouco treino, a especificidade cai e a \texttt{bpfo\_0.3mm} é parcialmente detectada (0,682 com 2~s); com mais treino, a especificidade chega a 1,000 e a \texttt{bpfo\_0.3mm} volta a 0,500, coerente com um limiar de decisão que se ajusta às falhas de treino (Seção~\ref{sec:bpfo-assinatura}). A curva mostra quanto treino o modelo exige, mas não o que ele aprendeu.
+
+\begin{table}[H]
+\centering
+\caption{Curva de aprendizado: acurácia balanceada com $N$ segundos de treino por classe (média $\pm$ desvio entre 10 sorteios).}
+\label{tab:curva}
+\begin{tabularx}{\textwidth}{X C{2.3cm} C{2.3cm} C{1.7cm} C{1.7cm} C{2.1cm}}
+\toprule
+\textbf{Treino por classe} & \textbf{A} & \textbf{B} & \textbf{B, sens.} & \textbf{B, espec.} & \textbf{B, \texttt{bpfo\_0.3mm}} \\
+\midrule
+2~s  & $0{,}840 \pm 0{,}050$ & $0{,}757 \pm 0{,}036$ & 0,568 & 0,946 & 0,682 \\
+5~s  & $0{,}977 \pm 0{,}017$ & $0{,}836 \pm 0{,}014$ & 0,676 & 0,996 & 0,584 \\
+10~s & $0{,}997 \pm 0{,}003$ & $0{,}800 \pm 0{,}031$ & 0,603 & 0,997 & 0,570 \\
+30~s & $1{,}000 \pm 0{,}000$ & $0{,}867 \pm 0{,}014$ & 0,734 & 1,000 & 0,500 \\
+Treino inteiro & 1,000 & 0,875 & 0,750 & 1,000 & 0,500 \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\textwidth]{assets/fig_controles.png}
+\caption{Controles do Protocolo B: (a) permutação de rótulos por bloco, em 100 sorteios; (b) curva de aprendizado, com o treino completo no ponto vazado.}
+\label{fig:controles}
+\end{figure}
+
+\subsection{Síntese dos Resultados}
+\label{sec:sintese}
+
+O classificador reconhece, em gravações de falha que nunca viu, uma alteração espectral compartilhada por três das quatro condições de falha, sem depender do nível do sinal nem dos harmônicos do eixo da gravação normal, e sem alarmes falsos. O resultado atende à meta de 85\% e é mais confiável que o obtido com partição interna (Seção~\ref{sec:dif-validacao}), porque é medido em gravações não vistas e resiste aos controles aplicados. Duas ressalvas o acompanham. Os controles não descartam que parte da decisão seja ``diferente da gravação normal'', hipótese que só pode ser testada com uma segunda gravação normal; e todos os erros são falsos negativos -- o erro mais custoso num sistema de monitoramento, porque deixa passar um defeito em evolução, e a mesma assimetria relatada por Chang et al. (2025) com MFCC e máquina de vetores de suporte. Do ponto de vista embarcado, a LDA torna o classificador praticamente gratuito em memória e tempo; o custo do porte fica concentrado na extração de MFCC e no armazenamento do áudio.
+
+% ======================================================================
+% 4. DIFICULDADES ENCONTRADAS E AJUSTES DE ROTA
+% ======================================================================
+\section{Dificuldades Encontradas e Ajustes de Rota}
+\label{sec:dificuldades}
+
+\subsection{Validação com uma Única Gravação por Classe}
+\label{sec:dif-validacao}
+
+A dificuldade mais relevante do período é metodológica. Uma avaliação preliminar com o MFCC da Tabela~\ref{tab:parametros}, a LDA e uma partição temporal contígua de 70\% para treino e 30\% para teste dentro de cada gravação produziu acurácia balanceada de 1,0 no sinal original e em todas as cinco taxas candidatas, inclusive nas que descartam mais de 15\% da energia discriminante. A invariância foi o sinal de alerta; a causa é estrutural: com uma única gravação por classe, qualquer partição interna coloca treino e teste no mesmo registro, e o classificador pode separar as classes pela identidade da gravação em vez da condição do rolamento. Por isso esse número não é reportado como desempenho. O Protocolo A, que também separa dentro das mesmas gravações, reproduz o mesmo 1,0 (Seção~\ref{sec:desempenho}).
+
+O problema não é exclusivo deste projeto. Gangsar e Tiwari (2020) observam que os resultados elevados da literatura de diagnóstico de motores são, em geral, obtidos com treino e teste da mesma fonte e do mesmo ambiente controlado, e Lei et al. (2020) tratam a diferença entre essas distribuições como o problema central para levar o diagnóstico do laboratório à indústria. A proposta já previa o risco de sobreajuste e a mitigação por partição de teste estritamente separada; a dificuldade mostrou que, neste conjunto, a separação precisa ser entre gravações, o que levou ao protocolo da Seção~\ref{sec:particao}.
+
+\subsection{Falha Não Detectada: \texttt{bpfo\_0.3mm}}
+\label{sec:bpfo}
+
+No Protocolo B, a falha incipiente de pista externa não é detectada em nenhum segmento (Seção~\ref{sec:desempenho}). É o caso de maior valor prático -- um defeito em estágio inicial -- e a meta atingida pela média não deve ser lida como detecção de todas as condições de falha. Quatro linhas de investigação foram conduzidas para entender e tentar resolver o problema, apresentadas a seguir com método e resultado: a caracterização da assinatura acústica, a resolução do banco de Mel e a capacidade do classificador, o aumento de dados e o aumento da taxa de amostragem.
+
+\subsubsection{Caracterização da Assinatura Acústica}
+\label{sec:bpfo-assinatura}
+
+A hipótese de trabalho era que a falha se manifestaria como impactos periódicos nas frequências características do rolamento. Duas observações a contrariaram -- a ausência de impulsividade nas estatísticas no domínio do tempo e a não detecção da \texttt{bpfo\_0.3mm} -- e motivaram três perguntas: (i) a diferença entre falha e condição normal é tonal ou impulsiva; (ii) as componentes que diferem vêm do rolamento ou de outra fonte da bancada, como o eixo, o motor, a caixa multiplicadora ou a alimentação; e (iii) por que a \texttt{bpfo\_0.3mm} não é detectada. Cada método foi antes aplicado a um sinal sintético com resposta conhecida, para conferir que a recupera.
+
+\textbf{Frequências características.} Para um rolamento com $N$ elementos rolantes de diâmetro $d$, diâmetro primitivo $D$ e ângulo de contato $\theta$, com a pista externa fixa e o eixo girando a $f_r$, as frequências de passagem dos elementos pelas pistas externa e interna são (Randall e Antoni, 2011)
+\begin{equation}
+\mathrm{BPFO} = \frac{N f_r}{2}\left(1 - \frac{d}{D}\cos\theta\right), \qquad
+\mathrm{BPFI} = \frac{N f_r}{2}\left(1 + \frac{d}{D}\cos\theta\right).
+\label{eq:bpf}
+\end{equation}
+Para o rolamento da bancada (NSK~6205, $N = 9$, $d = 7{,}90$~mm, $D = 38{,}5$~mm), com $\theta = 0^\circ$ e a rotação medida de 50,20~Hz, esperam-se BPFI~$= 272{,}26$~Hz e BPFO~$= 179{,}55$~Hz, valores próximos aos calculados por Jung et al. (2023). Esses valores são chamados aqui de frequências \emph{cinemáticas}, para distingui-los das frequências \emph{medidas} nas gravações.
+
+\textbf{Métodos.} Quatro análises foram aplicadas. (a) Estatísticas no domínio do tempo: valor eficaz, fator de crista e curtose. (b) Identificação das componentes: numa densidade espectral com resolução de 0,195~Hz, selecionaram-se os picos que diferem da condição normal em ao menos 6~dB até 6,4~kHz, e ajustaram-se a eles séries $n f_0 \pm k f_r$, com $f_0$ varrido em torno das frequências cinemáticas, aceitando-se uma série apenas se explicasse sozinha ao menos 10 picos; o resultado foi comparado com séries de $f_0$ sorteado ao acaso. As rotações do eixo e do motor foram estimadas por pente harmônico. (c) Confirmação por um segundo método e um segundo sensor: o espectro de envelope (Randall e Antoni, 2011), obtido pela transformada de Hilbert numa banda escolhida pela curtose espectral, sem consultar BPFI ou BPFO, aplicado ao microfone e aos quatro canais de vibração do mesmo dataset; a vibração serve só como confirmação e não entra no classificador. (d) O que o extrator recebe: o mesmo log-Mel da cadeia oficial, com 20, 40 e 64 filtros, comparando cada falha com a condição normal por filtro, e a projeção de todos os segmentos no eixo da LDA treinada sem a \texttt{bpfo\_0.3mm}.
+
+\textbf{Domínio do tempo.} Ruído gaussiano tem curtose 3, e impactos periódicos elevam esse valor. Aqui, as falhas exibem curtose \emph{abaixo} de 3 e fator de crista \emph{menor} que o da condição normal (Tabela~\ref{tab:tempo}), e a \texttt{bpfo\_0.3mm} é praticamente indistinguível da condição normal ($\Delta$RMS de $-0{,}4$~dB): se há diferença, ela está na distribuição espectral.
+
+\begin{table}[H]
+\centering
+\caption{Estatísticas no domínio do tempo por classe.}
+\label{tab:tempo}
+\begin{tabularx}{\textwidth}{X C{2.4cm} C{2.8cm} C{2.4cm} C{2.2cm}}
+\toprule
+\textbf{Classe} & \textbf{RMS (Pa)} & \textbf{$\Delta$RMS vs.\ normal} & \textbf{Fator de crista} & \textbf{Curtose} \\
+\midrule
+\texttt{normal}      & 0,04374 & --        & 5,93 & 3,22 \\
+\texttt{bpfi\_0.3mm} & 0,12396 & $+9{,}1$~dB  & 4,12 & 2,81 \\
+\texttt{bpfi\_1.0mm} & 0,30367 & $+16{,}8$~dB & 3,23 & 2,40 \\
+\texttt{bpfo\_0.3mm} & 0,04176 & $-0{,}4$~dB  & 5,35 & 3,08 \\
+\texttt{bpfo\_1.0mm} & 0,26524 & $+15{,}7$~dB & 3,41 & 2,65 \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\textbf{As componentes que distinguem as falhas são séries de BPFI e BPFO.} Cada gravação de falha tem entre 850 e 970 picos que diferem da condição normal. O ajuste das séries harmônicas é diagonal (Tabela~\ref{tab:series} e Figura~\ref{fig:picos}): nas gravações de pista interna só a série de BPFI encontra picos exclusivos, e nas de pista externa só a de BPFO, enquanto séries com $f_0$ sorteado explicam, em média, menos de um pico. O padrão de modulação é o descrito na literatura: na pista interna, que gira com o eixo, 84\% a 86\% da potência da série está nas bandas laterais a $\pm f_r$; na externa, que é fixa, a série é praticamente pura. As componentes vêm, portanto, do rolamento. Elas também não refletem diferenças de operação entre as gravações: a rotação do eixo é a mesma nas cinco (50,20~Hz, cerca de 3.012~rpm), assim como a do motor (cerca de 24,3~Hz, com relação de 2,07 na caixa multiplicadora). A frequência da alimentação elétrica não pôde ser identificada no áudio.
+
+\begin{table}[H]
+\centering
+\caption{Séries harmônicas ajustadas aos 40 maiores picos que aumentam em relação à condição normal. ``Picos exclusivos'' são os explicados só por aquela série; ``--'' indica série não aceita (menos de 10 picos exclusivos).}
+\label{tab:series}
+\begin{tabularx}{\textwidth}{X C{2.1cm} C{1.9cm} C{2.1cm} C{1.9cm} C{2.3cm}}
+\toprule
+\textbf{Classe} & \textbf{BPFI medida} & \textbf{Picos excl.} & \textbf{BPFO medida} & \textbf{Picos excl.} & \textbf{Potência na série da pista} \\
+\midrule
+\texttt{bpfi\_0.3mm} & 268,33~Hz & 34 & --        & 3  & 94\% \\
+\texttt{bpfi\_1.0mm} & 268,25~Hz & 36 & --        & 0  & 96\% \\
+\texttt{bpfo\_0.3mm} & --        & 1  & 182,65~Hz & 26 & 74\% \\
+\texttt{bpfo\_1.0mm} & --        & 0  & 183,39~Hz & 35 & 88\% \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.85\textwidth]{assets/fig_picos_diferentes_por_familia.png}
+\caption{Picos que diferem da condição normal em cada gravação de falha, coloridos pela família de frequência a que pertencem (harmônicos do eixo, BPFI, BPFI com bandas laterais, BPFO).}
+\label{fig:picos}
+\end{figure}
+
+\textbf{Frequências medidas e cinemáticas.} As frequências medidas no áudio (268,3~Hz para BPFI; 182,65 e 183,39~Hz para BPFO) diferem das cinemáticas em 3 a 4~Hz. Para descartar um artefato do método ou do sensor, elas foram verificadas pelo espectro de envelope no microfone e na vibração (Tabela~\ref{tab:envelope} e Figura~\ref{fig:envelope}). A BPFI das duas gravações e a BPFO da falha de 1,0~mm são confirmadas nos dois sensores, que concordam a 0,11--0,23~Hz, com relação sinal-ruído (SNR) de 34 a 57~dB, enquanto as frequências cinemáticas ficam no piso de ruído. Na condição normal, nenhum canal de vibração tem pico nessas frequências.
+
+A confirmação da \texttt{bpfo\_0.3mm} é apenas \textbf{parcial}. Na vibração há energia em 182,65~Hz (SNR de 10,6 a 11,4~dB em três dos quatro canais), mas o pico do envelope fica em 181,53~Hz, 1,1~Hz abaixo. No microfone, o envelope não mostra a linha: o maior pico da faixa, em 174,8~Hz, existe também na gravação normal. Para essa classe, a evidência principal é a série harmônica no espectro do áudio (Tabela~\ref{tab:series}).
+
+\begin{table}[H]
+\centering
+\caption{Espectro de envelope no microfone e no acelerômetro do mancal A (direção $x$): frequência do pico do envelope, SNR na frequência medida no áudio ($\pm 0{,}5$~Hz) e confirmação (pico a até 0,5~Hz da medida). Na \texttt{bpfo\_0.3mm}, o SNR da vibração refere-se a 182,65~Hz, e não ao pico de 181,53~Hz. Última coluna: SNR nas frequências cinemáticas ($\theta = 0^\circ$, $f_r = 50{,}20$~Hz).}
+\label{tab:envelope}
+\begin{tabularx}{\textwidth}{X C{3.2cm} C{3.2cm} C{3cm}}
+\toprule
+\textbf{Classe} & \textbf{Microfone} & \textbf{Vibração} & \textbf{Cinemática (SNR mic.\ / vib.)} \\
+\midrule
+\texttt{bpfi\_0.3mm} & 268,32~Hz; 42,8~dB; sim & 268,49~Hz; 49,6~dB; sim & 1,9 / $-0{,}1$~dB \\
+\texttt{bpfi\_1.0mm} & 268,25~Hz; 34,1~dB; sim & 268,36~Hz; 48,9~dB; sim & 0,2 / $-3{,}6$~dB \\
+\texttt{bpfo\_0.3mm} & sem linha (1,2~dB); não & 181,53~Hz; 11,3~dB; parcial & 4,9 / 2,6~dB \\
+\texttt{bpfo\_1.0mm} & 183,40~Hz; 34,7~dB; sim & 183,62~Hz; 57,2~dB; sim & 0,8 / $-0{,}9$~dB \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\textwidth]{assets/fig_envelope_bpf.png}
+\caption{Espectros de envelope por classe e por sensor (quatro canais de vibração e microfone). Linhas coloridas: frequências medidas no áudio e seus harmônicos; tracejado cinza: frequências cinemáticas para $\theta = 0^\circ$.}
+\label{fig:envelope}
+\end{figure}
+
+Um ângulo de contato efetivo não nulo explicaria o desvio. Pela Equação~\ref{eq:bpf}, BPFI~+~BPFO~$= N f_r$, independentemente de $\theta$, e as medidas confirmam essa soma: 268,3~+~183,4~$= 451{,}7$~Hz, contra $N f_r = 451{,}8$~Hz. A BPFI medida e a BPFO da falha de 1,0~mm são compatíveis com um mesmo ângulo efetivo de cerca de 24$^\circ$; a \texttt{bpfo\_0.3mm}, cuja confirmação é parcial, corresponderia a cerca de 21$^\circ$ no áudio. A causa do desvio fica em aberto, e o relatório sustenta apenas que as frequências medidas diferem das cinemáticas calculadas para $\theta = 0^\circ$.
+
+\textbf{Tonal ou impulsiva.} A curtose global baixa não significa ausência de impactos. A curtose espectral, calculada por banda, mostra que a impulsividade existe, mas concentrada em alta frequência: no microfone, as bandas mais impulsivas das falhas ficam entre 9,4 e 21,8~kHz; nos canais de vibração de maior SNR, entre 1,9 e 11,5~kHz. Abaixo do Nyquist de trabalho, os impactos aparecem como as séries harmônicas da Tabela~\ref{tab:series}, que são a sua imagem espectral: impactos periódicos à taxa BPFO produzem, no espectro, linhas em múltiplos de BPFO. A dicotomia entre assinatura tonal e impulsiva é, portanto, em parte falsa. A decimação remove as bandas impulsivas, mas preserva as séries.
+
+\textbf{O que distingue a \texttt{bpfo\_0.3mm} e o que o classificador faz com isso.} Essa classe não tem elevação de banda larga: o que a distingue são linhas estreitas, a série de BPFO até a 21\textordfeminine\ ordem (cerca de 3,8~kHz), de 29 a 43~dB acima da normal, que permanecem cerca de 30~dB acima dela no sinal decimado. O MFCC \emph{recebe} essa diferença: quatro filtros de Mel, centrados entre 685 e 1.220~Hz, onde as linhas de BPFO somam de 59\% a 94\% da energia da banda, registram de 6 a 14~dB a mais que na condição normal, com tamanho de efeito (d de Cohen) de 18 a 40, isto é, uma diferença muito consistente entre segmentos. Nas demais bandas, a linha fica diluída na energia própria da condição normal, e a banda sobe cerca de 1~dB. Nas outras três falhas, ao contrário, a banda inteira sobe, com mediana de 7 a 16~dB por filtro.
+
+A Figura~\ref{fig:lda-eixo} mostra a consequência. No eixo da LDA treinada sem a \texttt{bpfo\_0.3mm}, essa classe se afasta da condição normal na direção das falhas, mas percorre apenas 21\% do caminho até as falhas de treino, e nenhum segmento cruza o limiar de decisão. O eixo e o limiar são aprendidos com três falhas que, nesse eixo, ficam cerca de cinco vezes mais distantes da condição normal e que diferem dela em banda larga. A informação da \texttt{bpfo\_0.3mm} chega às características; o que não ocorre é a generalização a partir das falhas de treino.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.85\textwidth]{assets/fig_lda_eixo_sem_bpfo03.png}
+\caption{Distribuição dos segmentos no eixo da LDA treinada sem a classe \texttt{bpfo\_0.3mm}. Valores positivos são classificados como falha.}
+\label{fig:lda-eixo}
+\end{figure}
+
+A caracterização também identificou uma particularidade da gravação normal: seus harmônicos do eixo são mais fortes que os das gravações de falha e respondem por 21\% a 60\% da potência que as falhas têm a menos. Com uma única gravação normal, isso poderia ser aprendido como característica da condição normal; o controle da Seção~\ref{sec:res-controles} mostra que o classificador não depende dessas bandas.
+
+\subsubsection{Resolução do Banco de Mel e Capacidade do Classificador}
+\label{sec:bpfo-modelo}
+
+Duas hipóteses sobre a cadeia de processamento foram testadas. A primeira é que a resolução do banco de Mel fosse insuficiente: com 20 filtros entre 20 e 6.400~Hz, a resolução é grosseira acima de 2~kHz. Ampliar o banco para 40 ou 64 filtros eleva a maior diferença por filtro entre a \texttt{bpfo\_0.3mm} e a condição normal de 14 para apenas 17,5 e 18,8~dB, e a diferença dessa classe se concentra entre 0,7 e 1,3~kHz, onde os filtros já são estreitos. A segunda é que o classificador linear não tivesse capacidade para usar a diferença. Nenhum dos modelos comparados detecta a \texttt{bpfo\_0.3mm} na validação interna (Tabela~\ref{tab:interna}), nem mesmo a CNN 2D, a única que recebe as bandas de Mel individualmente, inclusive aquelas em que está a diferença dessa classe.
+
+\subsubsection{Aumento de Dados}
+\label{sec:bpfo-aumento}
+
+O aumento de dados, previsto na proposta como mitigação do sobreajuste, foi avaliado no Protocolo B com a LDA e quatro variantes por segmento (Tabela~\ref{tab:res-aumento}): as três técnicas juntas, em 10 sorteios diferentes das variantes; cada técnica isolada; o estiramento no modo \emph{velocidade}; e um controle com rótulos permutados. Nas colunas por falha, o valor 0,50 da \texttt{bpfo\_0.3mm} corresponde a sensibilidade nula com especificidade integral, e não a detecção parcial.
+
+\begin{table}[H]
+\centering
+\caption{Protocolo B com e sem aumento de dados (LDA, quatro variantes por segmento). Colunas por falha: acurácia balanceada com aquela falha deixada de fora.}
+\label{tab:res-aumento}
+\small
+\begin{tabularx}{\textwidth}{X C{1.1cm} C{1.1cm} C{1.1cm} C{1.3cm} C{1.3cm} C{1.3cm} C{1.3cm}}
+\toprule
+\textbf{Rodada} & \textbf{AB} & \textbf{Sens.} & \textbf{Espec.} & \textbf{BPFI 0,3~mm} & \textbf{BPFI 1,0~mm} & \textbf{BPFO 0,3~mm} & \textbf{BPFO 1,0~mm} \\
+\midrule
+Sem aumento (referência) & 0,875 & 0,750 & 1,000 & 1,00 & 1,00 & 0,50 & 1,00 \\
+\textbf{Três técnicas} (10 sorteios) & \textbf{0,875} & 0,750 & 1,000 & 1,00 & 1,00 & 0,50 & 1,00 \\
+Só deslocamento & 0,875 & 0,750 & 1,000 & 1,00 & 1,00 & 0,50 & 1,00 \\
+Só estiramento (\emph{tempo}) & 0,875 & 0,750 & 1,000 & 1,00 & 1,00 & 0,50 & 1,00 \\
+Só ruído & 0,875 & 0,750 & 1,000 & 1,00 & 1,00 & 0,50 & 1,00 \\
+Três técnicas, estiramento \emph{velocidade} & 0,788 & 0,576 & 1,000 & \textbf{0,65} & 1,00 & 0,50 & 1,00 \\
+Três técnicas, rótulos permutados (1 sorteio) & 0,528 & 0,572 & 0,484 & 0,60 & 0,49 & 0,64 & 0,39 \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\textbf{O aumento não altera o resultado.} Com qualquer combinação de técnicas no modo \emph{tempo}, a acurácia balanceada permanece em 0,875 no Protocolo B, sem variação entre os 10 sorteios, e em 1,000 no Protocolo A. O modelo, porém, muda: sem aumento, o treino é perfeitamente separável e os escores da LDA são muito grandes; com aumento, as margens encolhem cerca de 15 vezes, um efeito de regularização. No eixo da LDA, a \texttt{bpfo\_0.3mm} passa de cerca de 20\% para 30\% do caminho até as falhas de treino, mas todos os seus segmentos continuam do lado da condição normal.
+
+\textbf{O modo \emph{velocidade} é prejudicial.} Com o estiramento por reamostragem, a acurácia balanceada cai para 0,788, e a detecção da \texttt{bpfi\_0.3mm} cai de 1,00 para 0,65. Uma explicação provável é que a reamostragem, ao deslocar todo o espectro da gravação normal em até 5\%, produz variantes rotuladas como normais que se aproximam da assinatura dessa falha, e o modelo passa a chamar de normal parte dela. O resultado justifica o modo \emph{tempo} como padrão.
+
+\textbf{Controle de vazamento.} Com rótulos de treino permutados por bloco, cada variante herdando o rótulo sorteado do seu segmento de origem, a acurácia balanceada cai para 0,528, dentro da faixa observada nos 100 sorteios sem aumento (de 0,329 a 0,571). Por ser um único sorteio, o controle não substitui a distribuição completa, mas não indica vazamento de informação do teste para o treino pelas variantes.
+
+\subsubsection{Aumento da Taxa de Amostragem}
+\label{sec:bpfo-taxa}
+
+Para verificar se a informação que falta à \texttt{bpfo\_0.3mm} estava na faixa removida pela decimação, o Protocolo~B foi repetido a 25.600~Hz (decimação por 2, Tabela~\ref{tab:filtros}), com a mesma LDA, o mesmo MFCC e os mesmos segmentos e \emph{folds}; as 20 bandas de Mel passam a ir até o novo Nyquist (Tabela~\ref{tab:taxasB}).
+
+\begin{table}[H]
+\centering
+\caption{Protocolo B a duas taxas de amostragem. Colunas por falha: acurácia balanceada com aquela falha deixada de fora.}
+\label{tab:taxasB}
+\footnotesize
+\setlength{\tabcolsep}{4pt}
+\begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}X C{1.15cm} C{1.15cm} C{1.2cm} C{1.35cm} C{1.35cm} C{1.35cm} C{1.35cm}}
+\toprule
+\textbf{Taxa} & \textbf{AB} & \textbf{Sens.} & \textbf{Espec.} & \textbf{BPFI 0,3~mm} & \textbf{BPFI 1,0~mm} & \textbf{BPFO 0,3~mm} & \textbf{BPFO 1,0~mm} \\
+\midrule
+12.800~Hz & 0,875 & 0,750 & 1,000 & 1,000 & 1,000 & 0,500 & 1,000 \\
+25.600~Hz & 0,870 & 0,741 & 1,000 & 0,982 & 1,000 & 0,500 & 1,000 \\
+\midrule
+Diferença & $-$0,005 & $-$0,009 & 0 & $-$0,018 & 0 & 0 & 0 \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+A taxa maior não melhora o resultado, e a \texttt{bpfo\_0.3mm} continua não detectada. A única diferença é a \texttt{bpfi\_0.3mm}, que perde segmentos em um dos seis \emph{folds}, possivelmente porque, com as bandas redistribuídas até 12,8~kHz, restam menos bandas na faixa em que está a sua diferença. A comparação não isola a faixa de 6,4 a 12,8~kHz, porque o banco de Mel muda junto com a taxa: abaixo de 3,8~kHz, as bandas caem de 16 para 13. Somada à caracterização da assinatura -- linhas de BPFO abaixo de 3,8~kHz e nenhuma energia a mais que a condição normal entre 6,4 e 12,8~kHz ($-0{,}3$~dB) --, porém, não há indício de que a decimação tenha removido a informação dessa classe.
+
+\subsubsection{Conclusões sobre a \texttt{bpfo\_0.3mm}}
+\label{sec:bpfo-conclusao}
+
+As investigações descartam quatro explicações que pareciam plausíveis e localizam a causa.
+\begin{itemize}[leftmargin=*]
+  \item \emph{Ausência de assinatura:} descartada. As linhas de BPFO da \texttt{bpfo\_0.3mm} existem no áudio, 29 a 43~dB acima da condição normal, e a vibração tem energia na mesma frequência, ainda que a confirmação por envelope seja parcial.
+  \item \emph{Perda na decimação:} descartada. As linhas ficam abaixo de 3,8~kHz e sobrevivem à decimação, a classe não tem energia a mais acima de 6,4~kHz, e o classificador a 25,6~kHz também não a detecta. Por isso a taxa de 12.800~Hz foi mantida.
+  \item \emph{Resolução das características ou capacidade do modelo:} descartada. A diferença chega ao MFCC (6 a 14~dB em quatro filtros), mais filtros a aumentam pouco, e nenhum dos modelos não lineares avaliados detecta a classe. Por isso a cadeia de 20 filtros e a LDA foram mantidas.
+  \item \emph{Falta de variabilidade no treino:} descartada. O aumento de dados aproxima a classe da fronteira, mas não a faz cruzar, porque produz variações das gravações que estão no treino, e não exemplos de uma falha diferente. Como não alterou o desempenho, o aumento não foi incorporado ao modelo final, que fica mais simples de reproduzir no firmware.
+\end{itemize}
+
+O que falha é a \emph{generalização}. O eixo de decisão é aprendido com três falhas que diferem da condição normal em banda larga e com intensidade muito maior, e posiciona a \texttt{bpfo\_0.3mm} a apenas 21\% do caminho entre a normal e as falhas de treino. É um limite do Protocolo B com este conjunto de falhas, e não, necessariamente, do extrator de características. Uma abordagem que ataca diretamente esse caso é a detecção de novidade, em que o modelo aprende apenas a condição normal e marca como falha o que se afasta dela. Ela não foi adotada nesta fase porque, com uma única gravação normal, sua taxa de falsos alarmes não pode ser medida neste conjunto: qualquer desvio da gravação normal, inclusive de ruído ou de ponto de operação, seria marcado como falha. A linha fica registrada para ser reavaliada se um segundo conjunto com mais de uma gravação normal for incorporado à validação (Seção~\ref{sec:proximas}).
+
+\subsection{Limitações da Validação da Decimação}
+\label{sec:dif-decimacao}
+
+Três limitações do critério de decimação devem ser explicitadas. Primeiro, \textbf{fração de energia não é fração de informação}: os cerca de 4\% de energia discriminante descartados a 12.800~Hz poderiam concentrar poder discriminante desproporcional. A repetição do Protocolo B a 25.600~Hz não indicou perda (Seção~\ref{sec:bpfo-taxa}), mas não isola a faixa alta; isolá-la exigiria manter as bandas de Mel de 12.800~Hz e acrescentar bandas acima de 6,4~kHz.
+
+Segundo, \textbf{a análise cobre apenas a condição sem carga}, a única com áudio no conjunto (Seção~\ref{sec:base}). Defeitos localizados produzem impactos que excitam ressonâncias estruturais de alta frequência -- num dos casos relatados por Randall e Antoni (2011), a assinatura só se manifestava acima de 8~kHz. Sem carga, os elementos rolantes são menos pressionados contra o defeito e os impactos tendem a ser fracos, o que é compatível com a curtose global baixa observada (Tabela~\ref{tab:tempo}). Sob torque, parte da assinatura pode migrar para acima do Nyquist de 6.400~Hz, o que exigiria revisar a taxa numa aplicação com carga.
+
+Terceiro, \textbf{a impulsividade do áudio fica acima do Nyquist de trabalho}: as bandas de maior curtose espectral do microfone estão entre 9,4 e 21,8~kHz e são removidas pela decimação. Se o diagnóstico por envelope funcionaria numa banda abaixo de 6,4~kHz não foi testado com o método corrigido (Seção~\ref{sec:descartadas}). O classificador não depende do envelope: ele usa as séries harmônicas abaixo de 6,4~kHz, que são preservadas.
+
+\subsection{Medições Descartadas e Convenção Adotada}
+\label{sec:descartadas}
+
+A primeira versão do estudo de decimação comparava as taxas pelo espectro de envelope, com a banda de demodulação escolhida pela maior razão de energia entre falha e condição normal. O critério elegeu a faixa de 15,2 a 16,2~kHz em vez da de 2,2 a 3,2~kHz, embora a primeira tivesse cerca de mil vezes menos energia absoluta: a razão premia bandas em que a condição normal está no piso de ruído. Como a banda eleita ficava acima do Nyquist de todas as taxas candidatas, a comparação tornou-se inválida e foi descartada, e o critério foi substituído pela preservação de energia discriminante (Seção~\ref{sec:decimacao}), que não depende de escolha de banda.
+
+O episódio levou à adoção de uma convenção explícita, incorporada ao documento de convenções do projeto, em consonância com a metodologia de gerenciamento da proposta: \emph{resultado negativo} se registra e se reporta; \emph{medição inválida} se descarta e se refaz. A convenção foi aplicada uma segunda vez ao próprio envelope. Uma versão posterior, com banda de 2,7 a 4,7~kHz, procurava os picos a $\pm 1{,}5$~Hz das frequências cinemáticas e estimava o piso de ruído entre 3 e 25~Hz delas. Como as linhas reais estão a 3 ou 4~Hz das cinemáticas (Seção~\ref{sec:bpfo-assinatura}), elas caíam na região usada como piso, e o pico reportado para a BPFI ficava na borda da janela de busca, indicando que a janela não continha o máximo. Os valores obtidos não mediam o que diziam medir e foram descartados; o envelope foi refeito com a banda escolhida sem consultar BPFI ou BPFO e com o mesmo critério de SNR para as frequências cinemáticas e as medidas.
+
+\subsection{Ajustes de Rota em Relação à Proposta}
+\label{sec:ajustes}
+
+\textbf{Protocolo de validação e meta.} A proposta previa avaliar o classificador sobre uma partição de teste estritamente separada e buscar o melhor desempenho possível. Com uma única gravação por classe (Seção~\ref{sec:dif-validacao}), a partição passou a ser feita entre gravações, pelos Protocolos A e B, e a meta foi quantificada em 85\% de acurácia balanceada média no Protocolo B. A partição tornou-se também uma etapa própria da cadeia, executada uma única vez e anterior à extração de características, o que elimina a possibilidade de as duas etapas divergirem; e o treino do modelo que será portado foi separado da avaliação por \emph{folds}.
+
+\textbf{Classificador linear.} A proposta previa um classificador leve, tendo como referência a CNN de Luo et al. (2024). Um MLP raso e duas CNNs pequenas foram avaliados, e a LDA foi adotada por empatar com a melhor delas a um custo muito menor (Seção~\ref{sec:res-classificador}). A arquitetura da cadeia embarcada não muda, mas o classificador passa a ser implementado diretamente em C, como um produto escalar; o X-CUBE-AI, previsto na proposta para embarcar uma rede, deixa de ser necessário para o modelo adotado.
+
+\textbf{Faixa de decimação.} A proposta justificava a faixa de 8 a 16~kHz pelas frequências de falha abaixo de 300~Hz. A medição mostrou que as falhas incipientes exigem cerca de 6~kHz de banda (Seção~\ref{sec:res-decimacao}); a faixa da proposta foi mantida, mas sua extremidade inferior reprovaria no critério, e a taxa foi escolhida com base na energia discriminante medida.
+
+\textbf{Aumento de dados fora do modelo final.} As três técnicas previstas foram implementadas e avaliadas, mas não alteraram o desempenho (Seção~\ref{sec:bpfo-aumento}). O modelo final foi treinado sem aumento; o benefício esperado do aumento, a robustez a ruído de fundo, será avaliado na fase de validação.
+
+\textbf{Validação sob carga descartada.} O planejamento da caracterização da assinatura previa comparar a condição sem carga com uma condição sob torque. Como o conjunto não tem áudio sob carga, a comparação foi descartada; a vibração do mesmo conjunto foi usada, sem carga, apenas para confirmar as frequências de falha.
+
+\textbf{Validação externa.} Para testar o classificador em outra máquina e com uma segunda condição normal, foi identificado o conjunto HUSTmotor\pendente{incluir a referência bibliográfica do HUSTmotor}, que grava áudio de motor saudável e com falha de rolamento em quatro velocidades, a 25,6~kHz -- taxa que, decimada por 2, coincide com a taxa de trabalho. Essa validação, que corresponde ao cenário de transferência entre máquinas discutido por Lei et al. (2020), foi alocada à fase de validação, por ser trabalho exclusivamente em software que não concorre com o porte.
+
+\textbf{Validação embarcada.} A proposta prevê validar o sistema embarcado sobre o conjunto de teste, com matriz de confusão. Como o modelo final foi treinado com todos os segmentos, os clipes gravados no hardware fazem parte do seu treino, e uma demonstração com eles reproduz o treino, e não o Protocolo B. A validação embarcada medirá, portanto, a \emph{fidelidade} do porte -- se o firmware reproduz, segmento a segmento, as características, o escore e a decisão da implementação em Python --, e a matriz de confusão embarcada será comparada à de referência; o desempenho do classificador continua sendo o do Protocolo B.
+
+\subsection{Situação do Cronograma}
+\label{sec:cronograma}
+
+As três metas físicas do período foram cumpridas no prazo (Tabela~\ref{tab:metas}). A partição dos dados, prevista implicitamente para a etapa de treinamento, foi antecipada, e o treino e a exportação do modelo final, previstos para abrir a fase de porte, foram concluídos ainda neste período. Entraram no período atividades não previstas no cronograma -- a definição do protocolo de validação, os controles do classificador, a comparação entre classificadores e a investigação da \texttt{bpfo\_0.3mm} --, absorvidas sem atraso. A fase de porte começa em 06/10, como previsto.
+
+% ======================================================================
+% 5. PRÓXIMAS ETAPAS
+% ======================================================================
+\section{Próximas Etapas}
+\label{sec:proximas}
+
+A Tabela~\ref{tab:proximas} atualiza o cronograma da proposta para as fases seguintes, incorporando as decisões e pendências deste relatório. O critério de aceitação do desempenho embarcado segue a formulação de sistemas de tempo real de Kuo, Lee e Tian (2013): o tempo de processamento de cada segmento, somado ao custo de entrada e saída, deve ser inferior à duração do segmento.
+
+\begin{table}[H]
+\centering
+\caption{Cronograma das próximas etapas.}
+\label{tab:proximas}
+\begin{tabularx}{\textwidth}{L{3cm} X}
+\toprule
+\textbf{Período} & \textbf{Atividade prevista} \\
+\midrule
+06--12/10 & Configuração do ambiente embarcado (STM32CubeIDE e CMSIS-DSP); geração dos parâmetros da LDA em C a partir do modelo final; seleção dos clipes de áudio que caberão na \emph{flash} (cerca de 25~KB por segundo a 12.800~Hz) e definição de onde a decimação é executada \\
+13--19/10 & Porte da cadeia de processamento para C no STM32F411CEU6 (janelamento, FFT, banco de Mel, logaritmo, DCT, acumulação de média e desvio e LDA), com verificação bloco a bloco contra o arquivo de referência em Python \\
+20--26/10 & Primeira inferência \emph{on-device}; comparação dos escores do firmware com os de referência; redação do 2\textordmasculine\ relatório parcial \\
+27/10--09/11 & Validação do sistema embarcado sobre os clipes gravados: fidelidade em relação à implementação em Python e matriz de confusão \\
+10--16/11 & Caracterização do desempenho embarcado (tempo de execução e memória); testes complementares em software: robustez a ruído, por varredura de SNR com ruído branco e colorido, e validação externa no HUSTmotor \\
+17--23/11 & Interface de diagnóstico (sinalização por LEDs e painel serial no computador); ensaio da apresentação final \\
+24--30/11 & Ajustes finais, relatório final e apresentação \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+% ======================================================================
+% 6. BIBLIOGRAFIA
+% ======================================================================
+\section{Bibliografia}
+
+\begin{thebibliography}{99}
+
+\bibitem{jung2023} JUNG, W.; KIM, S.-H.; YUN, S.-H.; BAE, J.; PARK, Y.-H. \emph{Vibration, acoustic, temperature, and motor current dataset of rotating machine under varying operating conditions for fault diagnosis}. Data in Brief, v.~48, 109049, 2023. DOI: 10.1016/j.dib.2023.109049.
+
+\bibitem{tian2023} TIAN, A.; ZHANG, Y.; MA, C.; CHEN, H.; SHENG, W.; ZHOU, S. \emph{Noise-robust machinery fault diagnosis based on self-attention mechanism in wavelet domain}. Measurement, v.~207, 112327, 2023. DOI: 10.1016/j.measurement.2022.112327.
+
+\bibitem{luo2024} LUO, D.; QUAN, Y.; XUE, W.; LIN, F. \emph{Motor fault detection based on sound signal}. In: 2024 The 6th International Conference on Telecommunications and Communication Engineering (ICTCE), Chengdu, China. New York: ACM, 2024. p.~83--88. DOI: 10.1145/3705391.3705405.
+
+\bibitem{carrera2022} CARRERA, J. D.; MATUTE, P. V.; PELÁEZ, E.; LOAYZA, F. R. \emph{Fault diagnosing for electric motors based in noise data classification using deep learning}. In: 2022 IEEE ANDESCON, Barranquilla, Colombia, 2022. p.~1--6. DOI: 10.1109/ANDESCON56260.2022.9989522.
+
+\bibitem{zhang2017} ZHANG, Y.; SUDA, N.; LAI, L.; CHANDRA, V. \emph{Hello Edge: Keyword spotting on microcontrollers}. arXiv:1711.07128, 2017.
+
+\bibitem{chang2025} CHANG, S. H.; PURNOMO, A. T.; BHAKTI, M. A. C.; MULIA, V. K.; RIZKY, A. F.; FERNANDEZ, N. K. H.; TRIAWAN, F. \emph{Machine fault detection through sound analysis using MFCC and machine learning}. Jurnal Polimesin, v.~23, n.~3, p.~270--278, jun. 2025. DOI: 10.30811/jpl.v23i3.6653.
+
+\bibitem{kuo2013} KUO, S. M.; LEE, B. H.; TIAN, W. \emph{Real-Time Digital Signal Processing: Fundamentals, Implementations and Applications}. 3. ed. Chichester: John Wiley \& Sons, 2013.
+
+\bibitem{lei2020} LEI, Y.; YANG, B.; JIANG, X.; JIA, F.; LI, N.; NANDI, A. K. \emph{Applications of machine learning to machine fault diagnosis: A review and roadmap}. Mechanical Systems and Signal Processing, v.~138, 106587, 2020. DOI: 10.1016/j.ymssp.2019.106587.
+
+\bibitem{gangsar2020} GANGSAR, P.; TIWARI, R. \emph{Signal based condition monitoring techniques for fault detection and diagnosis of induction motors: A state-of-the-art review}. Mechanical Systems and Signal Processing, v.~144, 106908, 2020. DOI: 10.1016/j.ymssp.2020.106908.
+
+\bibitem{randall2011} RANDALL, R. B.; ANTONI, J. \emph{Rolling element bearing diagnostics -- A tutorial}. Mechanical Systems and Signal Processing, v.~25, p.~485--520, 2011. DOI: 10.1016/j.ymssp.2010.07.017.
+
+\end{thebibliography}
+
+\end{document}
