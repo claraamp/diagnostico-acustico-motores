@@ -48,7 +48,7 @@ diagnostico-acustico-motores/
 │   ├── exploration/          # figuras dos scripts de scripts/exploration/
 │   ├── signature/            # caracterização da assinatura acústica (BPFI/BPFO medidas, envelope, Mel)
 │   ├── c_reference/          # reference_data.h do 04 --ref-c, VERSIONADO (referência da Fase 2)
-│   ├── modelo_final/         # lda_final.json e escores_referencia.csv do 05, VERSIONADOS (referência da Fase 2)
+│   ├── modelo_final/         # lda_final.json e escores_referencia.csv do 05 e lda_modelo.h do 06, VERSIONADOS (referência da Fase 2)
 │   └── validation/           # uma pasta por rodada dos protocolos: metrics.json e folds.csv
 │
 └── docs/                     # documentação técnica complementar (ex.: notas sobre o formato do .mat)
@@ -74,7 +74,7 @@ O estudo de escolha do classificador seguiu a mesma regra: nasceu como `validati
 A linha entre as duas pastas é o que o script **faz**, não o seu tamanho: `pipeline/` é transformação que roda de novo toda vez que o dado muda; `exploration/` responde uma pergunta uma vez. O caso que fixou a regra: a escolha da taxa de decimação nasceu misturada com a decimação em si, num arquivo de 1.200 linhas. O estudo — varredura de cinco taxas, métricas, figuras e relatório — foi para `exploration/compare_decimation_rates.py`, e a etapa que aplica a taxa escolhida ficou em `pipeline/02_decimate_pcm.py`, com 105 linhas. Um estudo fica versionado para a decisão continuar auditável, não para ser reexecutado.
 
 **Scripts de pipeline** (`scripts/pipeline/`): prefixo numérico de duas casas indicando a ordem de execução, seguido do verbo da ação em `snake_case`.
-Sequência atual: `01_convert_mat_to_pcm.py`, `02_decimate_pcm.py`, `03_make_splits.py`, `04_extract_features.py`, `05_train_classifier.py`.
+Sequência atual: `01_convert_mat_to_pcm.py`, `02_decimate_pcm.py`, `03_make_splits.py`, `04_extract_features.py`, `05_train_classifier.py`, `06_export_lda_header.py`.
 Regra: se um script novo precisa rodar *entre* dois existentes, renumerar em vez de usar sufixos como `01b_`. Foi o que aconteceu com a partição: ela entrou como `03` porque a extração de features opera sobre os segmentos que ela define, e a extração e o treino passaram a `04` e `05`.
 
 O `05_train_classifier.py` produz o modelo que vai para o firmware; ele **não** mede desempenho. Medir desempenho é papel de `scripts/validation/run_protocol.py`, que treina e descarta um modelo por fold. As duas coisas ficam em scripts separados de propósito.
@@ -132,7 +132,7 @@ Cada rodada de um experimento (extração de features, treino de classificador, 
 |---|---|
 | `id` | identificador curto e sequencial, ex. `exp001` |
 | `data` | data da rodada (AAAA-MM-DD) |
-| `etapa` | qual etapa do pipeline foi exercitada, ex. `decimacao`, `extracao_features`, `validacao_classificador`, `escolha_classificador`, `treino_classificador`, `caracterizacao_assinatura` |
+| `etapa` | qual etapa do pipeline foi exercitada, ex. `decimacao`, `extracao_features`, `validacao_classificador`, `escolha_classificador`, `treino_classificador`, `exportacao_firmware`, `caracterizacao_assinatura` |
 | `script` | script executado, ex. `02_decimate_pcm.py` |
 | `git_commit` | hash curto do commit em que o script estava (`git rev-parse --short HEAD`) — garante que dá pra reproduzir exatamente aquela rodada |
 | `parametros` | parâmetros relevantes da rodada, em formato `chave=valor;chave=valor` (ex. `fator_decimacao=4;filtro=fir_lowpass_order8`) |
