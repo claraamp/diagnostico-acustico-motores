@@ -4,7 +4,7 @@
  * GERADO por scripts/pipeline/06_export_lda_header.py; nao editar a mao.
  * Modelo:  reports/modelo_final/lda_final.json (exp239, versao_formato 4)
  * SHA-256 do JSON: ee0c3e088366dd6dfb1f9578432aa056af8e7ec918e26055b791d0b3741a8f36
- * Commit do gerador: 429ca17
+ * Commit do gerador: 7dcd2f7
  *
  * escore = bias + soma(pesos[i] * x[i]), i = 0..LDA_N_FEATURES-1; escore >= 0 -> falha.
  * A padronizacao ja esta incorporada nos pesos (forma dobrada do JSON). As
