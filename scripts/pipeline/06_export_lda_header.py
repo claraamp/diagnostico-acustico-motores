@@ -19,11 +19,15 @@ reproduzem exatamente o float32 mais próximo do valor do JSON.
 pesos são o float32 do JSON. Depois calcula o escore de cada segmento com as
 features de referência (as do `04`, não versionadas) de dois jeitos: em Python,
 com a mesma soma em float32 do C do host, e compilando o `.h` com o compilador C do host,
-quando houver um. Os dois têm que bater com o `escores_referencia.csv` com
-tolerância relativa de 1e-3 (a do `uso_no_firmware` do JSON) e dar a mesma
-previsão em todos os segmentos; senão, aborta. No Cortex-M4 o gcc funde
+quando houver um. Os dois têm que dar a mesma previsão do `escores_referencia.csv`
+em todos os segmentos e ficar dentro do limite do arredondamento da soma em float32
+(`limite_arredondamento`); senão, aborta. Como as features são as mesmas do Python,
+o único erro esperado é esse arredondamento, e o limite acompanha `N_FEATURES` e o
+cancelamento entre os termos de cada segmento. A tolerância relativa de 1e-3 do
+`uso_no_firmware` do JSON é a do firmware, que calcula também o MFCC em float32, e
+não serve aqui: deixaria passar um erro de ~1,3 no escore. No Cortex-M4 o gcc funde
 multiplicação e soma (`vfma.f32`), e o escore da placa não é bit a bit o do host,
-mas a diferença fica muito abaixo da tolerância. Antes disso, confere que as
+mas fica dentro do mesmo limite. Antes disso, confere que as
 features são as do modelo: o escore do JSON em float64 tem que reproduzir o CSV.
 Os segmentos são os do próprio treino: isto confere o porte, não mede desempenho.
 
@@ -61,7 +65,8 @@ import numpy as np
 import config
 import experimentos
 
-TOLERANCIA_RELATIVA = 1e-3      # a do uso_no_firmware do JSON
+U_FLOAT32 = 2.0 ** -24          # arredondamento unitário do float32
+REL_CSV = 5e-9                  # o CSV do 05 grava o escore com 9 dígitos (%.9g)
 CFLAGS = ["-std=c99", "-O2", "-Wall", "-Wextra", "-Werror", "-Wdouble-promotion"]
 
 
@@ -182,6 +187,18 @@ def escore_float32(h: dict, X: np.ndarray) -> np.ndarray:
     return s
 
 
+def limite_arredondamento(p: dict, X: np.ndarray, ref: np.ndarray) -> np.ndarray:
+    """
+    Limite, por segmento, da diferença entre o escore em float32 e o do CSV quando as
+    features são as mesmas: arredondar x, os pesos e o bias para float32 e somar os
+    N produtos em sequência erra no máximo (N + 3)·u·(Σ|pesos·x| + |bias|), e o CSV
+    acrescenta o arredondamento dos seus 9 dígitos.
+    """
+    pesos = np.asarray(p["dobrada"]["pesos"], dtype=float)
+    termos = np.abs(np.asarray(X, dtype=float) * pesos).sum(axis=1) + abs(p["dobrada"]["bias"])
+    return (len(pesos) + 3) * U_FLOAT32 * termos + REL_CSV * np.abs(ref)
+
+
 def prever_header(h: dict, escores: np.ndarray) -> np.ndarray:
     falha = escores >= 0 if h["empate_e_falha"] else escores > 0
     return np.where(falha, "falha", "normal")
@@ -266,12 +283,14 @@ def conferir(texto: str, p: dict, X: np.ndarray, ref: np.ndarray, prev: np.ndarr
             or h["bias"] != np.float32(p["dobrada"]["bias"]):
         raise SystemExit("Abortado: os valores lidos do .h não são o float32 do JSON.")
     escala = np.maximum(np.abs(ref), 1.0)
+    limite = limite_arredondamento(p, X, ref)
     s_py = escore_float32(h, X)
     out = {
         "n_segmentos": len(ref),
         "min_abs_escore": float(np.min(np.abs(ref))),
         "max_dif_escore_f32": float(np.max(np.abs(s_py - ref))),
         "max_dif_rel_f32": float(np.max(np.abs(s_py - ref) / escala)),
+        "max_dif_sobre_limite_f32": float(np.max(np.abs(s_py - ref) / limite)),
         "previsoes_iguais_f32": bool(np.array_equal(prever_header(h, s_py), prev)),
         "compilador_c": versao_compilador(cc),
     }
@@ -279,14 +298,16 @@ def conferir(texto: str, p: dict, X: np.ndarray, ref: np.ndarray, prev: np.ndarr
         s_c, d_c = escore_em_c(texto, X, cc)
         out["max_dif_escore_c"] = float(np.max(np.abs(s_c - ref)))
         out["max_dif_rel_c"] = float(np.max(np.abs(s_c - ref) / escala))
+        out["max_dif_sobre_limite_c"] = float(np.max(np.abs(s_c - ref) / limite))
         out["previsoes_iguais_c"] = bool(np.array_equal(np.where(d_c == 1, "falha", "normal"), prev))
     return out
 
 
 def aprovada(c: dict) -> bool:
-    ok = c["previsoes_iguais_f32"] and c["max_dif_rel_f32"] <= TOLERANCIA_RELATIVA
-    if "max_dif_rel_c" in c:
-        ok = ok and c["previsoes_iguais_c"] and c["max_dif_rel_c"] <= TOLERANCIA_RELATIVA
+    """Mesma previsão em todos os segmentos e diferença dentro do limite do arredondamento."""
+    ok = c["previsoes_iguais_f32"] and c["max_dif_sobre_limite_f32"] <= 1.0
+    if "max_dif_sobre_limite_c" in c:
+        ok = ok and c["previsoes_iguais_c"] and c["max_dif_sobre_limite_c"] <= 1.0
     return ok
 
 
@@ -345,8 +366,8 @@ def main() -> int:
     c = conferir(texto, p, X, ref, prev, cc)
     print("conferência com o escores_referencia.csv: " + ", ".join(f"{k}={v}" for k, v in c.items()))
     if not aprovada(c):
-        print(f"Abortado: o .h não reproduz a referência (tolerância relativa {TOLERANCIA_RELATIVA:g} "
-              "e previsões idênticas).")
+        print("Abortado: o .h não reproduz a referência (previsões idênticas e diferença dentro do "
+              "limite do arredondamento em float32).")
         return 1
 
     destino = args.out_dir / "teste" if args.sem_registro else args.out_dir
@@ -375,6 +396,7 @@ def main() -> int:
             "n_segmentos": c["n_segmentos"],
             "max_dif_escore_f32": f"{c['max_dif_escore_f32']:.1e}",
             "max_dif_escore_c": f"{c['max_dif_escore_c']:.1e}" if "max_dif_escore_c" in c else None,
+            "max_dif_sobre_limite": f"{max(c['max_dif_sobre_limite_f32'], c.get('max_dif_sobre_limite_c', 0.0)):.2f}",
             "min_abs_escore": f"{c['min_abs_escore']:.0f}",
             "previsoes_iguais": c["previsoes_iguais_f32"] and c.get("previsoes_iguais_c", True),
         }),
