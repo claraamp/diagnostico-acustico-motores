@@ -98,3 +98,72 @@ def test_resumo_media_e_desvio_populacional():
     np.testing.assert_array_equal(linha[:13], m.mean(axis=0))
     np.testing.assert_allclose(linha[13:], np.sqrt(((m - m.mean(axis=0)) ** 2).sum(axis=0) / 98))
     assert not np.allclose(linha[13:], m.std(axis=0, ddof=1))
+
+
+# --------------------------------------------------------------------------- #
+# Decimação (seção "Decimação" do contrato)
+# --------------------------------------------------------------------------- #
+FS_ORIG = config.FS_ORIGINAL
+SPEC = dsp.design_decimation(FS_ORIG, FS)
+
+
+def _decimador_causal(x: np.ndarray, taps: np.ndarray, M: int) -> np.ndarray:
+    """Convenção do arm_fir_decimate_f32: y[m] = Σ b[k]·x[M·m − k], estado inicial zerado."""
+    from scipy.signal import lfilter
+    return lfilter(taps, 1.0, x)[::M]
+
+
+def _gravacao(n_seg=3, semente=3):
+    # ruído com banda larga: qualquer desalinhamento de uma amostra aparece
+    return np.random.default_rng(semente).normal(0, 0.2, n_seg * FS_ORIG + 2000)
+
+
+def test_filtro_da_decimacao():
+    taps = dsp.taps_decimacao(SPEC, FS_ORIG)
+    assert SPEC.down == 4 and SPEC.numtaps == len(taps) == 147
+    assert SPEC.cutoff_hz == 5760.0
+    np.testing.assert_array_equal(taps, taps[::-1])     # simétrico: a ordem invertida da CMSIS não muda nada
+    assert taps.sum() == pytest.approx(1.0, abs=1e-3)    # ganho unitário em DC
+
+
+def test_amostra_decimada_j_usa_x_de_4j_menos_73_a_4j_mais_73():
+    x = _gravacao()
+    y = dsp.resample_clip(x, FS_ORIG, FS, SPEC)
+    j = 5000
+    for i, muda in ((4 * j - 74, False), (4 * j - 73, True), (4 * j + 73, True), (4 * j + 74, False)):
+        x2 = x.copy()
+        x2[i] += 1.0
+        assert (dsp.resample_clip(x2, FS_ORIG, FS, SPEC)[j] != y[j]) == muda, i
+
+
+@pytest.mark.parametrize("segmento", [1, 2])
+def test_recorte_reproduz_o_segmento_decimado(segmento):
+    """Decimador causal sobre x[a:b], descartando as primeiras saídas = o resample_clip."""
+    x = _gravacao()
+    y = dsp.resample_clip(x, FS_ORIG, FS, SPEC)
+    n, inicio = config.AMOSTRAS_POR_SEGMENTO, segmento * config.AMOSTRAS_POR_SEGMENTO
+    a, b, descartar = dsp.recorte_para_decimar(inicio, n, SPEC)
+    assert (inicio * 4 - a, b - (inicio + n) * 4, descartar) == (75, 73, 37)
+    assert (b - a) % SPEC.down == 0
+    saida = _decimador_causal(x[a:b], dsp.taps_decimacao(SPEC, FS_ORIG), SPEC.down)
+    np.testing.assert_allclose(saida[descartar:descartar + n], y[inicio:inicio + n], rtol=0, atol=1e-12)
+    assert len(saida) == descartar + n
+
+
+def test_primeiro_segmento_precisa_de_zeros_antes():
+    """No início da gravação o lfilter preenche com zeros: o recorte começa antes de 0."""
+    x = _gravacao()
+    y = dsp.resample_clip(x, FS_ORIG, FS, SPEC)
+    n = config.AMOSTRAS_POR_SEGMENTO
+    a, b, descartar = dsp.recorte_para_decimar(0, n, SPEC)
+    assert a == -75
+    entrada = np.concatenate([np.zeros(-a), x[:b]])
+    saida = _decimador_causal(entrada, dsp.taps_decimacao(SPEC, FS_ORIG), SPEC.down)
+    np.testing.assert_allclose(saida[descartar:descartar + n], y[:n], rtol=0, atol=1e-12)
+
+
+def test_pcm_decimado_e_quantizado_para_int16():
+    """O 02 grava o decimado em int16 (round meio-para-par, saturado) e o 04 lê esse int16."""
+    import pcm_io
+    v = np.array([0.5, 1.5, 2.5, -0.5, 1e6, -1e6]) / config.INT16_FULL
+    np.testing.assert_array_equal(pcm_io.para_pcm(v), [0, 2, 2, 0, 32767, -32768])

@@ -265,3 +265,42 @@ def aliasing_energy_db(x_ref: np.ndarray, fs_ref: float, x_dec: np.ndarray, fs_d
     e_ref = float(np.trapezoid(p_r_i, f_d[band])) + 1e-30
     e_dec = float(np.trapezoid(p_d[band], f_d[band])) + 1e-30
     return 10 * math.log10(e_dec / e_ref)
+
+# --------------------------------------------------------------------------- #
+# Decimação no firmware: os mesmos coeficientes e o recorte que um decimador
+# FIR causal precisa ler (docs/contrato_numerico.md, seção "Decimação")
+# --------------------------------------------------------------------------- #
+def taps_decimacao(spec: FirSpec, fs_in: float,
+                   atten_db: float = float(config.FIR_ATTENUATION)) -> np.ndarray:
+    """Coeficientes do FIR que o `resample_clip` aplica (fator inteiro), para exportar ao C."""
+    if not spec.integer_factor:
+        raise ValueError("só há FIR único com fator de decimação inteiro")
+    nyq = fs_in / 2
+    numtaps, beta = sg.kaiserord(atten_db, 2 * spec.transition_hz / nyq)
+    return sg.firwin(int(numtaps) | 1, spec.cutoff_hz / nyq, window=("kaiser", beta))
+
+
+def recorte_para_decimar(inicio: int, n: int, spec: FirSpec) -> tuple[int, int, int]:
+    """
+    Trecho da gravação original que um decimador FIR **causal** precisa ler para
+    reproduzir as amostras decimadas `inicio … inicio+n−1` do `resample_clip`.
+
+    Convenção do decimador: a saída m usa a entrada até a amostra M·m do trecho
+    lido, `y[m] = Σ b[k]·x[M·m − k]`, com estado inicial zerado — a do
+    `arm_fir_decimate_f32` da CMSIS-DSP. O `resample_clip` compensa o atraso de
+    grupo d = (L−1)/2: a amostra decimada j usa `x[M·j − d … M·j + d]`.
+
+    Devolve `(a, b, descartar)`: ler `x[a:b]` da gravação, passar pelo decimador
+    e jogar fora as `descartar` primeiras saídas (transitório do estado zerado);
+    as `n` seguintes são as do Python. `b − a` é múltiplo de M, como o
+    `arm_fir_decimate_f32` exige do tamanho do bloco. Com `a < 0` (início da
+    gravação), completar com `−a` zeros antes, como o `lfilter` faz.
+    """
+    if not spec.integer_factor:
+        raise ValueError("o recorte só vale para decimação por fator inteiro")
+    M, L = spec.down, spec.numtaps
+    d = (L - 1) // 2
+    descartar = -(-(L - 1) // M)          # ceil((L−1)/M): saídas sem o histórico completo
+    a = M * inicio + d - M * descartar
+    b = a + M * (descartar + n)
+    return a, b, descartar

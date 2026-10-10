@@ -14,11 +14,11 @@ se alguém mudar a cadeia, o teste falha e esta página tem que mudar junto.
 
 Referências de linha: `main` em `340d37d`.
 
-Escopo: a cadeia a partir do PCM decimado a 12,8 kHz (`int16`). A decimação
-(filtro, atraso de grupo, margens, quantização para `int16`) fica na seção
-"Decimação", a preencher na tarefa A2. Média e desvio quadro a quadro em float32
-(Welford ou soma e soma dos quadrados) são a tarefa A3, e as tolerâncias de
-comparação por estágio, a A4.
+Escopo: a tabela abaixo cobre a cadeia a partir do PCM decimado a 12,8 kHz
+(`int16`). A decimação (filtro, atraso de grupo, recorte dos clipes e
+quantização para `int16`) está na seção "Decimação". Média e desvio quadro a
+quadro em float32 (Welford ou soma e soma dos quadrados) são a tarefa A3, e as
+tolerâncias de comparação por estágio, a A4.
 
 ## Cadeia, estágio a estágio
 
@@ -79,6 +79,72 @@ espectro, Mel, log, DCT, resumo e escore) são a tarefa B2.
 
 ## Decimação
 
-A preencher na tarefa A2: filtro FIR de 147 coeficientes, compensação do atraso
-de grupo (73 amostras a 51,2 kHz), margens de cada clipe e quantização para
-`int16` antes da extração.
+Vale para o firmware que decima a bordo, a partir de clipes a 51,2 kHz. Se os
+clipes forem gravados já decimados, basta reproduzir a quantização (item 4).
+
+**1. O filtro.** FIR passa-baixa de Kaiser com **147 coeficientes**, corte em
+5.760 Hz (ponto de −6 dB do `firwin`), β = 5,65326 (do `kaiserord` com 60 dB
+de atenuação e 640 Hz de transição), fator **M = 4** (51,2 → 12,8 kHz), ganho 1
+em DC. Os coeficientes saem de `dsp.taps_decimacao`, os mesmos que o
+`resample_clip` aplica (`dsp.py:240-250`; projeto em `dsp.py:203-237`). O filtro
+é **simétrico**: a ordem invertida dos coeficientes que a CMSIS espera não
+muda nada.
+
+**2. O que o Python faz.** `y = lfilter(taps, x)`, com estado inicial zerado;
+descarta as **73** primeiras saídas (o atraso de grupo, (147 − 1)/2) e fica com
+uma a cada 4 (`dsp.py:247-250`). A amostra decimada j é, portanto,
+
+```
+y[j] = Σ_{k=0}^{146} b[k] · x[4j + 73 − k]      →   usa x[4j − 73 … 4j + 73]
+```
+
+isto é, a saída fica centrada no instante 4j da gravação original, e não
+atrasada.
+
+**3. O que o decimador do firmware precisa ler.** O `arm_fir_decimate_f32` é
+causal: com estado inicial zerado, a saída m usa a entrada até a amostra M·m do
+trecho lido, `y[m] = Σ b[k]·x[M·m − k]`. Para que ele produza as amostras
+decimadas `j = início … início + n − 1` do Python, `dsp.recorte_para_decimar`
+devolve o trecho a ler e quantas saídas descartar:
+
+| | Valor | Por quê |
+|---|---|---|
+| Começo do trecho | `4·início − 75` | 37 saídas a descartar × 4 − 73 de atraso |
+| Fim do trecho (exclusivo) | `4·(início + n) + 73` | a última saída usa até `4·(início+n−1) + 73`; o bloco múltiplo de 4 acrescenta 3 amostras lidas e não usadas |
+| Saídas a descartar | **37** | `ceil(146/4)`: até lá, o estado ainda tem os zeros iniciais |
+| Tamanho do trecho | `4·(37 + n)`, múltiplo de 4 | o `arm_fir_decimate_f32` exige bloco múltiplo de M |
+
+Para um segmento de 1 s (n = 12.800): **75 amostras antes e 73 depois** do
+trecho de 51.200 amostras que o segmento cobre, 51.348 no total (≈ 100,3 KB em
+`int16`). Isso corrige a estimativa inicial da tarefa ("146 amostras a mais
+antes do início"): com a compensação do atraso que o Python faz, a margem se
+divide entre os dois lados.
+
+**Primeiro segmento de cada gravação.** Com `início = 0`, o trecho começa em
+−75: o `lfilter` do Python preencheu esse começo com zeros, e as amostras
+decimadas 0 a 18 dependem deles. Para reproduzir esse segmento, acrescentar 75
+zeros antes do clipe; o mais simples é não usar o segmento 0 como clipe.
+
+**Conferir a convenção na placa.** Tudo acima supõe `y[m] = Σ b[k]·x[M·m − k]`,
+a convenção documentada do `arm_fir_decimate_f32`. Um impulso confirma: com
+`x = [1, 0, 0, …]`, a saída tem que ser `b[0], b[4], b[8], …`. Se sair
+`b[3], b[7], …`, o decimador usa a última amostra de cada bloco, e o recorte
+muda (o teste `test_recorte_reproduz_o_segmento_decimado` documenta a
+convenção usada aqui).
+
+**4. Quantização para `int16`.** O `02` decima em float64 a partir do PCM
+original (`int16 / 32767`), arredonda o resultado para `int16`
+(`round(y·32767)`, com **arredondamento meio-para-par** do `np.round`, e
+saturação em −32768…32767; `pcm_io.py:291-293`) e grava. O `04` lê esse
+`int16`. Para reproduzir o Python, o firmware que decima a bordo também
+arredonda para `int16` antes do MFCC. No C, `lrintf` segue o modo de
+arredondamento corrente (meio-para-par por padrão); `roundf` arredonda o meio
+para longe de zero e diverge nos casos de empate exato, que são raros. Pular a
+requantização dá uma diferença de até meio LSB por amostra, a avaliar nas
+tolerâncias da A4.
+
+**Testes** (`tests/test_contrato_numerico.py`): o filtro (147 coeficientes,
+simétrico, ganho 1); a janela de dependência `x[4j − 73 … 4j + 73]`, mudando uma
+amostra de cada vez; o recorte, com um decimador causal na convenção acima
+reproduzindo dois segmentos inteiros do `resample_clip` (erro < 1e-12); o
+primeiro segmento, com os zeros; e a quantização meio-para-par com saturação.
