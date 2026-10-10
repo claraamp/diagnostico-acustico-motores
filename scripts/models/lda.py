@@ -210,4 +210,4 @@ def conferir(modelo, p: dict, X: np.ndarray) -> dict:
         "max_dif_escore_dobrado": float(np.max(np.abs(s_dob - ref))),
         "max_dif_relativa": float(max(np.max(np.abs(s_pad - ref)), np.max(np.abs(s_dob - ref))) / escala),
         "previsoes_iguais": bool(np.array_equal(prever(p, X), modelo.predict(X))),
-    }
+    }
