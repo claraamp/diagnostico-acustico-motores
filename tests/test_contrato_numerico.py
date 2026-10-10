@@ -25,7 +25,7 @@ def _segmento(semente=0):
 
 
 def test_valores_do_config_coincidem_com_o_dsp():
-    # o dsp.py não lê estes valores do config; o contrato diz que coincidem
+    # do config, o dsp.py só lê o MFCC_FMIN; os outros descrevem a cadeia sem ser lidos
     assert config.MFCC_FMIN == 20.0
     assert config.MFCC_FMAX == FS / 2
     assert config.MFCC_JANELA == "hann"
@@ -100,6 +100,38 @@ def test_resumo_media_e_desvio_populacional():
     assert not np.allclose(linha[13:], m.std(axis=0, ddof=1))
 
 
+def _entrada(fonte: str) -> dict:
+    import json
+    from pathlib import Path
+    from models import lda
+    if fonte == "cadeia_entrada":
+        return lda.cadeia_entrada()
+    caminho = Path(__file__).resolve().parents[1] / "reports" / "modelo_final" / "lda_final.json"
+    return json.loads(caminho.read_text(encoding="utf-8"))["entrada"]
+
+
+@pytest.mark.parametrize("fonte", ["cadeia_entrada", "lda_final.json"])
+def test_contrato_coincide_com_o_bloco_entrada(fonte):
+    """O documento, o `lda.cadeia_entrada()` e o bloco `entrada` do JSON entregue ao firmware dizem o mesmo."""
+    c = _entrada(fonte)
+    assert c["fs_hz"] == FS and c["amostras_por_segmento"] == 12800
+    assert c["escala_entrada"]["divisor"] == 32767.0
+    q = c["quadros"]
+    assert (q["amostras_por_quadro"], q["passo"], q["n_quadros"]) == (320, 128, 98)
+    assert (c["janela"]["tipo"], c["janela"]["simetrica"]) == ("hann", True)
+    assert c["fft"]["n_fft"] == N_FFT
+    mel = c["mel"]
+    assert (mel["n_filtros"], mel["fmin_hz"], mel["fmax_hz"]) == (20, 20.0, FS / 2)
+    assert mel["bins"] == BORDAS_MEL and not mel["bins_coincidentes"]
+    assert (c["log"]["funcao"], c["log"]["epsilon"]) == ("ln", 1e-10)
+    assert (c["dct"]["tipo"], c["dct"]["norma"], c["dct"]["coeficientes"]) == ("II", "ortonormal", 13)
+    assert "ddof=0" in c["resumo_por_segmento"]
+    o = c["origem_do_sinal"]
+    assert (o["fs_original_hz"], o["fator_decimacao"]) == (51200, 4)
+    assert (o["fir"]["numtaps"], o["fir"]["corte_hz"], o["fir"]["transicao_hz"]) == (147, 5760.0, 640.0)
+    assert "descarte das primeiras 73 amostras" in o["descricao"]
+
+
 # --------------------------------------------------------------------------- #
 # Decimação (seção "Decimação" do contrato)
 # --------------------------------------------------------------------------- #
@@ -107,10 +139,10 @@ FS_ORIG = config.FS_ORIGINAL
 SPEC = dsp.design_decimation(FS_ORIG, FS)
 
 
-def _decimador_causal(x: np.ndarray, taps: np.ndarray, M: int) -> np.ndarray:
-    """Convenção do arm_fir_decimate_f32: y[m] = Σ b[k]·x[M·m − k], estado inicial zerado."""
+def _decimador_causal(x: np.ndarray, taps: np.ndarray, M: int, fase: int = 0) -> np.ndarray:
+    """y[m] = Σ b[k]·x[M·m + p − k], estado inicial zerado; p = 0 é o arm_fir_decimate_f32."""
     from scipy.signal import lfilter
-    return lfilter(taps, 1.0, x)[::M]
+    return lfilter(taps, 1.0, x)[fase::M]
 
 
 def _gravacao(n_seg=3, semente=3):
@@ -136,18 +168,31 @@ def test_amostra_decimada_j_usa_x_de_4j_menos_73_a_4j_mais_73():
         assert (dsp.resample_clip(x2, FS_ORIG, FS, SPEC)[j] != y[j]) == muda, i
 
 
+@pytest.mark.parametrize("fase, margens", [(0, (75, 73, 37)), (3, (74, 70, 36))])
 @pytest.mark.parametrize("segmento", [1, 2])
-def test_recorte_reproduz_o_segmento_decimado(segmento):
-    """Decimador causal sobre x[a:b], descartando as primeiras saídas = o resample_clip."""
+def test_recorte_reproduz_o_segmento_decimado(segmento, fase, margens):
+    """Decimador causal sobre x[a:b], descartando as primeiras saídas = o resample_clip.
+    Fase 0 é a do arm_fir_decimate_f32; fase 3 (M − 1), a de um decimador que espera o bloco."""
     x = _gravacao()
     y = dsp.resample_clip(x, FS_ORIG, FS, SPEC)
     n, inicio = config.AMOSTRAS_POR_SEGMENTO, segmento * config.AMOSTRAS_POR_SEGMENTO
-    a, b, descartar = dsp.recorte_para_decimar(inicio, n, SPEC)
-    assert (inicio * 4 - a, b - (inicio + n) * 4, descartar) == (75, 73, 37)
+    a, b, descartar = dsp.recorte_para_decimar(inicio, n, SPEC, fase)
+    assert (inicio * 4 - a, b - (inicio + n) * 4, descartar) == margens
     assert (b - a) % SPEC.down == 0
-    saida = _decimador_causal(x[a:b], dsp.taps_decimacao(SPEC, FS_ORIG), SPEC.down)
+    saida = _decimador_causal(x[a:b], dsp.taps_decimacao(SPEC, FS_ORIG), SPEC.down, fase)
     np.testing.assert_allclose(saida[descartar:descartar + n], y[inicio:inicio + n], rtol=0, atol=1e-12)
     assert len(saida) == descartar + n
+
+
+def test_impulso_identifica_a_fase():
+    """O teste de impulso do contrato: fase 0 dá b[0], b[4], …; fase 3 dá b[3], b[7], …"""
+    taps = dsp.taps_decimacao(SPEC, FS_ORIG)
+    impulso = np.zeros(64)
+    impulso[0] = 1.0
+    np.testing.assert_array_equal(_decimador_causal(impulso, taps, 4, 0)[:4], taps[[0, 4, 8, 12]])
+    np.testing.assert_array_equal(_decimador_causal(impulso, taps, 4, 3)[:4], taps[[3, 7, 11, 15]])
+    with pytest.raises(ValueError):
+        dsp.recorte_para_decimar(12800, 10, SPEC, fase=4)
 
 
 def test_primeiro_segmento_precisa_de_zeros_antes():

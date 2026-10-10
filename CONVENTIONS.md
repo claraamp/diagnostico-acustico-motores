@@ -132,7 +132,7 @@ Cada rodada de um experimento (extração de features, treino de classificador, 
 |---|---|
 | `id` | identificador curto e sequencial, ex. `exp001` |
 | `data` | data da rodada (AAAA-MM-DD) |
-| `etapa` | qual etapa do pipeline foi exercitada, ex. `decimacao`, `extracao_features`, `validacao_classificador`, `escolha_classificador`, `treino_classificador`, `exportacao_firmware`, `caracterizacao_assinatura` |
+| `etapa` | qual etapa do pipeline foi exercitada, ex. `decimacao`, `extracao_features`, `validacao_classificador`, `escolha_classificador`, `treino_classificador`, `exportacao_firmware`, `caracterizacao_assinatura`, `contrato_numerico` |
 | `script` | script executado, ex. `02_decimate_pcm.py` |
 | `git_commit` | hash curto do commit em que o script estava (`git rev-parse --short HEAD`) — garante que dá pra reproduzir exatamente aquela rodada |
 | `parametros` | parâmetros relevantes da rodada, em formato `chave=valor;chave=valor` (ex. `fator_decimacao=4;filtro=fir_lowpass_order8`) |
@@ -160,7 +160,7 @@ Módulos importáveis ficam na raiz de `scripts/` quando praticamente toda etapa
 | módulo | responsabilidade |
 |---|---|
 | `config.py` | parâmetros que atravessam etapas: taxa de trabalho, janela, hop, banco de Mel, rótulos, segmentação e partição |
-| `dsp.py` | blocos de sinal: PSD, espectro de envelope, banco de Mel, MFCC, projeto de decimação |
+| `dsp.py` | blocos de sinal: PSD, espectro de envelope, banco de Mel, MFCC, projeto de decimação; para o porte em C, os coeficientes do FIR (`taps_decimacao`), o recorte que o decimador do firmware lê (`recorte_para_decimar`) e a média e o desvio em float32 (`media_desvio_float32`) |
 | `pcm_io.py` | leitura e escrita dos `.bin` e dos `manifest.json` |
 | `experimentos.py` | numeração, hash do commit e escrita do `registry.csv` |
 | `validation/particao.py` | segmentação das gravações, folds dos protocolos A e B, verificação das garantias, leitura e escrita do `splits.json` |
@@ -255,4 +255,4 @@ Três regras:
 - **Rodar antes de commitar** qualquer mudança em módulo importado, e antes de abrir PR. Um teste que falha é motivo para não mergear.
 - **O que um teste protege é uma garantia, não um número.** Os testes da partição conferem que nenhum segmento está em treino e teste no mesmo fold, que a faixa de descarte é respeitada e que a falha deixada de fora não aparece no treino — as condições sem as quais os resultados de classificação não valem. Resultados numéricos vão para o `registry.csv`, não para os testes.
 
-Se `pytest` falhar ao iniciar com erro de importação vindo de fora do projeto (um caminho como `/opt/ros/...`), é o `PYTHONPATH` do sistema trazendo plugins de pytest de outro ambiente. Limpe-o no terminal do projeto (`unset PYTHONPATH`) ou acrescente essa linha ao final de `.venv/bin/activate`. É a mesma contaminação que o `--local` evita no `pip freeze` (seção 3).
+Se `pytest` falhar ao iniciar com erro de importação vindo de fora do projeto (um caminho como `/opt/ros/...`), é o `PYTHONPATH` do sistema trazendo plugins de pytest de outro ambiente. Limpe-o no terminal do projeto (`unset PYTHONPATH`) ou acrescente essa linha ao final de `.venv/bin/activate`. É a mesma contaminação que o `--local` evita no `pip freeze` (seção 3).
