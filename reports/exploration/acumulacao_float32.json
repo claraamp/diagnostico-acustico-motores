@@ -1,0 +1,30 @@
+{
+  "id": "exp242",
+  "splits": "772c8e1eb1",
+  "modelo": "exp239",
+  "n_segmentos": 295,
+  "quadros_por_segmento": 98,
+  "n_coefs": 13,
+  "metodos": {
+    "welford": {
+      "max_dif_media": 5.084641125918665e-06,
+      "max_dif_desvio": 1.2297268099370484e-06,
+      "max_dif_desvio_rel": 2.094086825500167e-06,
+      "max_dif_escore": 0.0012545529790573833
+    },
+    "soma_quadrados": {
+      "max_dif_media": 4.067712900734932e-06,
+      "max_dif_desvio": 0.00011662631410225277,
+      "max_dif_desvio_rel": 0.0002393678996518595,
+      "max_dif_escore": 0.005611085504558806
+    },
+    "dois_passos": {
+      "max_dif_media": 4.067712900734932e-06,
+      "max_dif_desvio": 2.57319406005152e-07,
+      "max_dif_desvio_rel": 3.3191556332097093e-07,
+      "max_dif_escore": 0.0011654317922804697
+    }
+  },
+  "max_razao_media_desvio": 28.84326495529097,
+  "min_abs_escore": 1297.17932
+}

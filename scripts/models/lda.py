@@ -27,9 +27,9 @@ as 26 features (`cadeia_entrada`), nos pontos em que uma implementação em C co
 divergir sem dar erro: escala da entrada, tipo de janela, FFT e espectro, banco de
 Mel (fórmula e bins), log, DCT e desvio-padrão, e de onde vem o sinal a 12,8 kHz
 (decimação). Os parâmetros configuráveis (taxas, janela, passo, bandas,
-coeficientes, escala, projeto do FIR) saem do `config` e do `dsp`. Três valores
-são literais que espelham o código do `dsp`, sem constante própria: o `fmin` de
-20 Hz (padrão do `dsp.mel_filterbank`), o `1e-10` do log e a DCT-II ortonormal. O
+coeficientes, escala, piso do Mel, projeto do FIR) saem do `config` e do `dsp`.
+Dois valores são literais que espelham o código do `dsp`, sem constante própria:
+o `1e-10` do log e a DCT-II ortonormal. O
 teste `test_descricao_da_cadeia_reproduz_o_dsp` refaz o MFCC só a partir da
 descrição e compara com o `dsp.mfcc`, então uma mudança no `dsp` sem atualizar
 esses literais faz o teste falhar. O `reports/c_reference/reference_data.h` continua sendo a
@@ -61,7 +61,7 @@ def cadeia_entrada(fs: int = config.FS_TRABALHO) -> dict:
     n_passo = int(round(config.MFCC_HOP_MS / 1000 * fs))
     n_fft = 1 << (n_quadro - 1).bit_length()
     n_amostras = config.amostras_por_segmento(fs)
-    fmin = 20.0   # padrão do dsp.mel_filterbank, o que o dsp.mfcc usa
+    fmin = config.MFCC_FMIN   # o padrão do dsp.mel_filterbank, o que o dsp.mfcc usa
     mels = np.linspace(dsp.hz_to_mel(fmin), dsp.hz_to_mel(fs / 2), config.MFCC_N_MELS + 2)
     bins = np.clip(np.floor((n_fft + 1) * dsp.mel_to_hz(mels) / fs).astype(int), 0, n_fft // 2)
     fir = dsp.design_decimation(config.FS_ORIGINAL, fs)
