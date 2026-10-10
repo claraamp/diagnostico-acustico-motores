@@ -134,6 +134,7 @@ diagnostico-acustico-motores/
 │
 ├── tests/                    # pytest; não dependem de data/
 │   ├── conftest.py
+│   ├── test_contrato_numerico.py      # cada valor do docs/contrato_numerico.md conferido contra o código
 │   ├── test_dsp.py
 │   ├── test_experimentos.py           # registry: linha nova nunca é colada na anterior
 │   ├── augmentation/
@@ -173,6 +174,7 @@ diagnostico-acustico-motores/
 │       └── consolidacao/     # tabelas .tex, figuras e rastreabilidade do relatório (run_consolidacao.py)
 │
 └── docs/                     # proposta, documentação técnica complementar
+    └── contrato_numerico.md  # o que o C tem que reproduzir da extração de características (Fase 2)
 ```
 
 Ver [`CONVENTIONS.md`](./CONVENTIONS.md) para as convenções de nomenclatura de scripts, classes e commits, e para o formato do registro de experimentos.
