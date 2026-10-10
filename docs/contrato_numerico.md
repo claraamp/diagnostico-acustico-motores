@@ -16,9 +16,9 @@ Referências de linha: `main` em `340d37d`.
 
 Escopo: a tabela abaixo cobre a cadeia a partir do PCM decimado a 12,8 kHz
 (`int16`). A decimação (filtro, atraso de grupo, recorte dos clipes e
-quantização para `int16`) está na seção "Decimação". Média e desvio quadro a
-quadro em float32 (Welford ou soma e soma dos quadrados) são a tarefa A3, e as
-tolerâncias de comparação por estágio, a A4.
+quantização para `int16`) está na seção "Decimação", e a forma de acumular a
+média e o desvio em float32, na seção "Média e desvio em float32". As
+tolerâncias de comparação por estágio são a tarefa A4.
 
 ## Cadeia, estágio a estágio
 
@@ -35,7 +35,7 @@ tolerâncias de comparação por estágio, a A4.
 | 9 | Mel | `mel = espectro @ fbᵀ` (soma ponderada da **potência**) | `dsp.py:184-185` | — |
 | 10 | Log | **Logaritmo natural**, `log(mel + 1e-10)`: o épsilon é **somado**, não um piso | `dsp.py:188` | `log10` ou `10·log10` (dB); piso `max(mel, eps)` em vez de soma; outro épsilon. Num quadro todo em zero, o valor é `ln(1e-10) = −23,0259`. |
 | 11 | DCT | DCT-II **ortonormal** (`norm="ortho"`), 13 primeiros coeficientes (c0 incluído) | `dsp.py:200` | DCT sem a escala ortonormal; descartar o c0. A CMSIS não tem DCT-II pronta (só DCT-IV): o caminho direto é uma matriz 13 × 20 pré-calculada (fórmula abaixo). |
-| 12 | Resumo | Média e desvio-padrão de cada coeficiente ao longo dos 98 quadros, desvio **populacional** (`ddof=0`, o padrão do `np.std`) | `04_extract_features.py:105` | Desvio amostral (`ddof=1`, divide por 97). |
+| 12 | Resumo | Média e desvio-padrão de cada coeficiente ao longo dos 98 quadros, desvio **populacional** (`ddof=0`, o padrão do `np.std`) | `04_extract_features.py:105` | Desvio amostral (`ddof=1`, divide por 97); acumular por soma e soma dos quadrados em float32 (ver "Média e desvio em float32"). |
 | 13 | Ordem | `x = [média c0…c12, desvio c0…c12]`, 26 valores; é a ordem dos pesos no `lda_modelo.h` | `04_extract_features.py:105`; `reports/modelo_final/lda_modelo.h` | Intercalar média e desvio por coeficiente. |
 | 14 | Precisão | Tudo em float64 no Python | — | O C em float32 não reproduz bit a bit; a comparação é por tolerância (A4). |
 
@@ -148,3 +148,51 @@ simétrico, ganho 1); a janela de dependência `x[4j − 73 … 4j + 73]`, mudan
 amostra de cada vez; o recorte, com um decimador causal na convenção acima
 reproduzindo dois segmentos inteiros do `resample_clip` (erro < 1e-12); o
 primeiro segmento, com os zeros; e a quantização meio-para-par com saturação.
+
+## Média e desvio em float32
+
+O Python calcula a média e o desvio de cada coeficiente com a matriz 98 × 13
+inteira, em float64. O firmware, em float32, pode acumular quadro a quadro ou
+guardar a matriz. A `dsp.media_desvio_float32` emula, operação por operação em
+float32, as três formas:
+
+- **Welford**, quadro a quadro: `n += 1; d = x − média; média += d/n;
+  m2 += d·(x − média)`; no fim, `desvio = √(m2/98)`.
+- **Soma e soma dos quadrados**, quadro a quadro: `s += x; q += x²`; no fim,
+  `desvio = √(q/98 − (s/98)²)`.
+- **Dois passos**, com a matriz guardada (98 × 13 floats = 5 KB): primeiro a
+  média, depois `Σ(x − média)²/98`.
+
+**Medição** (`exp242`, `scripts/exploration/inspect_acumulacao_float32.py`,
+resultado em `reports/exploration/acumulacao_float32.json`). Nos 295 segmentos,
+com os quadros de MFCC do Python arredondados para float32, contra a média e o
+desvio desses mesmos valores em float64. A medição isola o erro da acumulação; o
+erro do próprio MFCC em float32 é assunto da A4. O efeito no escore é
+`|pesos · Δx|` com os pesos da LDA final (`exp239`).
+
+| Método | Erro da média | Erro do desvio | Erro relativo do desvio | Efeito no escore |
+|---|---:|---:|---:|---:|
+| Welford | 5,1 × 10⁻⁶ | 1,2 × 10⁻⁶ | 2,1 × 10⁻⁶ | 0,0013 |
+| Soma e soma dos quadrados | 4,1 × 10⁻⁶ | 1,2 × 10⁻⁴ | 2,4 × 10⁻⁴ | 0,0056 |
+| Dois passos (matriz) | 4,1 × 10⁻⁶ | 2,6 × 10⁻⁷ | 3,3 × 10⁻⁷ | 0,0012 |
+
+Máximos sobre os 295 segmentos e os 13 coeficientes. A maior razão
+|média|/desvio de um coeficiente num segmento é 28,8.
+
+**Leitura.** Para a decisão do classificador, o método é indiferente: o efeito
+no escore fica abaixo de 0,006, e o menor |escore| dos 295 segmentos é 1.297. A
+escolha importa para a comparação estágio a estágio do porte (A4). A soma dos
+quadrados erra o desvio cerca de 100 vezes mais que Welford, porque calcula a
+variância pela diferença de dois números grandes (`q/98` e `(s/98)²`); um erro
+dessa ordem esconderia uma divergência real do porte no estágio do resumo. O
+problema cresce com a razão média/desvio: num caso sintético com média 1.000 e
+desvio 0,1, o desvio sai com erro de cerca de 500% (teste
+`test_soma_dos_quadrados_perde_precisao_com_media_grande`).
+
+**Recomendação.** **Welford**, que mantém o cálculo quadro a quadro, sem guardar
+a matriz, com erro relativo do desvio de 2 × 10⁻⁶. Se a Frente 1 aceitar os 5 KB
+da matriz, os dois passos são ainda mais precisos e permitem comparar o MFCC
+quadro a quadro com a referência do `reference_data.h`. Evitar a soma dos
+quadrados. A emulação não reproduz a fusão de multiplicação e soma (FMA) do
+Cortex-M4, que muda o último bit de cada operação, mas não a ordem de grandeza
+desses erros.
