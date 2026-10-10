@@ -110,6 +110,7 @@ diagnostico-acustico-motores/
 │   │   ├── compare_classifiers.py         # estudo que escolheu o classificador (validação interna ao B)
 │   │   ├── inspect_lda_harmonicos.py      # controle: peso da LDA nas bandas dos harmônicos do eixo
 │   │   ├── inspect_left_out_fault.py      # posição da falha deixada de fora (Protocolo B)
+│   │   ├── inspect_acumulacao_float32.py  # média e desvio do MFCC em float32, por método (contrato numérico, A3)
 │   │   ├── inspect_signature_spectra.py   # PSD assinada falha × normal (excesso e déficit)
 │   │   ├── identify_tonal_peaks.py        # velocidades e BPFI/BPFO medidas por série harmônica
 │   │   ├── inspect_vibration_mat.py       # árvore de um .mat (formato da vibração)

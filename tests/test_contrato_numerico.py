@@ -167,3 +167,43 @@ def test_pcm_decimado_e_quantizado_para_int16():
     import pcm_io
     v = np.array([0.5, 1.5, 2.5, -0.5, 1e6, -1e6]) / config.INT16_FULL
     np.testing.assert_array_equal(pcm_io.para_pcm(v), [0, 2, 2, 0, 32767, -32768])
+
+
+# --------------------------------------------------------------------------- #
+# Média e desvio em float32 (seção "Média e desvio em float32" do contrato)
+# --------------------------------------------------------------------------- #
+def _mfcc_de_referencia() -> np.ndarray:
+    """A matriz 98 × 13 de MFCC do reference_data.h (segmento 0 da normal, dado real)."""
+    from pathlib import Path
+    import re
+    texto = (Path(__file__).resolve().parents[1] / "reports" / "c_reference"
+             / "reference_data.h").read_text(encoding="ascii")
+    corpo = re.search(r"ref_mfcc_matrix\[[^\]]*\] = \{(.*?)\};", texto, re.S).group(1)
+    valores = [float(v.strip().rstrip("f")) for v in corpo.split(",") if v.strip()]
+    return np.array(valores, dtype=np.float32).reshape(98, 13)
+
+
+@pytest.mark.parametrize("metodo", dsp.METODOS_RESUMO)
+def test_metodos_reproduzem_media_e_desvio_populacional(metodo):
+    q32 = _mfcc_de_referencia()
+    q = q32.astype(np.float64)
+    media, desvio = dsp.media_desvio_float32(q32, metodo)
+    assert media.dtype == desvio.dtype == np.float32
+    np.testing.assert_allclose(media, q.mean(axis=0), rtol=1e-5, atol=1e-5)
+    rtol = 1e-3 if metodo == "soma_quadrados" else 1e-5
+    np.testing.assert_allclose(desvio, q.std(axis=0), rtol=rtol)       # ddof=0
+
+
+def test_soma_dos_quadrados_perde_precisao_com_media_grande():
+    """Média grande perto do desvio: Welford e dois passos se mantêm; a soma dos quadrados não."""
+    q32 = np.random.default_rng(4).normal(1000.0, 0.1, (98, 13)).astype(np.float32)
+    ref = q32.astype(np.float64).std(axis=0)
+    erro = {m: np.max(np.abs(dsp.media_desvio_float32(q32, m)[1] - ref) / ref)
+            for m in dsp.METODOS_RESUMO}
+    assert erro["welford"] < 1e-3 and erro["dois_passos"] < 1e-3
+    assert erro["soma_quadrados"] > 1e-2
+
+
+def test_metodo_desconhecido():
+    with pytest.raises(ValueError):
+        dsp.media_desvio_float32(np.zeros((98, 13)), "kahan")

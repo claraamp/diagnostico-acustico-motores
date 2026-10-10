@@ -304,3 +304,56 @@ def recorte_para_decimar(inicio: int, n: int, spec: FirSpec) -> tuple[int, int, 
     a = M * inicio + d - M * descartar
     b = a + M * (descartar + n)
     return a, b, descartar
+
+
+# --------------------------------------------------------------------------- #
+# Média e desvio quadro a quadro em float32, como o firmware calcula
+# (docs/contrato_numerico.md, seção "Média e desvio em float32")
+# --------------------------------------------------------------------------- #
+METODOS_RESUMO = ("welford", "soma_quadrados", "dois_passos")
+
+
+def media_desvio_float32(quadros: np.ndarray, metodo: str) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Média e desvio populacional (ddof=0) de cada coluna de `quadros` (quadros × coeficientes),
+    com toda a conta em float32 e na ordem em que o C faria, um quadro de cada vez:
+
+    - "welford":        n += 1; d = x − média; média += d/n; m2 += d·(x − média);
+                        desvio = √(m2/N). Quadro a quadro, sem guardar a matriz.
+    - "soma_quadrados": s += x; q += x²; desvio = √(max(q/N − (s/N)², 0)).
+                        Quadro a quadro; perde precisão quando a média é grande
+                        perto do desvio (cancelamento).
+    - "dois_passos":    guarda a matriz; média = Σx/N; desvio = √(Σ(x − média)²/N).
+
+    Emula o arredondamento de cada operação em float32, mas não a fusão de
+    multiplicação e soma (FMA) do Cortex-M4.
+    """
+    x = np.asarray(quadros, dtype=np.float32)
+    n_q = np.float32(len(x))
+    zero = np.zeros(x.shape[1], dtype=np.float32)
+    if metodo == "welford":
+        media, m2 = zero.copy(), zero.copy()
+        for i, q in enumerate(x, start=1):
+            d = (q - media).astype(np.float32)
+            media = (media + d / np.float32(i)).astype(np.float32)
+            m2 = (m2 + d * (q - media)).astype(np.float32)
+        return media, np.sqrt(m2 / n_q).astype(np.float32)
+    if metodo == "soma_quadrados":
+        s, s2 = zero.copy(), zero.copy()
+        for q in x:
+            s = (s + q).astype(np.float32)
+            s2 = (s2 + q * q).astype(np.float32)
+        media = (s / n_q).astype(np.float32)
+        var = (s2 / n_q - media * media).astype(np.float32)
+        return media, np.sqrt(np.maximum(var, np.float32(0))).astype(np.float32)
+    if metodo == "dois_passos":
+        s = zero.copy()
+        for q in x:
+            s = (s + q).astype(np.float32)
+        media = (s / n_q).astype(np.float32)
+        s2 = zero.copy()
+        for q in x:
+            d = (q - media).astype(np.float32)
+            s2 = (s2 + d * d).astype(np.float32)
+        return media, np.sqrt(s2 / n_q).astype(np.float32)
+    raise ValueError(f"método desconhecido: {metodo}; use um de {METODOS_RESUMO}")
