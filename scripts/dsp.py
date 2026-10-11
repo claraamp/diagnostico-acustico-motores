@@ -15,8 +15,10 @@ teste, e não pode herdar os de produção.
 Conteúdo:
     Espectro          psd, envelope_spectrum, peak_snr
     Banco de Mel      hz_to_mel, mel_to_hz, mel_filterbank, mfcc
-    Decimação         FirSpec, design_decimation, resample_clip,
+    Decimação         FirSpec, design_decimation, taps_decimacao, resample_clip,
                       aliasing_energy_db, usable_band
+    Porte em C        recorte_para_decimar (trecho que o decimador do firmware lê),
+                      media_desvio_float32 (média e desvio em float32, por método)
 """
 
 from __future__ import annotations
@@ -138,7 +140,7 @@ def mel_to_hz(m):
     return 700.0 * (10.0 ** (m / 2595.0) - 1.0)
 
 
-def mel_filterbank(fs: float, n_fft: int, n_mels: int, fmin: float = 20.0) -> np.ndarray:
+def mel_filterbank(fs: float, n_fft: int, n_mels: int, fmin: float = config.MFCC_FMIN) -> np.ndarray:
     fmax = fs / 2
     mels = np.linspace(hz_to_mel(fmin), hz_to_mel(fmax), n_mels + 2)
     hz = mel_to_hz(mels)
@@ -200,6 +202,13 @@ def mfcc(x: np.ndarray, fs: float,
     return dct(lmel, type=2, axis=1, norm="ortho")[:, :n_mfcc]
 
 
+def _fir_kaiser(fs_work: float, cutoff: float, transition: float, atten_db: float) -> np.ndarray:
+    """O único projeto do FIR da decimação: Kaiser, número ímpar de taps (atraso inteiro)."""
+    nyq = fs_work / 2
+    numtaps, beta = sg.kaiserord(atten_db, 2 * transition / nyq)
+    return sg.firwin(int(numtaps) | 1, cutoff / nyq, window=("kaiser", beta))
+
+
 def design_decimation(fs_in: float, fs_out: float,
                       atten_db: float = float(config.FIR_ATTENUATION)) -> FirSpec:
     """
@@ -214,10 +223,8 @@ def design_decimation(fs_in: float, fs_out: float,
     cutoff = 0.45 * fs_out                      # margem de 10 % até Nyquist
     transition = nyq_out - cutoff               # largura da transição
     fs_work = fs_in * up                        # taxa em que o filtro opera
-    numtaps, beta = sg.kaiserord(atten_db, 2 * transition / (fs_work / 2))
-    numtaps = int(numtaps) | 1                  # ímpar → fase linear, atraso inteiro
-
-    taps = sg.firwin(numtaps, cutoff / (fs_work / 2), window=("kaiser", beta))
+    taps = _fir_kaiser(fs_work, cutoff, transition, atten_db)
+    numtaps = len(taps)
     w, h = sg.freqz(taps, worN=8192, fs=fs_work)
     hdb = 20 * np.log10(np.abs(h) + 1e-12)
     stop = hdb[w >= nyq_out]
@@ -237,13 +244,18 @@ def design_decimation(fs_in: float, fs_out: float,
     )
 
 
+def taps_decimacao(spec: FirSpec, fs_in: float,
+                   atten_db: float = float(config.FIR_ATTENUATION)) -> np.ndarray:
+    """Coeficientes do FIR que o `resample_clip` aplica (fator inteiro); são os exportados ao C."""
+    if not spec.integer_factor:
+        raise ValueError("só há FIR único com fator de decimação inteiro")
+    return _fir_kaiser(fs_in, spec.cutoff_hz, spec.transition_hz, atten_db)
+
+
 def resample_clip(x: np.ndarray, fs_in: float, fs_out: float, spec: FirSpec,
                   atten_db: float = float(config.FIR_ATTENUATION)) -> np.ndarray:
     if spec.integer_factor:
-        fs_work = fs_in
-        nyq = fs_work / 2
-        numtaps, beta = sg.kaiserord(atten_db, 2 * spec.transition_hz / nyq)
-        taps = sg.firwin(int(numtaps) | 1, spec.cutoff_hz / nyq, window=("kaiser", beta))
+        taps = taps_decimacao(spec, fs_in, atten_db)
         y = sg.lfilter(taps, 1.0, x)
         delay = (len(taps) - 1) // 2
         y = y[delay:]                            # compensa o atraso de grupo
@@ -265,3 +277,92 @@ def aliasing_energy_db(x_ref: np.ndarray, fs_ref: float, x_dec: np.ndarray, fs_d
     e_ref = float(np.trapezoid(p_r_i, f_d[band])) + 1e-30
     e_dec = float(np.trapezoid(p_d[band], f_d[band])) + 1e-30
     return 10 * math.log10(e_dec / e_ref)
+
+
+# --------------------------------------------------------------------------- #
+# Decimação no firmware: o recorte que um decimador FIR causal precisa ler
+# (docs/contrato_numerico.md, seção "Decimação"); os coeficientes são os do
+# `taps_decimacao`
+# --------------------------------------------------------------------------- #
+def recorte_para_decimar(inicio: int, n: int, spec: FirSpec,
+                         fase: int = 0) -> tuple[int, int, int]:
+    """
+    Trecho da gravação original que um decimador FIR **causal** precisa ler para
+    reproduzir as amostras decimadas `inicio … inicio+n−1` do `resample_clip`.
+
+    Convenção do decimador: com estado inicial zerado, a saída m usa a entrada
+    até a amostra M·m + p do trecho lido, `y[m] = Σ b[k]·x[M·m + p − k]`, em que
+    p = `fase`. O `arm_fir_decimate_f32` da CMSIS-DSP tem p = 0 (calcula a saída
+    com a primeira das M amostras novas de cada bloco); p = M − 1 é o decimador
+    que espera o bloco inteiro. O `resample_clip` compensa o atraso de grupo
+    d = (L−1)/2: a amostra decimada j usa `x[M·j − d … M·j + d]`.
+
+    Devolve `(a, b, descartar)`: ler `x[a:b]` da gravação, passar pelo decimador
+    e jogar fora as `descartar` primeiras saídas (transitório do estado zerado);
+    as `n` seguintes são as do Python. `b − a` é múltiplo de M, como o
+    `arm_fir_decimate_f32` exige do tamanho do bloco. Com `a < 0` (início da
+    gravação), completar com `−a` zeros antes, como o `lfilter` faz.
+    """
+    if not spec.integer_factor:
+        raise ValueError("o recorte só vale para decimação por fator inteiro")
+    M, L = spec.down, spec.numtaps
+    if not 0 <= fase < M:
+        raise ValueError(f"fase tem que estar em 0…{M - 1}")
+    d = (L - 1) // 2
+    descartar = -(-(L - 1 - fase) // M)   # ceil((L−1−p)/M): saídas sem o histórico completo
+    a = M * inicio + d - fase - M * descartar
+    b = a + M * (descartar + n)
+    return a, b, descartar
+
+
+# --------------------------------------------------------------------------- #
+# Média e desvio quadro a quadro em float32, como o firmware calcula
+# (docs/contrato_numerico.md, seção "Média e desvio em float32")
+# --------------------------------------------------------------------------- #
+METODOS_RESUMO = ("welford", "soma_quadrados", "dois_passos")
+
+
+def media_desvio_float32(quadros: np.ndarray, metodo: str) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Média e desvio populacional (ddof=0) de cada coluna de `quadros` (quadros × coeficientes),
+    com toda a conta em float32 e na ordem em que o C faria, um quadro de cada vez:
+
+    - "welford":        n += 1; d = x − média; média += d/n; m2 += d·(x − média);
+                        desvio = √(m2/N). Quadro a quadro, sem guardar a matriz.
+    - "soma_quadrados": s += x; q += x²; desvio = √(max(q/N − (s/N)², 0)).
+                        Quadro a quadro; perde precisão quando a média é grande
+                        perto do desvio (cancelamento).
+    - "dois_passos":    guarda a matriz; média = Σx/N; desvio = √(Σ(x − média)²/N).
+
+    Emula o arredondamento de cada operação em float32, mas não a fusão de
+    multiplicação e soma (FMA) do Cortex-M4.
+    """
+    x = np.asarray(quadros, dtype=np.float32)
+    n_q = np.float32(len(x))
+    zero = np.zeros(x.shape[1], dtype=np.float32)
+    if metodo == "welford":
+        media, m2 = zero.copy(), zero.copy()
+        for i, q in enumerate(x, start=1):
+            d = (q - media).astype(np.float32)
+            media = (media + d / np.float32(i)).astype(np.float32)
+            m2 = (m2 + d * (q - media)).astype(np.float32)
+        return media, np.sqrt(m2 / n_q).astype(np.float32)
+    if metodo == "soma_quadrados":
+        s, s2 = zero.copy(), zero.copy()
+        for q in x:
+            s = (s + q).astype(np.float32)
+            s2 = (s2 + q * q).astype(np.float32)
+        media = (s / n_q).astype(np.float32)
+        var = (s2 / n_q - media * media).astype(np.float32)
+        return media, np.sqrt(np.maximum(var, np.float32(0))).astype(np.float32)
+    if metodo == "dois_passos":
+        s = zero.copy()
+        for q in x:
+            s = (s + q).astype(np.float32)
+        media = (s / n_q).astype(np.float32)
+        s2 = zero.copy()
+        for q in x:
+            d = (q - media).astype(np.float32)
+            s2 = (s2 + d * d).astype(np.float32)
+        return media, np.sqrt(s2 / n_q).astype(np.float32)
+    raise ValueError(f"método desconhecido: {metodo}; use um de {METODOS_RESUMO}")
