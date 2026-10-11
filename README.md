@@ -109,6 +109,7 @@ diagnostico-acustico-motores/
 │   │   ├── compare_decimation_rates.py    # estudo que definiu a taxa de trabalho
 │   │   ├── compare_classifiers.py         # estudo que escolheu o classificador (validação interna ao B)
 │   │   ├── inspect_lda_harmonicos.py      # controle: peso da LDA nas bandas dos harmônicos do eixo
+│   │   ├── inspect_comb_features.py       # pente harmônico (BPFO/BPFI) junto ao MFCC: entra na cadeia? (validação interna)
 │   │   ├── inspect_left_out_fault.py      # posição da falha deixada de fora (Protocolo B)
 │   │   ├── inspect_acumulacao_float32.py  # média e desvio do MFCC em float32, por método (contrato numérico, A3)
 │   │   ├── inspect_signature_spectra.py   # PSD assinada falha × normal (excesso e déficit)
@@ -126,6 +127,7 @@ diagnostico-acustico-motores/
 │   └── validation/           # protocolo de validação do classificador
 │       ├── particao.py                    # segmentos, folds A e B, verificação
 │       ├── metricas.py                    # sensibilidade, especificidade, acurácia balanceada
+│       ├── selecao.py                     # validação interna ao B e regra de escolha (escolher), sem torch
 │       ├── run_protocol.py                # executável: roda A ou B e registra o resultado
 │       ├── run_tabela_comparativa.py      # executável: tabela provisório × oficial a partir dos metrics.json
 │       ├── run_tabela_controles.py        # executável: tabela dos controles (sem c0, permutação, curva)
@@ -147,13 +149,15 @@ diagnostico-acustico-motores/
 │   │   ├── test_train_classifier.py       # o 05 só aceita as features de referência da partição
 │   │   └── test_export_lda_header.py      # o .h é paramétrico em N_FEATURES, traz o float32 do JSON e, compilado, reproduz o escore
 │   ├── exploration/
+│   │   ├── test_comb_features.py          # candidatos A/B/C do card (A inviável); acha a série fora da razão cinemática; decisão pela validação interna
 │   │   └── test_compare_classifiers.py    # critério de escolha: mais barato na margem, em qualquer ordem (pula sem torch)
 │   └── validation/
 │       ├── test_curva_aprendizado.py      # subamostra só treino, n por classe, reprodutível
 │       ├── test_tabela_aumento.py         # tabela do aumento: comparabilidade e fator de expansão
 │       ├── test_tabela_taxas.py           # tabela das taxas: comparabilidade e mesma partição em segundos
 │       ├── test_consolidacao.py           # consolidação: número sem registry ou rodada no papel errado aborta
-│       └── test_particao.py               # inclui: outra taxa dá os mesmos segmentos em segundos
+│       ├── test_particao.py               # inclui: outra taxa dá os mesmos segmentos em segundos
+│       └── test_selecao.py                # folds internos não leem o teste externo; escolher fica com o mais barato na margem
 │
 ├── notebooks/                # notebooks de análise/visualização
 │
@@ -233,6 +237,10 @@ python scripts/validation/run_tabela_aumento.py       # B com e sem aumento: mé
 # tem harmônicos mais fortes (lê o picos_metrics.json do identify_tonal_peaks.py)
 python scripts/exploration/inspect_lda_harmonicos.py --sintetico   # auto-teste
 python scripts/exploration/inspect_lda_harmonicos.py --responsavel <nome>
+
+# pente harmônico (BPFO/BPFI): candidatos de resolução A/B/C, decisão pela validação interna
+python scripts/exploration/inspect_comb_features.py --sintetico    # auto-teste
+python scripts/exploration/inspect_comb_features.py --responsavel <nome>
 
 # ablação da normalização RMS por segmento: reextrai e roda de novo
 python scripts/pipeline/04_extract_features.py --norm-clipe
