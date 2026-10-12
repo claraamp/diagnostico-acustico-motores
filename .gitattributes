@@ -1,0 +1,13 @@
+# Fim de linha dos arquivos cujo hash é conferido ou registrado.
+#
+# O hash é calculado sobre os bytes do arquivo: o `particao.hash_arquivo` do
+# splits.json vai para o registry, e o lda_modelo.h guarda o SHA-256 do
+# lda_final.json. No Windows, com core.autocrlf=true, o Git entregaria esses
+# arquivos com CRLF, os bytes mudariam e o hash deixaria de bater com o
+# registrado. Com eol=lf, eles saem do checkout em LF em qualquer sistema.
+*.json text eol=lf
+*.h    text eol=lf
+
+# Os CSV ficam de fora de propósito: o módulo csv grava CRLF em qualquer
+# sistema, e os versionados já estão assim. Forçar LF reescreveria centenas
+# deles sem mudar nenhum valor.

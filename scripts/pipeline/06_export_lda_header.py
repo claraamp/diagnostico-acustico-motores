@@ -372,7 +372,7 @@ def main() -> int:
 
     destino = args.out_dir / "teste" if args.sem_registro else args.out_dir
     destino.mkdir(parents=True, exist_ok=True)
-    (destino / "lda_modelo.h").write_text(texto, encoding="utf-8")
+    (destino / "lda_modelo.h").write_text(texto, encoding="utf-8", newline="\n")
     print(f"cabeçalho: {destino}/lda_modelo.h")
 
     if args.sem_registro:

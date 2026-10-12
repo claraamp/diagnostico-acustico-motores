@@ -369,7 +369,8 @@ def para_texto(particoes: dict) -> str:
 def salvar(particoes: dict, caminho: Path) -> Path:
     caminho = Path(caminho)
     caminho.parent.mkdir(parents=True, exist_ok=True)
-    caminho.write_text(para_texto(particoes), encoding="utf-8")
+    # newline="\n": no Windows o write_text gravaria CRLF e mudaria o hash (.gitattributes)
+    caminho.write_text(para_texto(particoes), encoding="utf-8", newline="\n")
     return caminho
 
 

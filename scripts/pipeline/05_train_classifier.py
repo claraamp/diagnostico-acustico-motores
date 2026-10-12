@@ -180,8 +180,9 @@ def main() -> int:
     destino = args.out_dir / "teste" if args.sem_registro else args.out_dir
     destino.mkdir(parents=True, exist_ok=True)
     saida = montar_saida(p, conferencia, exp_id, hash_splits, manifesto, y)
+    # newline="\n": o 06 grava o SHA-256 destes bytes no .h; CRLF no Windows o mudaria
     (destino / "lda_final.json").write_text(json.dumps(saida, ensure_ascii=False, indent=2) + "\n",
-                                            encoding="utf-8")
+                                            encoding="utf-8", newline="\n")
     gravar_escores(destino / "escores_referencia.csv", segmentos, y, p, X)
     print(f"modelo final: {destino}/lda_final.json")
 
