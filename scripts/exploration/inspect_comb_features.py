@@ -33,22 +33,27 @@ espectro da bpfo_0.3mm:
 - saliência do dente = pico (±1 bin) / mediana do fundo entre 3 e 10 resoluções;
 - dente "presente" com saliência ≥ 6 dB.
 
-O candidato A é inviável por construção: com 40 Hz de resolução, a máscara (80 Hz)
-é maior que metade do espaçamento das harmônicas do eixo (~25 Hz), e nenhum dente
-sobra. É o risco que a atualização de 05/10 aponta (as linhas de BPFO caem na
+O candidato A é inviável por construção: com 40 Hz de resolução, a máscara (±80 Hz
+em torno de cada harmônica do eixo) é maior que metade do espaçamento delas
+(~25 Hz), e nenhum dente sobra. É o risco que a atualização de 05/10 aponta (as linhas de BPFO caem na
 vizinhança das harmônicas do eixo); o script registra a inviabilidade e não calcula
 features para ele.
 
 O f₀ escolhido só posiciona o pente e NÃO vira feature (seria a identidade da
 gravação). Features por segmento (4): pontuação da BPFO, pontuação da BPFI, fração
-de dentes da BPFO ≥ 6 dB e fração de dentes da BPFI ≥ 6 dB.
+de dentes da BPFO ≥ 6 dB e fração de dentes da BPFI ≥ 6 dB. Por segmento, o script
+marca também se o f₀ escolhido ficou no extremo da grade de busca (`f0_na_borda`):
+sinal de que a série real está logo além da faixa de ±3 % (rotação mal estimada).
+A marca pega o quase-acerto; uma série bem fora da faixa pode deixar o máximo em
+outro ponto dela, sem marca.
 
 Rotação do eixo
 ---------------
 O card pede a rotação estimada no próprio segmento: modo "estimado", pelo pente
 harmônico do próprio eixo, em duas etapas (`estimar_eixo`). A decisão usa só esse
-modo. O modo "fixo" (50,17 Hz, a rotação publicada por Jung et al., 2023, valor
-externo) roda como sensibilidade: mostra quanto do resultado depende da precisão
+modo. O modo "fixo" (`EIXO_ARTIGO_HZ` = 50,17 Hz, a rotação publicada por Jung et
+al., 2023, valor externo; não confundir com os ~50,2 Hz medidos no áudio) roda como
+sensibilidade: mostra quanto do resultado depende da precisão
 da estimativa.
 
 Desvio do plano: uma primeira versão estimava o eixo pelo pico entre 45 e 55 Hz.
@@ -69,7 +74,12 @@ for escolhido para as quatro falhas externas; dividido ou inconclusivo, fica for
 (regra de desempate do card). O teste do B externo não entra na decisão.
 
 Reportado seja qual for (card): o Protocolo B externo de "mfcc" e "mfcc+pente"
-(LDA de priors uniformes), com a bpfo_0.3mm.
+(LDA de priors uniformes), com a bpfo_0.3mm. Também só como reporte, para cada
+conjunto no B externo: os coeficientes da LDA nas features padronizadas (média de
+|coef| por fold; quanto pesam as 4 colunas do pente perto das 26 do MFCC) e a
+posição de cada falha deixada de fora no eixo da LDA, com a mesma definição do
+`inspect_left_out_fault.py` (0 = centro das falhas de treino, 1 = centro da normal
+de treino).
 
 Achado fora do escopo do card: variante "c"
 -------------------------------------------
@@ -182,7 +192,7 @@ def inviavel(c: Candidato) -> str | None:
     """Motivo se a máscara do eixo não deixa nenhum dente; None se o candidato é viável."""
     meia_distancia = EIXO_HZ[0] / 2
     if c.mascara_hz >= meia_distancia:
-        return (f"máscara de {c.mascara_hz:.1f} Hz ({MASCARA_RES:g} × {c.resolucao:.1f} Hz de resolução) "
+        return (f"máscara de ±{c.mascara_hz:.1f} Hz ({MASCARA_RES:g} × {c.resolucao:.1f} Hz de resolução) "
                 f"≥ metade do espaçamento das harmônicas do eixo (≤ {meia_distancia:.1f} Hz): "
                 "todo dente cai na vizinhança de uma harmônica do eixo")
     return None
@@ -265,6 +275,7 @@ def pente(f: np.ndarray, pico: np.ndarray, fundo: np.ndarray, f_eixo: float,
     i = int(np.argmax(pont))
     frac = float(np.nansum(sal[i] >= LIMIAR_DENTE_DB) / max(n_validos[i], 1))
     return {"pontuacao": float(pont[i]), "fracao": frac, "f0": float(f0s[i]),
+            "f0_na_borda": bool(i == 0 or i == len(f0s) - 1),
             "n_dentes": int(n_validos[i]), "n_candidatos": len(f0s)}
 
 
@@ -277,7 +288,8 @@ def features_segmento(x: np.ndarray, c: Candidato, modo_eixo: str = "estimado") 
     r = {nome: pente(f, pico, fundo, f_eixo, razao, c) for nome, razao in FAMILIAS}
     v = np.array([r["bpfo"]["pontuacao"], r["bpfi"]["pontuacao"],
                   r["bpfo"]["fracao"], r["bpfi"]["fracao"]])
-    return v, {"f_eixo": f_eixo, **{f"f0_{n}": r[n]["f0"] for n in r}}
+    return v, {"f_eixo": f_eixo, **{f"f0_{n}": r[n]["f0"] for n in r},
+               **{f"f0_na_borda_{n}": r[n]["f0_na_borda"] for n in r}}
 
 
 def extrair(clipes: dict, segmentos, c: Candidato, modo_eixo: str = "estimado") -> tuple[np.ndarray, list[dict]]:
@@ -395,6 +407,35 @@ def rodar_b(folds, segmentos, y, X_mfcc, X_pente, variante: str,
     return metricas.resumo_protocolo_b(resultados)
 
 
+def diagnostico_lda(folds, segmentos, y, X: np.ndarray, nomes: list[str]) -> dict:
+    """
+    Só reporte, no B externo: média de |coef| da LDA nas features padronizadas (o
+    pipeline padroniza antes da LDA) e posição de cada falha deixada de fora no eixo
+    da LDA (0 = centro das falhas de treino, 1 = centro da normal de treino), como no
+    `inspect_left_out_fault.py`.
+    """
+    rot = np.array([s.rotulo for s in segmentos])
+    coefs, pos = [], {}
+    for f in folds:
+        mdl = novo_modelo("lda", 2).fit(X[f.treino], y[f.treino])
+        coefs.append(np.abs(mdl[-1].coef_.ravel()))
+        s = mdl.decision_function(X)
+        if list(mdl.classes_).index("normal") == 0:
+            s = -s                                   # orienta: normal > 0
+        treino = np.zeros(len(segmentos), dtype=bool)
+        treino[f.treino] = True
+        fora = sorted({rot[i] for i in f.teste} - {"normal"})[0]
+        s_normal = s[treino & (rot == "normal")].mean()
+        s_falhas = s[treino & (y == "falha")].mean()
+        pos.setdefault(fora, []).append(float((s[rot == fora].mean() - s_falhas) / (s_normal - s_falhas)))
+    c = np.mean(coefs, axis=0)
+    return {"coef_abs_medio": dict(zip(nomes, c.tolist())),
+            "coef_abs_medio_mfcc": float(c[:26].mean()),
+            "coef_abs_medio_pente": float(c[26:].mean()) if len(c) > 26 else None,
+            "fracao_do_peso_no_pente": float(c[26:].sum() / c.sum()) if len(c) > 26 else None,
+            "posicao_eixo_lda": {k: float(np.mean(v)) for k, v in sorted(pos.items())}}
+
+
 def permutacao_c(folds, segmentos, y, X_mfcc, X_pente) -> list[float]:
     rng = np.random.default_rng(config.SEMENTE)
     return [rodar_b(folds, segmentos, y, X_mfcc, X_pente, "c", rng)["acuracia_balanceada_media"]
@@ -457,6 +498,7 @@ def main() -> int:
     ap.add_argument("--sem-registro", action="store_true")
     ap.add_argument("--sintetico", action="store_true", help="auto-teste (implica --sem-registro)")
     ap.add_argument("--responsavel", default="")
+    ap.add_argument("--notas", default="", help="acrescentado às notas de cada linha do registry")
     args = ap.parse_args()
 
     if args.sintetico:
@@ -498,6 +540,10 @@ def main() -> int:
     print(f"razões cinemáticas: BPFO {RAZAO_BPFO:.4f} × eixo, BPFI {RAZAO_BPFI:.4f} × eixo; "
           f"busca ±{BUSCA_REL:.0%}; decisão pelo modo do eixo '{MODO_DECISAO}', margem {MARGEM}")
     b_mfcc = rodar_b(folds, segmentos, y, X_mfcc, None, "mfcc")
+    nomes_mfcc = [f"media_c{i}" for i in range(config.MFCC_N_COEFS)] + [f"desvio_c{i}" for i in range(config.MFCC_N_COEFS)]
+    lda_mfcc = diagnostico_lda(folds, segmentos, y, X_mfcc, nomes_mfcc)
+    print("posição de cada falha deixada de fora no eixo da LDA, só MFCC (0 = falhas, 1 = normal): "
+          + ", ".join(f"{k} {v:.2f}" for k, v in lda_mfcc["posicao_eixo_lda"].items()))
     cab = (f"  {'conjunto':<12}{'acc.bal.':>9}{'sens.':>7}{'espec.':>8}"
            f"{'bpfi_0.3':>10}{'bpfi_1.0':>10}{'bpfo_0.3':>10}{'bpfo_1.0':>10}{'perm.':>8}")
     resultado = {}
@@ -505,7 +551,7 @@ def main() -> int:
         custo = custo_stm32(c)
         motivo = inviavel(c)
         print(f"\n== {c.nome}: {c.descricao}; resolução {c.resolucao:.3f} Hz, máscara do eixo "
-              f"{c.mascara_hz:.2f} Hz; custo estimado {custo['ram_kb']:.1f} KB, "
+              f"±{c.mascara_hz:.2f} Hz; custo estimado {custo['ram_kb']:.1f} KB, "
               f"{custo['ops_total'] / 1e6:.2f} Mops por segmento")
         resultado[c.nome] = {"candidato": {**c.__dict__, "resolucao_hz": c.resolucao,
                                            "mascara_hz": c.mascara_hz, "fundo_hz": c.fundo_hz},
@@ -519,13 +565,17 @@ def main() -> int:
                         for j, n in enumerate(NOMES_FEATURES)} for k in config.CLASSES}
             f0 = {k: {campo: float(np.median([d[campo] for d, r in zip(diag, rot) if r == k]))
                       for campo in ("f_eixo", "f0_bpfo", "f0_bpfi")} for k in config.CLASSES}
+            borda = {k: {n: float(np.mean([d[f"f0_na_borda_{n}"] for d, r in zip(diag, rot) if r == k]))
+                         for n, _ in FAMILIAS} for k in config.CLASSES}
             print(f"\n  eixo {modo}" + (" (decide)" if modo == MODO_DECISAO else " (sensibilidade)"))
-            print(f"  {'classe':<12}{'pont. BPFO':>12}{'pont. BPFI':>12}{'eixo':>8}{'f0 BPFO':>10}{'f0 BPFI':>10}")
+            print(f"  {'classe':<12}{'pont. BPFO':>12}{'pont. BPFI':>12}{'eixo':>8}{'f0 BPFO':>10}{'f0 BPFI':>10}"
+                  f"{'borda BPFO':>12}{'borda BPFI':>12}")
             for k in config.CLASSES:
                 d = dist[k]
                 print(f"  {k:<12}{d['pontuacao_bpfo'][0]:>7.1f}±{d['pontuacao_bpfo'][1]:<4.1f}"
                       f"{d['pontuacao_bpfi'][0]:>7.1f}±{d['pontuacao_bpfi'][1]:<4.1f}"
-                      f"{f0[k]['f_eixo']:>8.2f}{f0[k]['f0_bpfo']:>10.2f}{f0[k]['f0_bpfi']:>10.2f}")
+                      f"{f0[k]['f_eixo']:>8.2f}{f0[k]['f0_bpfo']:>10.2f}{f0[k]['f0_bpfi']:>10.2f}"
+                      f"{borda[k]['bpfo']:>12.2f}{borda[k]['bpfi']:>12.2f}")
 
             internas = validacao_interna(folds, segmentos, y,
                                          {"mfcc": X_mfcc, "mfcc+pente": np.hstack([X_mfcc, X_pente])},
@@ -546,11 +596,20 @@ def main() -> int:
             print(_linha_b("mfcc", b_mfcc))
             print(_linha_b("mfcc+pente", b_pente))
             print(_linha_b("c (achado)", b_c, float(np.mean(perm_c))))
+            lda_pente = diagnostico_lda(folds, segmentos, y, np.hstack([X_mfcc, X_pente]),
+                                        nomes_mfcc + list(NOMES_FEATURES))
+            print(f"  LDA com o pente (B externo, só reporte): |coef| médio {lda_pente['coef_abs_medio_mfcc']:.3f} "
+                  f"no MFCC e {lda_pente['coef_abs_medio_pente']:.3f} no pente "
+                  f"({lda_pente['fracao_do_peso_no_pente']:.1%} do peso); posição no eixo: "
+                  + ", ".join(f"{k} {v:.2f} (só MFCC {lda_mfcc['posicao_eixo_lda'][k]:.2f})"
+                              for k, v in lda_pente["posicao_eixo_lda"].items()))
             resultado[c.nome]["modos"][modo] = {
                 "decide": modo == MODO_DECISAO,
                 "distribuicao_por_classe": dist, "f0_mediano_por_classe": f0,
+                "fracao_f0_na_borda_por_classe": borda,
                 "decisao": dec,
                 "protocolo_b_externo": {"mfcc": b_mfcc, "mfcc+pente": b_pente},
+                "lda_b_externo": {"mfcc": lda_mfcc, "mfcc+pente": lda_pente},
                 "achado_c": {"resumo": b_c, "permutacao_media": float(np.mean(perm_c)),
                              "permutacao_max": float(np.max(perm_c)), "k_desvios": K_DESVIOS_C},
             }
@@ -572,9 +631,14 @@ def main() -> int:
     base = experimentos.next_exp_number(args.registry)
     for nome, r in resultado.items():
         cu = r["custo_stm32"]
-        comum = {"candidato": nome, "resolucao_hz": f"{r['candidato']['resolucao_hz']:.3f}",
+        comum = {"validacao": "interna_B", "tarefa": "binario", "modelo": "lda",
+                 "features": "mfcc_dsp_media_desvio+pente", "candidato": nome,
+                 "resolucao_hz": f"{r['candidato']['resolucao_hz']:.3f}",
                  "mascara_hz": f"{r['candidato']['mascara_hz']:.2f}", "busca_rel": BUSCA_REL,
-                 "limiar_dente_db": LIMIAR_DENTE_DB, "splits": hash_splits, "features_commit": feat_commit}
+                 "limiar_dente_db": LIMIAR_DENTE_DB, "splits": hash_splits, "fs_hz": config.FS_TRABALHO,
+                 "segmento_s": config.SEGMENTO_S, "mfcc_janela_ms": config.MFCC_WINDOW_MS,
+                 "mfcc_hop_ms": config.MFCC_HOP_MS, "mfcc_n_mels": config.MFCC_N_MELS,
+                 "mfcc_n_coefs": config.MFCC_N_COEFS, "features_commit": feat_commit, "aumento": "nenhum"}
         modos = r["modos"].items() if r["modos"] else [(None, None)]
         for modo, m in modos:
             met = {"ram_kb": f"{cu['ram_kb']:.1f}", "mops": f"{cu['ops_total'] / 1e6:.2f}"}
@@ -593,6 +657,10 @@ def main() -> int:
                     "c_acc_bal_bpfo_0.3mm": f"{c_['resumo']['por_falha']['bpfo_0.3mm']['acuracia_balanceada']:.4f}",
                     "c_espec_media": f"{c_['resumo']['especificidade_media']:.4f}",
                     "c_perm_media": f"{c_['permutacao_media']:.4f}",
+                    "f0_borda_bpfo_0.3mm": f"{m['fracao_f0_na_borda_por_classe']['bpfo_0.3mm']['bpfo']:.2f}",
+                    "peso_lda_no_pente": f"{m['lda_b_externo']['mfcc+pente']['fracao_do_peso_no_pente']:.4f}",
+                    "posicao_bpfo_0.3mm": f"{m['lda_b_externo']['mfcc+pente']['posicao_eixo_lda']['bpfo_0.3mm']:.2f}",
+                    "posicao_bpfo_0.3mm_so_mfcc": f"{m['lda_b_externo']['mfcc']['posicao_eixo_lda']['bpfo_0.3mm']:.2f}",
                 })
                 notas = (f"pente harmônico, eixo {modo} ({'decide' if m['decide'] else 'sensibilidade'}): "
                          f"{dec['situacao']}; c = LDA OU pente acima da normal, achado fora do escopo do card")
@@ -606,7 +674,7 @@ def main() -> int:
                 "dataset": f"jung2023_acustico_0Nm_{config.FS_TRABALHO}Hz",
                 "metricas": experimentos.kv(met),
                 "responsavel": args.responsavel,
-                "notas": notas,
+                "notas": notas + (f"; {args.notas}" if args.notas else ""),
             })
     experimentos.append_registry(args.registry, linhas)
     print(f"registrado: {linhas[0]['id']}–{linhas[-1]['id']}")

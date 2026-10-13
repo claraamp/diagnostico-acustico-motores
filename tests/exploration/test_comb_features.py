@@ -141,3 +141,16 @@ def test_custo_b_cabe_na_cmsis_e_c_nao():
     _, b, c = P.CANDIDATOS
     assert P.custo_stm32(b)["fft_na_cmsis"] and not P.custo_stm32(c)["fft_na_cmsis"]
     assert P.custo_stm32(b)["ram_kb"] == pytest.approx(4 * (2 * 4096 + 2049) / 1024)
+
+
+@pytest.mark.parametrize("c", VIAVEIS, ids=lambda c: c.nome)
+def test_f0_na_borda_marca_serie_logo_alem_da_faixa(c):
+    # eixo subestimado em 49,5 Hz: a faixa de ±3 % vai até ~182,35 Hz e a série real
+    # (182,65) fica logo além; o melhor f₀ cai no extremo da grade. Com o eixo certo,
+    # não. (Uma série bem fora da faixa pode puxar o máximo para dentro dela: a marca
+    # pega o quase-acerto, não toda série fora da faixa.)
+    x = _sinal(182.65)
+    f, p = P.espectro(x, c)
+    pico, fundo = P.pico_e_fundo(f, p, c.fundo_hz)
+    assert P.pente(f, pico, fundo, 49.5, P.RAZAO_BPFO, c)["f0_na_borda"]
+    assert not P.pente(f, pico, fundo, EIXO, P.RAZAO_BPFO, c)["f0_na_borda"]
