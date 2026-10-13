@@ -57,6 +57,10 @@ As frequências de falha **medidas** no áudio são BPFI ≈ 268,3 Hz e BPFO ≈
 
 A `bpfo_0.3mm` tem essas linhas (+30 dB sobre a normal) e o log-Mel oficial as enxerga (+6 a +14 dB em 0,7–1,3 kHz), mas sem a elevação larga das outras falhas. No Protocolo B, o eixo da LDA aprendido com as outras três falhas a coloca a ~20 % do caminho entre a normal e as falhas de treino, do lado da normal. O `inspect_left_out_fault.py` chega ao mesmo número por um cálculo independente. Scripts em `scripts/exploration/` (`inspect_signature_spectra.py`, `identify_tonal_peaks.py`, `confirm_bpf_envelope.py`, `inspect_signature_mel.py`), saídas em `reports/signature/`, rodadas `exp023`–`exp026`.
 
+### Pente harmônico (linhas estreitas): fica fora da cadeia
+
+O `inspect_comb_features.py` avaliou 4 features de pente harmônico de BPFO e BPFI (pontuação e fração de dentes ≥ 6 dB de cada série, com o f₀ buscado a ±3 % da razão cinemática e as harmônicas do eixo mascaradas) junto ao MFCC, com a mesma LDA, nos três candidatos de resolução do card: A, espectro médio dos 98 quadros do MFCC (40 Hz); B, FFT de 4.096 pontos com média de 3 blocos (3,125 Hz, ~40 KB de RAM estimados); C, FFT de 1 s (1 Hz, só referência). A decisão é pela validação interna ao treino do B (`validation.selecao`, a mesma regra do estudo do classificador: o pente só entra se ganhar por mais que a margem de 0,02, sem perder especificidade, para as quatro falhas externas). **O pente fica fora e a cadeia congela com MFCC e LDA** (`exp248`–`exp252`, que substituem o `exp243`–`exp247` com os mesmos números e mais diagnósticos). O A é inviável: com 40 Hz de resolução, nenhum dente da BPFO fica longe das harmônicas do eixo, que são mais fortes na normal. No B e no C, a validação interna é a mesma com e sem o pente (0,833 nas falhas externas em que a `bpfo_0.3mm` sai dentro do treino, 1,000 na outra), e o B externo também (0,875; `bpfo_0.3mm` em 0,500). O pente enxerga a falha: com 1 Hz (C), o f₀ da BPFO na `bpfo_0.3mm` sai em 182,65 Hz e a pontuação é 21,7 dB, contra 9,9 dB na normal; no B, que caberia no chip, 14,4 contra 5,4 dB com a rotação do artigo e 9,4 ± 4,6 contra 5,4 dB com a estimada. Mas a LDA treinada com as outras falhas dá pouco peso a essas colunas (1–7 % da soma dos |coef| nas features padronizadas), e a posição da `bpfo_0.3mm` no eixo da LDA não muda: 0,80 só com o MFCC e 0,79–0,82 com o pente (0 = centro das falhas de treino, 1 = centro da normal, a definição do `inspect_left_out_fault.py`). No B, a rotação estimada no segmento erra nas gravações de BPFO (~48,8 Hz, contra ~50,2 Hz medidos), e o pente só acha a série com a rotação do artigo (`EIXO_ARTIGO_HZ` = 50,17 Hz, Jung et al., 2023); o erro é silencioso, porque o f₀ fica dentro da faixa de busca (só 2 % dos segmentos com o f₀ no extremo da grade). A decisão é a mesma nos dois modos. Como achado, fora da decisão: a regra "LDA OU pente acima de média + 4 desvios da normal do treino" detecta a `bpfo_0.3mm` (0,992–1,000 no C) com especificidade 1,000, mas muda o modelo (é detecção de novidade, assunto do card do Mahalanobis) e a especificidade dela foi medida na mesma gravação normal de onde sai o limiar: só o Protocolo C pode confirmá-la.
+
 ## Dataset
 
 Jung, W.; Kim, S.-H.; Yun, S.-H.; Bae, J.; Park, Y.-H. (2023), *Data in Brief* 48, 109049. Subconjunto acústico (microfone), 5 classes — `0Nm_Normal`, `0Nm_BPFI_03`, `0Nm_BPFI_10`, `0Nm_BPFO_03`, `0Nm_BPFO_10` — 60 s cada, 51,2 kHz, formato `.mat`.
@@ -109,6 +113,7 @@ diagnostico-acustico-motores/
 │   │   ├── compare_decimation_rates.py    # estudo que definiu a taxa de trabalho
 │   │   ├── compare_classifiers.py         # estudo que escolheu o classificador (validação interna ao B)
 │   │   ├── inspect_lda_harmonicos.py      # controle: peso da LDA nas bandas dos harmônicos do eixo
+│   │   ├── inspect_comb_features.py       # pente harmônico (BPFO/BPFI) junto ao MFCC: entra na cadeia? (validação interna)
 │   │   ├── inspect_left_out_fault.py      # posição da falha deixada de fora (Protocolo B)
 │   │   ├── inspect_acumulacao_float32.py  # média e desvio do MFCC em float32, por método (contrato numérico, A3)
 │   │   ├── inspect_signature_spectra.py   # PSD assinada falha × normal (excesso e déficit)
@@ -126,6 +131,7 @@ diagnostico-acustico-motores/
 │   └── validation/           # protocolo de validação do classificador
 │       ├── particao.py                    # segmentos, folds A e B, verificação
 │       ├── metricas.py                    # sensibilidade, especificidade, acurácia balanceada
+│       ├── selecao.py                     # validação interna ao B e regra de escolha (escolher), sem torch
 │       ├── run_protocol.py                # executável: roda A ou B e registra o resultado
 │       ├── run_tabela_comparativa.py      # executável: tabela provisório × oficial a partir dos metrics.json
 │       ├── run_tabela_controles.py        # executável: tabela dos controles (sem c0, permutação, curva)
@@ -147,13 +153,15 @@ diagnostico-acustico-motores/
 │   │   ├── test_train_classifier.py       # o 05 só aceita as features de referência da partição
 │   │   └── test_export_lda_header.py      # o .h é paramétrico em N_FEATURES, traz o float32 do JSON e, compilado, reproduz o escore
 │   ├── exploration/
+│   │   ├── test_comb_features.py          # candidatos A/B/C do card (A inviável); acha a série fora da razão cinemática; decisão pela validação interna
 │   │   └── test_compare_classifiers.py    # critério de escolha: mais barato na margem, em qualquer ordem (pula sem torch)
 │   └── validation/
 │       ├── test_curva_aprendizado.py      # subamostra só treino, n por classe, reprodutível
 │       ├── test_tabela_aumento.py         # tabela do aumento: comparabilidade e fator de expansão
 │       ├── test_tabela_taxas.py           # tabela das taxas: comparabilidade e mesma partição em segundos
 │       ├── test_consolidacao.py           # consolidação: número sem registry ou rodada no papel errado aborta
-│       └── test_particao.py               # inclui: outra taxa dá os mesmos segmentos em segundos
+│       ├── test_particao.py               # inclui: outra taxa dá os mesmos segmentos em segundos
+│       └── test_selecao.py                # folds internos não leem o teste externo; escolher fica com o mais barato na margem
 │
 ├── notebooks/                # notebooks de análise/visualização
 │
@@ -233,6 +241,10 @@ python scripts/validation/run_tabela_aumento.py       # B com e sem aumento: mé
 # tem harmônicos mais fortes (lê o picos_metrics.json do identify_tonal_peaks.py)
 python scripts/exploration/inspect_lda_harmonicos.py --sintetico   # auto-teste
 python scripts/exploration/inspect_lda_harmonicos.py --responsavel <nome>
+
+# pente harmônico (BPFO/BPFI): candidatos de resolução A/B/C, decisão pela validação interna
+python scripts/exploration/inspect_comb_features.py --sintetico    # auto-teste
+python scripts/exploration/inspect_comb_features.py --responsavel <nome>
 
 # ablação da normalização RMS por segmento: reextrai e roda de novo
 python scripts/pipeline/04_extract_features.py --norm-clipe

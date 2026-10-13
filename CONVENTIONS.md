@@ -132,7 +132,7 @@ Cada rodada de um experimento (extração de features, treino de classificador, 
 |---|---|
 | `id` | identificador curto e sequencial, ex. `exp001` |
 | `data` | data da rodada (AAAA-MM-DD) |
-| `etapa` | qual etapa do pipeline foi exercitada, ex. `decimacao`, `extracao_features`, `validacao_classificador`, `escolha_classificador`, `treino_classificador`, `exportacao_firmware`, `caracterizacao_assinatura`, `contrato_numerico` |
+| `etapa` | qual etapa do pipeline foi exercitada, ex. `decimacao`, `extracao_features`, `validacao_classificador`, `escolha_classificador`, `treino_classificador`, `exportacao_firmware`, `caracterizacao_assinatura`, `caracterizacao_pente`, `contrato_numerico` |
 | `script` | script executado, ex. `02_decimate_pcm.py` |
 | `git_commit` | hash curto do commit em que o script estava (`git rev-parse --short HEAD`) — garante que dá pra reproduzir exatamente aquela rodada |
 | `parametros` | parâmetros relevantes da rodada, em formato `chave=valor;chave=valor` (ex. `fator_decimacao=4;filtro=fir_lowpass_order8`) |
@@ -165,6 +165,7 @@ Módulos importáveis ficam na raiz de `scripts/` quando praticamente toda etapa
 | `experimentos.py` | numeração, hash do commit e escrita do `registry.csv` |
 | `validation/particao.py` | segmentação das gravações, folds dos protocolos A e B, verificação das garantias, leitura e escrita do `splits.json` |
 | `validation/metricas.py` | sensibilidade, especificidade, acurácia balanceada e resumos dos protocolos |
+| `validation/selecao.py` | validação interna ao treino do B (`folds_internos`) e regra de escolha (`escolher`: o mais barato dentro da margem), para todo estudo que escolhe sem olhar o teste |
 | `augmentation/transformacoes.py` | transformações de sinal do aumento: estiramento temporal (phase vocoder ou reamostragem), ruído com SNR fixada, recorte central |
 | `models/lda.py` | modelo final: o mesmo `novo_modelo` do `run_protocol` treinado com todos os segmentos, parâmetros em JSON nas formas padronizada e dobrada (escore ≥ 0 → falha, o empate do sklearn), descrição da cadeia de features para o firmware (`cadeia_entrada`, tirada do `config` e do `dsp`) e conferência contra o sklearn |
 | `augmentation/variantes.py` | variantes por segmento (sorteio reprodutível por segmento e cópia), intervalo lido da gravação e filtro que aceita, em cada fold, só as variantes que leem segmentos de treino |

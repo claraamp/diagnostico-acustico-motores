@@ -1,0 +1,1814 @@
+{
+  "parametros": {
+    "razao_bpfo": 3.5766233766233766,
+    "razao_bpfi": 5.423376623376623,
+    "busca_rel": 0.03,
+    "fmax_dentes": 5600.0,
+    "mascara_res": 2.0,
+    "fundo_res": [
+      3.0,
+      10.0
+    ],
+    "limiar_dente_db": 6.0,
+    "eixo_hz": [
+      45.0,
+      55.0
+    ],
+    "modo_decisao": "estimado",
+    "margem": 0.02,
+    "k_desvios_c": 4.0,
+    "n_permutacoes": 20,
+    "splits": "772c8e1eb1",
+    "features_commit": "e57d980"
+  },
+  "candidatos": {
+    "A_espectro_medio_quadros": {
+      "candidato": {
+        "nome": "A_espectro_medio_quadros",
+        "n_bloco": 320,
+        "n_fft": 512,
+        "passo": 128,
+        "n_blocos": 98,
+        "descricao": "média do espectro de potência dos quadros do MFCC",
+        "resolucao_hz": 40.0,
+        "mascara_hz": 80.0,
+        "fundo_hz": [
+          120.0,
+          400.0
+        ]
+      },
+      "custo_stm32": {
+        "ram_kb": 1.00390625,
+        "flops_fft": 0.0,
+        "ops_fundo": 31408.338196618774,
+        "ops_busca": 1246.6562687999997,
+        "ops_total": 32654.994465418775,
+        "fft_na_cmsis": true
+      },
+      "inviavel": "máscara de ±80.0 Hz (2 × 40.0 Hz de resolução) ≥ metade do espaçamento das harmônicas do eixo (≤ 22.5 Hz): todo dente cai na vizinhança de uma harmônica do eixo",
+      "modos": {}
+    },
+    "B_fft4096_3blocos": {
+      "candidato": {
+        "nome": "B_fft4096_3blocos",
+        "n_bloco": 4096,
+        "n_fft": 4096,
+        "passo": 4096,
+        "n_blocos": 3,
+        "descricao": "FFT de 4.096 pontos, média de 3 blocos de 0,32 s",
+        "resolucao_hz": 3.125,
+        "mascara_hz": 6.25,
+        "fundo_hz": [
+          9.375,
+          31.25
+        ]
+      },
+      "custo_stm32": {
+        "ram_kb": 40.00390625,
+        "flops_fft": 368640.0,
+        "ops_fundo": 131136.0,
+        "ops_busca": 9973.250150399997,
+        "ops_total": 509749.2501504,
+        "fft_na_cmsis": true
+      },
+      "inviavel": null,
+      "modos": {
+        "estimado": {
+          "decide": true,
+          "distribuicao_por_classe": {
+            "normal": {
+              "pontuacao_bpfo": [
+                5.375125768548711,
+                0.6950639533946523
+              ],
+              "pontuacao_bpfi": [
+                5.563247174932446,
+                0.9644678868325574
+              ],
+              "fracao_bpfo": [
+                0.3687443973368807,
+                0.08517129547045348
+              ],
+              "fracao_bpfi": [
+                0.4010052108631371,
+                0.08025626254929984
+              ]
+            },
+            "bpfi_0.3mm": {
+              "pontuacao_bpfo": [
+                9.372115210226958,
+                0.9662711425499859
+              ],
+              "pontuacao_bpfi": [
+                13.920123917473742,
+                5.262232075566512
+              ],
+              "fracao_bpfo": [
+                0.5785751512059545,
+                0.07299508495938063
+              ],
+              "fracao_bpfi": [
+                0.7460451977401129,
+                0.22470052053898645
+              ]
+            },
+            "bpfi_1.0mm": {
+              "pontuacao_bpfo": [
+                9.050601793747562,
+                0.6672664283650527
+              ],
+              "pontuacao_bpfi": [
+                15.503183906187163,
+                5.685272084794977
+              ],
+              "fracao_bpfo": [
+                0.5280299766556215,
+                0.05038654798593659
+              ],
+              "fracao_bpfi": [
+                0.8123859191655802,
+                0.21437414108502945
+              ]
+            },
+            "bpfo_0.3mm": {
+              "pontuacao_bpfo": [
+                9.423832821783396,
+                4.55118618641542
+              ],
+              "pontuacao_bpfi": [
+                7.239367909779948,
+                0.9968360989959516
+              ],
+              "fracao_bpfo": [
+                0.6458680100297639,
+                0.2716618792921192
+              ],
+              "fracao_bpfi": [
+                0.48739733596413554,
+                0.11241264327843034
+              ]
+            },
+            "bpfo_1.0mm": {
+              "pontuacao_bpfo": [
+                15.66907372954979,
+                8.800326160548636
+              ],
+              "pontuacao_bpfi": [
+                10.849825664677946,
+                2.9778255428925253
+              ],
+              "fracao_bpfo": [
+                0.7063086890592417,
+                0.2567935840160272
+              ],
+              "fracao_bpfi": [
+                0.6133474576271186,
+                0.130654248427983
+              ]
+            }
+          },
+          "f0_mediano_por_classe": {
+            "normal": {
+              "f_eixo": 50.25000000000003,
+              "f0_bpfo": 181.69171827418262,
+              "f0_bpfi": 269.09085876623385
+            },
+            "bpfi_0.3mm": {
+              "f_eixo": 50.25000000000003,
+              "f0_bpfo": 179.16772889610468,
+              "f0_bpfi": 268.37815242652084
+            },
+            "bpfi_1.0mm": {
+              "f_eixo": 50.25000000000003,
+              "f0_bpfo": 179.16669061147286,
+              "f0_bpfi": 268.13163585099113
+            },
+            "bpfo_0.3mm": {
+              "f_eixo": 48.84375000000002,
+              "f0_bpfo": 179.43466582006926,
+              "f0_bpfi": 268.84536363636374
+            },
+            "bpfo_1.0mm": {
+              "f_eixo": 48.84375000000002,
+              "f0_bpfo": 178.9116087007772,
+              "f0_bpfi": 266.96702759740265
+            }
+          },
+          "fracao_f0_na_borda_por_classe": {
+            "normal": {
+              "bpfo": 0.06779661016949153,
+              "bpfi": 0.03389830508474576
+            },
+            "bpfi_0.3mm": {
+              "bpfo": 0.0,
+              "bpfi": 0.0
+            },
+            "bpfi_1.0mm": {
+              "bpfo": 0.0,
+              "bpfi": 0.0
+            },
+            "bpfo_0.3mm": {
+              "bpfo": 0.01694915254237288,
+              "bpfi": 0.0
+            },
+            "bpfo_1.0mm": {
+              "bpfo": 0.0,
+              "bpfi": 0.0
+            }
+          },
+          "decisao": {
+            "por_externo": {
+              "B_bpfi_0.3mm": {
+                "medias": {
+                  "mfcc": 0.8333333333333334,
+                  "mfcc+pente": 0.8333333333333334
+                },
+                "especificidade": {
+                  "mfcc": 1.0,
+                  "mfcc+pente": 1.0
+                },
+                "pior_falha": {
+                  "mfcc": 0.5,
+                  "mfcc+pente": 0.5
+                },
+                "escolhido_escolher": "mfcc",
+                "perde_especificidade": false,
+                "escolhido": "mfcc"
+              },
+              "B_bpfi_1.0mm": {
+                "medias": {
+                  "mfcc": 0.8333333333333334,
+                  "mfcc+pente": 0.8333333333333334
+                },
+                "especificidade": {
+                  "mfcc": 1.0,
+                  "mfcc+pente": 1.0
+                },
+                "pior_falha": {
+                  "mfcc": 0.5,
+                  "mfcc+pente": 0.5
+                },
+                "escolhido_escolher": "mfcc",
+                "perde_especificidade": false,
+                "escolhido": "mfcc"
+              },
+              "B_bpfo_0.3mm": {
+                "medias": {
+                  "mfcc": 1.0,
+                  "mfcc+pente": 1.0
+                },
+                "especificidade": {
+                  "mfcc": 1.0,
+                  "mfcc+pente": 1.0
+                },
+                "pior_falha": {
+                  "mfcc": 1.0,
+                  "mfcc+pente": 1.0
+                },
+                "escolhido_escolher": "mfcc",
+                "perde_especificidade": false,
+                "escolhido": "mfcc"
+              },
+              "B_bpfo_1.0mm": {
+                "medias": {
+                  "mfcc": 0.8333333333333334,
+                  "mfcc+pente": 0.8333333333333334
+                },
+                "especificidade": {
+                  "mfcc": 1.0,
+                  "mfcc+pente": 1.0
+                },
+                "pior_falha": {
+                  "mfcc": 0.5,
+                  "mfcc+pente": 0.5
+                },
+                "escolhido_escolher": "mfcc",
+                "perde_especificidade": false,
+                "escolhido": "mfcc"
+              }
+            },
+            "entra": false,
+            "situacao": "fica fora (não ganha por mais que a margem em nenhuma falha externa)",
+            "margem": 0.02
+          },
+          "protocolo_b_externo": {
+            "mfcc": {
+              "protocolo": "B",
+              "leitura": "resultado principal — meta: acurácia balanceada média ≥ 85%",
+              "n_folds": 24,
+              "acuracia_balanceada_media": 0.875,
+              "sensibilidade_media": 0.75,
+              "especificidade_media": 1.0,
+              "pior_falha": "bpfo_0.3mm",
+              "pior_falha_acuracia_balanceada": 0.5,
+              "pior_fold": "B_bpfo_0.3mm_bloco0",
+              "pior_fold_acuracia_balanceada": 0.5,
+              "meta_atingida": true,
+              "por_falha": {
+                "bpfi_0.3mm": {
+                  "sensibilidade": 1.0,
+                  "especificidade": 1.0,
+                  "acuracia_balanceada": 1.0,
+                  "n_folds": 6
+                },
+                "bpfi_1.0mm": {
+                  "sensibilidade": 1.0,
+                  "especificidade": 1.0,
+                  "acuracia_balanceada": 1.0,
+                  "n_folds": 6
+                },
+                "bpfo_0.3mm": {
+                  "sensibilidade": 0.0,
+                  "especificidade": 1.0,
+                  "acuracia_balanceada": 0.5,
+                  "n_folds": 6
+                },
+                "bpfo_1.0mm": {
+                  "sensibilidade": 1.0,
+                  "especificidade": 1.0,
+                  "acuracia_balanceada": 1.0,
+                  "n_folds": 6
+                }
+              }
+            },
+            "mfcc+pente": {
+              "protocolo": "B",
+              "leitura": "resultado principal — meta: acurácia balanceada média ≥ 85%",
+              "n_folds": 24,
+              "acuracia_balanceada_media": 0.875,
+              "sensibilidade_media": 0.75,
+              "especificidade_media": 1.0,
+              "pior_falha": "bpfo_0.3mm",
+              "pior_falha_acuracia_balanceada": 0.5,
+              "pior_fold": "B_bpfo_0.3mm_bloco0",
+              "pior_fold_acuracia_balanceada": 0.5,
+              "meta_atingida": true,
+              "por_falha": {
+                "bpfi_0.3mm": {
+                  "sensibilidade": 1.0,
+                  "especificidade": 1.0,
+                  "acuracia_balanceada": 1.0,
+                  "n_folds": 6
+                },
+                "bpfi_1.0mm": {
+                  "sensibilidade": 1.0,
+                  "especificidade": 1.0,
+                  "acuracia_balanceada": 1.0,
+                  "n_folds": 6
+                },
+                "bpfo_0.3mm": {
+                  "sensibilidade": 0.0,
+                  "especificidade": 1.0,
+                  "acuracia_balanceada": 0.5,
+                  "n_folds": 6
+                },
+                "bpfo_1.0mm": {
+                  "sensibilidade": 1.0,
+                  "especificidade": 1.0,
+                  "acuracia_balanceada": 1.0,
+                  "n_folds": 6
+                }
+              }
+            }
+          },
+          "lda_b_externo": {
+            "mfcc": {
+              "coef_abs_medio": {
+                "media_c0": 1915.875610487343,
+                "media_c1": 739.8942655919122,
+                "media_c2": 479.1386975484451,
+                "media_c3": 381.96863017677043,
+                "media_c4": 890.6675220461049,
+                "media_c5": 349.5552968731688,
+                "media_c6": 1172.4125467901063,
+                "media_c7": 569.5013802755285,
+                "media_c8": 478.6206319690046,
+                "media_c9": 56.87017767043552,
+                "media_c10": 655.6668776697298,
+                "media_c11": 224.8490860579635,
+                "media_c12": 158.12692095342706,
+                "desvio_c0": 29.573682160880196,
+                "desvio_c1": 7.563307774757269,
+                "desvio_c2": 6.879584121922087,
+                "desvio_c3": 26.00491901689684,
+                "desvio_c4": 9.874375352298518,
+                "desvio_c5": 4.966711949112919,
+                "desvio_c6": 24.77396073605665,
+                "desvio_c7": 51.099073197482404,
+                "desvio_c8": 28.288306196809597,
+                "desvio_c9": 32.812933164042846,
+                "desvio_c10": 12.36845280944227,
+                "desvio_c11": 23.716451163144853,
+                "desvio_c12": 7.325187813353097
+              },
+              "coef_abs_medio_mfcc": 320.7074842140822,
+              "coef_abs_medio_pente": null,
+              "fracao_do_peso_no_pente": null,
+              "posicao_eixo_lda": {
+                "bpfi_0.3mm": 0.11989969509373888,
+                "bpfi_1.0mm": 0.014395228082482128,
+                "bpfo_0.3mm": 0.7974353714266632,
+                "bpfo_1.0mm": -0.5153657449553559
+              }
+            },
+            "mfcc+pente": {
+              "coef_abs_medio": {
+                "media_c0": 1983.8694259196166,
+                "media_c1": 765.5213517387461,
+                "media_c2": 494.9074352633452,
+                "media_c3": 399.7394548844638,
+                "media_c4": 907.6475150614662,
+                "media_c5": 348.30381446665587,
+                "media_c6": 1198.437277257103,
+                "media_c7": 583.4643733523783,
+                "media_c8": 476.2340698525477,
+                "media_c9": 52.921785420263234,
+                "media_c10": 664.9693158339372,
+                "media_c11": 223.17596325752666,
+                "media_c12": 164.31479373151424,
+                "desvio_c0": 32.348278843851624,
+                "desvio_c1": 7.118627133183732,
+                "desvio_c2": 7.039959050527824,
+                "desvio_c3": 27.765055086727827,
+                "desvio_c4": 8.183437030305333,
+                "desvio_c5": 4.3621010151773705,
+                "desvio_c6": 26.12464761024648,
+                "desvio_c7": 54.625434764885505,
+                "desvio_c8": 29.357135527830433,
+                "desvio_c9": 32.5608067405826,
+                "desvio_c10": 12.227215245879625,
+                "desvio_c11": 24.51917058985718,
+                "desvio_c12": 7.62400925191955,
+                "pontuacao_bpfo": 13.4343675754056,
+                "pontuacao_bpfi": 24.165148288246233,
+                "fracao_bpfo": 20.726986467976555,
+                "fracao_bpfi": 27.025451387813025
+              },
+              "coef_abs_medio_mfcc": 328.36009438194384,
+              "coef_abs_medio_pente": 21.337988429860353,
+              "fracao_do_peso_no_pente": 0.009898501757604084,
+              "posicao_eixo_lda": {
+                "bpfi_0.3mm": 0.11511589804938245,
+                "bpfi_1.0mm": 0.014265202172963768,
+                "bpfo_0.3mm": 0.7985140773515936,
+                "bpfo_1.0mm": -0.5083369570584336
+              }
+            }
+          },
+          "achado_c": {
+            "resumo": {
+              "protocolo": "B",
+              "leitura": "resultado principal — meta: acurácia balanceada média ≥ 85%",
+              "n_folds": 24,
+              "acuracia_balanceada_media": 0.9322033898305084,
+              "sensibilidade_media": 0.864406779661017,
+              "especificidade_media": 1.0,
+              "pior_falha": "bpfo_0.3mm",
+              "pior_falha_acuracia_balanceada": 0.7288135593220338,
+              "pior_fold": "B_bpfo_0.3mm_bloco0",
+              "pior_fold_acuracia_balanceada": 0.728813559322034,
+              "meta_atingida": true,
+              "por_falha": {
+                "bpfi_0.3mm": {
+                  "sensibilidade": 1.0,
+                  "especificidade": 1.0,
+                  "acuracia_balanceada": 1.0,
+                  "n_folds": 6
+                },
+                "bpfi_1.0mm": {
+                  "sensibilidade": 1.0,
+                  "especificidade": 1.0,
+                  "acuracia_balanceada": 1.0,
+                  "n_folds": 6
+                },
+                "bpfo_0.3mm": {
+                  "sensibilidade": 0.45762711864406785,
+                  "especificidade": 1.0,
+                  "acuracia_balanceada": 0.7288135593220338,
+                  "n_folds": 6
+                },
+                "bpfo_1.0mm": {
+                  "sensibilidade": 1.0,
+                  "especificidade": 1.0,
+                  "acuracia_balanceada": 1.0,
+                  "n_folds": 6
+                }
+              }
+            },
+            "permutacao_media": 0.5057593769617075,
+            "permutacao_max": 0.6013810420590082,
+            "k_desvios": 4.0
+          }
+        },
+        "fixo": {
+          "decide": false,
+          "distribuicao_por_classe": {
+            "normal": {
+              "pontuacao_bpfo": [
+                5.357105010676537,
+                0.45000732848052943
+              ],
+              "pontuacao_bpfi": [
+                4.623750147915395,
+                0.34128345593115444
+              ],
+              "fracao_bpfo": [
+                0.4199269779594024,
+                0.0791283223101624
+              ],
+              "fracao_bpfi": [
+                0.3291422435988737,
+                0.0927662002629345
+              ]
+            },
+            "bpfi_0.3mm": {
+              "pontuacao_bpfo": [
+                9.559380272435677,
+                0.27251541196648194
+              ],
+              "pontuacao_bpfi": [
+                19.37467113030746,
+                0.39435958901383983
+              ],
+              "fracao_bpfo": [
+                0.5480621073841413,
+                0.04924475974012061
+              ],
+              "fracao_bpfi": [
+                0.96841202582728,
+                0.033261890247413106
+              ]
+            },
+            "bpfi_1.0mm": {
+              "pontuacao_bpfo": [
+                9.608595815056969,
+                0.40739904877137767
+              ],
+              "pontuacao_bpfi": [
+                19.770810515012982,
+                0.4986892037315581
+              ],
+              "fracao_bpfo": [
+                0.5161838898021653,
+                0.04273436762961616
+              ],
+              "fracao_bpfi": [
+                0.9685028248587572,
+                0.039381332528481736
+              ]
+            },
+            "bpfo_0.3mm": {
+              "pontuacao_bpfo": [
+                14.37579312940862,
+                0.3319298908617343
+              ],
+              "pontuacao_bpfi": [
+                8.145142488043874,
+                0.5282742184882226
+              ],
+              "fracao_bpfo": [
+                0.9197036689667493,
+                0.03800864606466475
+              ],
+              "fracao_bpfi": [
+                0.5708635996771589,
+                0.05965093605107025
+              ]
+            },
+            "bpfo_1.0mm": {
+              "pontuacao_bpfo": [
+                25.330885509320666,
+                0.26089905528377944
+              ],
+              "pontuacao_bpfi": [
+                10.895027547171757,
+                0.391056199806359
+              ],
+              "fracao_bpfo": [
+                0.9575601259462719,
+                0.009867048781536476
+              ],
+              "fracao_bpfi": [
+                0.6853914447134787,
+                0.03618988579846011
+              ]
+            }
+          },
+          "f0_mediano_por_classe": {
+            "normal": {
+              "f_eixo": 50.17,
+              "f0_bpfo": 183.06643562770725,
+              "f0_bpfi": 266.9708441968557
+            },
+            "bpfi_0.3mm": {
+              "f_eixo": 50.17,
+              "f0_bpfo": 179.21226896103988,
+              "f0_bpfi": 268.6155810389609
+            },
+            "bpfi_1.0mm": {
+              "f_eixo": 50.17,
+              "f0_bpfo": 179.1081022943732,
+              "f0_bpfi": 268.6155810389609
+            },
+            "bpfo_0.3mm": {
+              "f_eixo": 50.17,
+              "f0_bpfo": 182.6497689610405,
+              "f0_bpfi": 274.2076863021186
+            },
+            "bpfo_1.0mm": {
+              "f_eixo": 50.17,
+              "f0_bpfo": 183.32685229437396,
+              "f0_bpfi": 274.7833441968554
+            }
+          },
+          "fracao_f0_na_borda_por_classe": {
+            "normal": {
+              "bpfo": 0.0,
+              "bpfi": 0.0
+            },
+            "bpfi_0.3mm": {
+              "bpfo": 0.0,
+              "bpfi": 0.0
+            },
+            "bpfi_1.0mm": {
+              "bpfo": 0.0,
+              "bpfi": 0.0
+            },
+            "bpfo_0.3mm": {
+              "bpfo": 0.0,
+              "bpfi": 0.0
+            },
+            "bpfo_1.0mm": {
+              "bpfo": 0.0,
+              "bpfi": 0.0
+            }
+          },
+          "decisao": {
+            "por_externo": {
+              "B_bpfi_0.3mm": {
+                "medias": {
+                  "mfcc": 0.8333333333333334,
+                  "mfcc+pente": 0.8333333333333334
+                },
+                "especificidade": {
+                  "mfcc": 1.0,
+                  "mfcc+pente": 1.0
+                },
+                "pior_falha": {
+                  "mfcc": 0.5,
+                  "mfcc+pente": 0.5
+                },
+                "escolhido_escolher": "mfcc",
+                "perde_especificidade": false,
+                "escolhido": "mfcc"
+              },
+              "B_bpfi_1.0mm": {
+                "medias": {
+                  "mfcc": 0.8333333333333334,
+                  "mfcc+pente": 0.8333333333333334
+                },
+                "especificidade": {
+                  "mfcc": 1.0,
+                  "mfcc+pente": 1.0
+                },
+                "pior_falha": {
+                  "mfcc": 0.5,
+                  "mfcc+pente": 0.5
+                },
+                "escolhido_escolher": "mfcc",
+                "perde_especificidade": false,
+                "escolhido": "mfcc"
+              },
+              "B_bpfo_0.3mm": {
+                "medias": {
+                  "mfcc": 1.0,
+                  "mfcc+pente": 1.0
+                },
+                "especificidade": {
+                  "mfcc": 1.0,
+                  "mfcc+pente": 1.0
+                },
+                "pior_falha": {
+                  "mfcc": 1.0,
+                  "mfcc+pente": 1.0
+                },
+                "escolhido_escolher": "mfcc",
+                "perde_especificidade": false,
+                "escolhido": "mfcc"
+              },
+              "B_bpfo_1.0mm": {
+                "medias": {
+                  "mfcc": 0.8333333333333334,
+                  "mfcc+pente": 0.8333333333333334
+                },
+                "especificidade": {
+                  "mfcc": 1.0,
+                  "mfcc+pente": 1.0
+                },
+                "pior_falha": {
+                  "mfcc": 0.5,
+                  "mfcc+pente": 0.5
+                },
+                "escolhido_escolher": "mfcc",
+                "perde_especificidade": false,
+                "escolhido": "mfcc"
+              }
+            },
+            "entra": false,
+            "situacao": "fica fora (não ganha por mais que a margem em nenhuma falha externa)",
+            "margem": 0.02
+          },
+          "protocolo_b_externo": {
+            "mfcc": {
+              "protocolo": "B",
+              "leitura": "resultado principal — meta: acurácia balanceada média ≥ 85%",
+              "n_folds": 24,
+              "acuracia_balanceada_media": 0.875,
+              "sensibilidade_media": 0.75,
+              "especificidade_media": 1.0,
+              "pior_falha": "bpfo_0.3mm",
+              "pior_falha_acuracia_balanceada": 0.5,
+              "pior_fold": "B_bpfo_0.3mm_bloco0",
+              "pior_fold_acuracia_balanceada": 0.5,
+              "meta_atingida": true,
+              "por_falha": {
+                "bpfi_0.3mm": {
+                  "sensibilidade": 1.0,
+                  "especificidade": 1.0,
+                  "acuracia_balanceada": 1.0,
+                  "n_folds": 6
+                },
+                "bpfi_1.0mm": {
+                  "sensibilidade": 1.0,
+                  "especificidade": 1.0,
+                  "acuracia_balanceada": 1.0,
+                  "n_folds": 6
+                },
+                "bpfo_0.3mm": {
+                  "sensibilidade": 0.0,
+                  "especificidade": 1.0,
+                  "acuracia_balanceada": 0.5,
+                  "n_folds": 6
+                },
+                "bpfo_1.0mm": {
+                  "sensibilidade": 1.0,
+                  "especificidade": 1.0,
+                  "acuracia_balanceada": 1.0,
+                  "n_folds": 6
+                }
+              }
+            },
+            "mfcc+pente": {
+              "protocolo": "B",
+              "leitura": "resultado principal — meta: acurácia balanceada média ≥ 85%",
+              "n_folds": 24,
+              "acuracia_balanceada_media": 0.875,
+              "sensibilidade_media": 0.75,
+              "especificidade_media": 1.0,
+              "pior_falha": "bpfo_0.3mm",
+              "pior_falha_acuracia_balanceada": 0.5,
+              "pior_fold": "B_bpfo_0.3mm_bloco0",
+              "pior_fold_acuracia_balanceada": 0.5,
+              "meta_atingida": true,
+              "por_falha": {
+                "bpfi_0.3mm": {
+                  "sensibilidade": 1.0,
+                  "especificidade": 1.0,
+                  "acuracia_balanceada": 1.0,
+                  "n_folds": 6
+                },
+                "bpfi_1.0mm": {
+                  "sensibilidade": 1.0,
+                  "especificidade": 1.0,
+                  "acuracia_balanceada": 1.0,
+                  "n_folds": 6
+                },
+                "bpfo_0.3mm": {
+                  "sensibilidade": 0.0,
+                  "especificidade": 1.0,
+                  "acuracia_balanceada": 0.5,
+                  "n_folds": 6
+                },
+                "bpfo_1.0mm": {
+                  "sensibilidade": 1.0,
+                  "especificidade": 1.0,
+                  "acuracia_balanceada": 1.0,
+                  "n_folds": 6
+                }
+              }
+            }
+          },
+          "lda_b_externo": {
+            "mfcc": {
+              "coef_abs_medio": {
+                "media_c0": 1915.875610487343,
+                "media_c1": 739.8942655919122,
+                "media_c2": 479.1386975484451,
+                "media_c3": 381.96863017677043,
+                "media_c4": 890.6675220461049,
+                "media_c5": 349.5552968731688,
+                "media_c6": 1172.4125467901063,
+                "media_c7": 569.5013802755285,
+                "media_c8": 478.6206319690046,
+                "media_c9": 56.87017767043552,
+                "media_c10": 655.6668776697298,
+                "media_c11": 224.8490860579635,
+                "media_c12": 158.12692095342706,
+                "desvio_c0": 29.573682160880196,
+                "desvio_c1": 7.563307774757269,
+                "desvio_c2": 6.879584121922087,
+                "desvio_c3": 26.00491901689684,
+                "desvio_c4": 9.874375352298518,
+                "desvio_c5": 4.966711949112919,
+                "desvio_c6": 24.77396073605665,
+                "desvio_c7": 51.099073197482404,
+                "desvio_c8": 28.288306196809597,
+                "desvio_c9": 32.812933164042846,
+                "desvio_c10": 12.36845280944227,
+                "desvio_c11": 23.716451163144853,
+                "desvio_c12": 7.325187813353097
+              },
+              "coef_abs_medio_mfcc": 320.7074842140822,
+              "coef_abs_medio_pente": null,
+              "fracao_do_peso_no_pente": null,
+              "posicao_eixo_lda": {
+                "bpfi_0.3mm": 0.11989969509373888,
+                "bpfi_1.0mm": 0.014395228082482128,
+                "bpfo_0.3mm": 0.7974353714266632,
+                "bpfo_1.0mm": -0.5153657449553559
+              }
+            },
+            "mfcc+pente": {
+              "coef_abs_medio": {
+                "media_c0": 2614.251167907291,
+                "media_c1": 800.145680522296,
+                "media_c2": 489.77252839385886,
+                "media_c3": 415.14420847730935,
+                "media_c4": 947.711617136043,
+                "media_c5": 402.25630923457726,
+                "media_c6": 1109.0012794948802,
+                "media_c7": 637.6851383430484,
+                "media_c8": 458.4147408310874,
+                "media_c9": 52.246662218034764,
+                "media_c10": 755.6525256684953,
+                "media_c11": 266.78913143194904,
+                "media_c12": 189.55629635823664,
+                "desvio_c0": 32.271498438001295,
+                "desvio_c1": 16.83731418097421,
+                "desvio_c2": 7.915745052390413,
+                "desvio_c3": 27.680757189242325,
+                "desvio_c4": 8.365908574854442,
+                "desvio_c5": 6.831543656648395,
+                "desvio_c6": 23.92126761881438,
+                "desvio_c7": 47.77596782482953,
+                "desvio_c8": 30.49602637325368,
+                "desvio_c9": 40.9474786145043,
+                "desvio_c10": 18.66114326807495,
+                "desvio_c11": 20.535993373322842,
+                "desvio_c12": 8.762847367950636,
+                "pontuacao_bpfo": 277.84346036442963,
+                "pontuacao_bpfi": 357.11717708300927,
+                "fracao_bpfo": 20.200969228115255,
+                "fracao_bpfi": 75.39982554270838
+              },
+              "coef_abs_medio_mfcc": 362.678106828845,
+              "coef_abs_medio_pente": 182.64035805456564,
+              "fracao_do_peso_no_pente": 0.07190429247154248,
+              "posicao_eixo_lda": {
+                "bpfi_0.3mm": 0.09764189785951623,
+                "bpfi_1.0mm": 0.1794944620739807,
+                "bpfo_0.3mm": 0.8155325065677843,
+                "bpfo_1.0mm": -0.8539465502805773
+              }
+            }
+          },
+          "achado_c": {
+            "resumo": {
+              "protocolo": "B",
+              "leitura": "resultado principal — meta: acurácia balanceada média ≥ 85%",
+              "n_folds": 24,
+              "acuracia_balanceada_media": 1.0,
+              "sensibilidade_media": 1.0,
+              "especificidade_media": 1.0,
+              "pior_falha": "bpfi_0.3mm",
+              "pior_falha_acuracia_balanceada": 1.0,
+              "pior_fold": "B_bpfi_0.3mm_bloco0",
+              "pior_fold_acuracia_balanceada": 1.0,
+              "meta_atingida": true,
+              "por_falha": {
+                "bpfi_0.3mm": {
+                  "sensibilidade": 1.0,
+                  "especificidade": 1.0,
+                  "acuracia_balanceada": 1.0,
+                  "n_folds": 6
+                },
+                "bpfi_1.0mm": {
+                  "sensibilidade": 1.0,
+                  "especificidade": 1.0,
+                  "acuracia_balanceada": 1.0,
+                  "n_folds": 6
+                },
+                "bpfo_0.3mm": {
+                  "sensibilidade": 1.0,
+                  "especificidade": 1.0,
+                  "acuracia_balanceada": 1.0,
+                  "n_folds": 6
+                },
+                "bpfo_1.0mm": {
+                  "sensibilidade": 1.0,
+                  "especificidade": 1.0,
+                  "acuracia_balanceada": 1.0,
+                  "n_folds": 6
+                }
+              }
+            },
+            "permutacao_media": 0.5433476537978656,
+            "permutacao_max": 0.6296296296296297,
+            "k_desvios": 4.0
+          }
+        }
+      }
+    },
+    "C_fft_1s": {
+      "candidato": {
+        "nome": "C_fft_1s",
+        "n_bloco": 12800,
+        "n_fft": 12800,
+        "passo": 12800,
+        "n_blocos": 1,
+        "descricao": "FFT do segundo inteiro (referência do teto)",
+        "resolucao_hz": 1.0,
+        "mascara_hz": 2.0,
+        "fundo_hz": [
+          3.0,
+          10.0
+        ]
+      },
+      "custo_stm32": {
+        "ram_kb": 125.00390625,
+        "flops_fft": 436603.3980727912,
+        "ops_fundo": 409664.0,
+        "ops_busca": 31166.40672,
+        "ops_total": 877433.8047927913,
+        "fft_na_cmsis": false
+      },
+      "inviavel": null,
+      "modos": {
+        "estimado": {
+          "decide": true,
+          "distribuicao_por_classe": {
+            "normal": {
+              "pontuacao_bpfo": [
+                9.902844951312291,
+                0.7249635383162886
+              ],
+              "pontuacao_bpfi": [
+                8.823327285745926,
+                0.8061601067186236
+              ],
+              "fracao_bpfo": [
+                0.6522202276585679,
+                0.06182861702418506
+              ],
+              "fracao_bpfi": [
+                0.5838471427821799,
+                0.07857384415234532
+              ]
+            },
+            "bpfi_0.3mm": {
+              "pontuacao_bpfo": [
+                13.137138516216261,
+                0.5619401812265153
+              ],
+              "pontuacao_bpfi": [
+                26.476182139542807,
+                2.083736027012943
+              ],
+              "fracao_bpfo": [
+                0.6915510427787723,
+                0.06655220494332598
+              ],
+              "fracao_bpfi": [
+                0.9932203389830508,
+                0.05163236003975532
+              ]
+            },
+            "bpfi_1.0mm": {
+              "pontuacao_bpfo": [
+                14.0600814904032,
+                0.5335976713200239
+              ],
+              "pontuacao_bpfi": [
+                27.700311666104618,
+                0.7722129674680736
+              ],
+              "fracao_bpfo": [
+                0.7448252500794874,
+                0.06459731919468042
+              ],
+              "fracao_bpfi": [
+                1.0,
+                0.0
+              ]
+            },
+            "bpfo_0.3mm": {
+              "pontuacao_bpfo": [
+                21.670905403562216,
+                1.696606763311421
+              ],
+              "pontuacao_bpfi": [
+                10.583765023697566,
+                0.9457798487851308
+              ],
+              "fracao_bpfo": [
+                0.9895658035926884,
+                0.03648759316539595
+              ],
+              "fracao_bpfi": [
+                0.6299289683164374,
+                0.07397539535462577
+              ]
+            },
+            "bpfo_1.0mm": {
+              "pontuacao_bpfo": [
+                31.71469274003872,
+                0.8737573988743181
+              ],
+              "pontuacao_bpfi": [
+                13.74292674500652,
+                0.6563797099526286
+              ],
+              "fracao_bpfo": [
+                0.9744491757349736,
+                0.022051540744980672
+              ],
+              "fracao_bpfi": [
+                0.8222265325993614,
+                0.0786416432530941
+              ]
+            }
+          },
+          "f0_mediano_por_classe": {
+            "normal": {
+              "f_eixo": 49.96666666666657,
+              "f0_bpfo": 181.72369783550306,
+              "f0_bpfi": 266.59463185235893
+            },
+            "bpfi_0.3mm": {
+              "f_eixo": 50.31666666666651,
+              "f0_bpfo": 184.44818658009405,
+              "f0_bpfi": 268.3226192754629
+            },
+            "bpfi_1.0mm": {
+              "f_eixo": 50.30833333333318,
+              "f0_bpfo": 184.41485324676069,
+              "f0_bpfi": 268.25227833219554
+            },
+            "bpfo_0.3mm": {
+              "f_eixo": 49.94166666666657,
+              "f0_bpfo": 182.64511904762477,
+              "f0_bpfi": 273.9323428571318
+            },
+            "bpfo_1.0mm": {
+              "f_eixo": 49.99166666666657,
+              "f0_bpfo": 183.39718982684755,
+              "f0_bpfi": 266.7522493506452
+            }
+          },
+          "fracao_f0_na_borda_por_classe": {
+            "normal": {
+              "bpfo": 0.0,
+              "bpfi": 0.0
+            },
+            "bpfi_0.3mm": {
+              "bpfo": 0.0,
+              "bpfi": 0.0
+            },
+            "bpfi_1.0mm": {
+              "bpfo": 0.0,
+              "bpfi": 0.0
+            },
+            "bpfo_0.3mm": {
+              "bpfo": 0.0,
+              "bpfi": 0.0
+            },
+            "bpfo_1.0mm": {
+              "bpfo": 0.0,
+              "bpfi": 0.0
+            }
+          },
+          "decisao": {
+            "por_externo": {
+              "B_bpfi_0.3mm": {
+                "medias": {
+                  "mfcc": 0.8333333333333334,
+                  "mfcc+pente": 0.8333333333333334
+                },
+                "especificidade": {
+                  "mfcc": 1.0,
+                  "mfcc+pente": 1.0
+                },
+                "pior_falha": {
+                  "mfcc": 0.5,
+                  "mfcc+pente": 0.5
+                },
+                "escolhido_escolher": "mfcc",
+                "perde_especificidade": false,
+                "escolhido": "mfcc"
+              },
+              "B_bpfi_1.0mm": {
+                "medias": {
+                  "mfcc": 0.8333333333333334,
+                  "mfcc+pente": 0.8333333333333334
+                },
+                "especificidade": {
+                  "mfcc": 1.0,
+                  "mfcc+pente": 1.0
+                },
+                "pior_falha": {
+                  "mfcc": 0.5,
+                  "mfcc+pente": 0.5
+                },
+                "escolhido_escolher": "mfcc",
+                "perde_especificidade": false,
+                "escolhido": "mfcc"
+              },
+              "B_bpfo_0.3mm": {
+                "medias": {
+                  "mfcc": 1.0,
+                  "mfcc+pente": 1.0
+                },
+                "especificidade": {
+                  "mfcc": 1.0,
+                  "mfcc+pente": 1.0
+                },
+                "pior_falha": {
+                  "mfcc": 1.0,
+                  "mfcc+pente": 1.0
+                },
+                "escolhido_escolher": "mfcc",
+                "perde_especificidade": false,
+                "escolhido": "mfcc"
+              },
+              "B_bpfo_1.0mm": {
+                "medias": {
+                  "mfcc": 0.8333333333333334,
+                  "mfcc+pente": 0.8333333333333334
+                },
+                "especificidade": {
+                  "mfcc": 1.0,
+                  "mfcc+pente": 1.0
+                },
+                "pior_falha": {
+                  "mfcc": 0.5,
+                  "mfcc+pente": 0.5
+                },
+                "escolhido_escolher": "mfcc",
+                "perde_especificidade": false,
+                "escolhido": "mfcc"
+              }
+            },
+            "entra": false,
+            "situacao": "fica fora (não ganha por mais que a margem em nenhuma falha externa)",
+            "margem": 0.02
+          },
+          "protocolo_b_externo": {
+            "mfcc": {
+              "protocolo": "B",
+              "leitura": "resultado principal — meta: acurácia balanceada média ≥ 85%",
+              "n_folds": 24,
+              "acuracia_balanceada_media": 0.875,
+              "sensibilidade_media": 0.75,
+              "especificidade_media": 1.0,
+              "pior_falha": "bpfo_0.3mm",
+              "pior_falha_acuracia_balanceada": 0.5,
+              "pior_fold": "B_bpfo_0.3mm_bloco0",
+              "pior_fold_acuracia_balanceada": 0.5,
+              "meta_atingida": true,
+              "por_falha": {
+                "bpfi_0.3mm": {
+                  "sensibilidade": 1.0,
+                  "especificidade": 1.0,
+                  "acuracia_balanceada": 1.0,
+                  "n_folds": 6
+                },
+                "bpfi_1.0mm": {
+                  "sensibilidade": 1.0,
+                  "especificidade": 1.0,
+                  "acuracia_balanceada": 1.0,
+                  "n_folds": 6
+                },
+                "bpfo_0.3mm": {
+                  "sensibilidade": 0.0,
+                  "especificidade": 1.0,
+                  "acuracia_balanceada": 0.5,
+                  "n_folds": 6
+                },
+                "bpfo_1.0mm": {
+                  "sensibilidade": 1.0,
+                  "especificidade": 1.0,
+                  "acuracia_balanceada": 1.0,
+                  "n_folds": 6
+                }
+              }
+            },
+            "mfcc+pente": {
+              "protocolo": "B",
+              "leitura": "resultado principal — meta: acurácia balanceada média ≥ 85%",
+              "n_folds": 24,
+              "acuracia_balanceada_media": 0.875,
+              "sensibilidade_media": 0.75,
+              "especificidade_media": 1.0,
+              "pior_falha": "bpfo_0.3mm",
+              "pior_falha_acuracia_balanceada": 0.5,
+              "pior_fold": "B_bpfo_0.3mm_bloco0",
+              "pior_fold_acuracia_balanceada": 0.5,
+              "meta_atingida": true,
+              "por_falha": {
+                "bpfi_0.3mm": {
+                  "sensibilidade": 1.0,
+                  "especificidade": 1.0,
+                  "acuracia_balanceada": 1.0,
+                  "n_folds": 6
+                },
+                "bpfi_1.0mm": {
+                  "sensibilidade": 1.0,
+                  "especificidade": 1.0,
+                  "acuracia_balanceada": 1.0,
+                  "n_folds": 6
+                },
+                "bpfo_0.3mm": {
+                  "sensibilidade": 0.0,
+                  "especificidade": 1.0,
+                  "acuracia_balanceada": 0.5,
+                  "n_folds": 6
+                },
+                "bpfo_1.0mm": {
+                  "sensibilidade": 1.0,
+                  "especificidade": 1.0,
+                  "acuracia_balanceada": 1.0,
+                  "n_folds": 6
+                }
+              }
+            }
+          },
+          "lda_b_externo": {
+            "mfcc": {
+              "coef_abs_medio": {
+                "media_c0": 1915.875610487343,
+                "media_c1": 739.8942655919122,
+                "media_c2": 479.1386975484451,
+                "media_c3": 381.96863017677043,
+                "media_c4": 890.6675220461049,
+                "media_c5": 349.5552968731688,
+                "media_c6": 1172.4125467901063,
+                "media_c7": 569.5013802755285,
+                "media_c8": 478.6206319690046,
+                "media_c9": 56.87017767043552,
+                "media_c10": 655.6668776697298,
+                "media_c11": 224.8490860579635,
+                "media_c12": 158.12692095342706,
+                "desvio_c0": 29.573682160880196,
+                "desvio_c1": 7.563307774757269,
+                "desvio_c2": 6.879584121922087,
+                "desvio_c3": 26.00491901689684,
+                "desvio_c4": 9.874375352298518,
+                "desvio_c5": 4.966711949112919,
+                "desvio_c6": 24.77396073605665,
+                "desvio_c7": 51.099073197482404,
+                "desvio_c8": 28.288306196809597,
+                "desvio_c9": 32.812933164042846,
+                "desvio_c10": 12.36845280944227,
+                "desvio_c11": 23.716451163144853,
+                "desvio_c12": 7.325187813353097
+              },
+              "coef_abs_medio_mfcc": 320.7074842140822,
+              "coef_abs_medio_pente": null,
+              "fracao_do_peso_no_pente": null,
+              "posicao_eixo_lda": {
+                "bpfi_0.3mm": 0.11989969509373888,
+                "bpfi_1.0mm": 0.014395228082482128,
+                "bpfo_0.3mm": 0.7974353714266632,
+                "bpfo_1.0mm": -0.5153657449553559
+              }
+            },
+            "mfcc+pente": {
+              "coef_abs_medio": {
+                "media_c0": 2011.9371954405908,
+                "media_c1": 759.6193738869164,
+                "media_c2": 481.2344934759993,
+                "media_c3": 387.8077819379843,
+                "media_c4": 939.108205808103,
+                "media_c5": 381.42454960306185,
+                "media_c6": 1235.496410124477,
+                "media_c7": 593.8322957423629,
+                "media_c8": 517.6802395872675,
+                "media_c9": 46.188902969336134,
+                "media_c10": 670.7121475483675,
+                "media_c11": 190.9700466111823,
+                "media_c12": 181.75171401974606,
+                "desvio_c0": 31.39285810130637,
+                "desvio_c1": 7.213390263257125,
+                "desvio_c2": 7.933062750183299,
+                "desvio_c3": 26.421640543835647,
+                "desvio_c4": 11.904974962077707,
+                "desvio_c5": 6.530175525925988,
+                "desvio_c6": 25.377257258007287,
+                "desvio_c7": 53.72929053577028,
+                "desvio_c8": 36.95924492876825,
+                "desvio_c9": 35.77067640738305,
+                "desvio_c10": 16.590723162905796,
+                "desvio_c11": 23.585368000330728,
+                "desvio_c12": 9.683725658481883,
+                "pontuacao_bpfo": 101.84785999134586,
+                "pontuacao_bpfi": 65.76096837076469,
+                "fracao_bpfo": 21.182861116423943,
+                "fracao_bpfi": 24.969939799847456
+              },
+              "coef_abs_medio_mfcc": 334.2636824943704,
+              "coef_abs_medio_pente": 53.44040731959549,
+              "fracao_do_peso_no_pente": 0.024005706286646437,
+              "posicao_eixo_lda": {
+                "bpfi_0.3mm": 0.1612180440463505,
+                "bpfi_1.0mm": 0.0736152789418965,
+                "bpfo_0.3mm": 0.8048640749996915,
+                "bpfo_1.0mm": -0.6486700488561269
+              }
+            }
+          },
+          "achado_c": {
+            "resumo": {
+              "protocolo": "B",
+              "leitura": "resultado principal — meta: acurácia balanceada média ≥ 85%",
+              "n_folds": 24,
+              "acuracia_balanceada_media": 0.9978813559322034,
+              "sensibilidade_media": 0.9957627118644068,
+              "especificidade_media": 1.0,
+              "pior_falha": "bpfo_0.3mm",
+              "pior_falha_acuracia_balanceada": 0.9915254237288135,
+              "pior_fold": "B_bpfo_0.3mm_bloco0",
+              "pior_fold_acuracia_balanceada": 0.9915254237288136,
+              "meta_atingida": true,
+              "por_falha": {
+                "bpfi_0.3mm": {
+                  "sensibilidade": 1.0,
+                  "especificidade": 1.0,
+                  "acuracia_balanceada": 1.0,
+                  "n_folds": 6
+                },
+                "bpfi_1.0mm": {
+                  "sensibilidade": 1.0,
+                  "especificidade": 1.0,
+                  "acuracia_balanceada": 1.0,
+                  "n_folds": 6
+                },
+                "bpfo_0.3mm": {
+                  "sensibilidade": 0.9830508474576272,
+                  "especificidade": 1.0,
+                  "acuracia_balanceada": 0.9915254237288135,
+                  "n_folds": 6
+                },
+                "bpfo_1.0mm": {
+                  "sensibilidade": 1.0,
+                  "especificidade": 1.0,
+                  "acuracia_balanceada": 1.0,
+                  "n_folds": 6
+                }
+              }
+            },
+            "permutacao_media": 0.524438755492781,
+            "permutacao_max": 0.621508160703076,
+            "k_desvios": 4.0
+          }
+        },
+        "fixo": {
+          "decide": false,
+          "distribuicao_por_classe": {
+            "normal": {
+              "pontuacao_bpfo": [
+                9.333420306652606,
+                0.4380326112892583
+              ],
+              "pontuacao_bpfi": [
+                9.24927170545771,
+                0.628832532291073
+              ],
+              "fracao_bpfo": [
+                0.6618310094347498,
+                0.07650338166519313
+              ],
+              "fracao_bpfi": [
+                0.5965852442671985,
+                0.08755770705554812
+              ]
+            },
+            "bpfi_0.3mm": {
+              "pontuacao_bpfo": [
+                13.139575345288783,
+                0.4768991648830485
+              ],
+              "pontuacao_bpfi": [
+                27.052295336500183,
+                0.5307087005430263
+              ],
+              "fracao_bpfo": [
+                0.6794311009682137,
+                0.052217869174052245
+              ],
+              "fracao_bpfi": [
+                1.0,
+                0.0
+              ]
+            },
+            "bpfi_1.0mm": {
+              "pontuacao_bpfo": [
+                14.421165961893925,
+                0.4272807207360383
+              ],
+              "pontuacao_bpfi": [
+                28.700861440927927,
+                0.6665513757168442
+              ],
+              "fracao_bpfo": [
+                0.7299476774929727,
+                0.06142750154474177
+              ],
+              "fracao_bpfi": [
+                1.0,
+                0.0
+              ]
+            },
+            "bpfo_0.3mm": {
+              "pontuacao_bpfo": [
+                21.410583349051237,
+                0.5338203204374197
+              ],
+              "pontuacao_bpfi": [
+                11.282937831913602,
+                0.5871929460242451
+              ],
+              "fracao_bpfo": [
+                0.9957627118644068,
+                0.011548900743546553
+              ],
+              "fracao_bpfi": [
+                0.6275617591669437,
+                0.05836932487159144
+              ]
+            },
+            "bpfo_1.0mm": {
+              "pontuacao_bpfo": [
+                32.24511702262083,
+                0.398464416825126
+              ],
+              "pontuacao_bpfi": [
+                15.052400680630923,
+                0.5639773744698986
+              ],
+              "fracao_bpfo": [
+                0.9774011299435027,
+                0.02047646758355318
+              ],
+              "fracao_bpfi": [
+                0.85969868173258,
+                0.07471500725000893
+              ]
+            }
+          },
+          "f0_mediano_por_classe": {
+            "normal": {
+              "f_eixo": 50.17,
+              "f0_bpfo": 181.7226856277117,
+              "f0_bpfi": 266.6649231442258
+            },
+            "bpfi_0.3mm": {
+              "f_eixo": 50.17,
+              "f0_bpfo": 184.45601896104722,
+              "f0_bpfi": 268.32281788106883
+            },
+            "bpfi_1.0mm": {
+              "f_eixo": 50.17,
+              "f0_bpfo": 184.42268562771386,
+              "f0_bpfi": 268.24387051264773
+            },
+            "bpfo_0.3mm": {
+              "f_eixo": 50.17,
+              "f0_bpfo": 182.6393522943791,
+              "f0_bpfi": 273.95439682844045
+            },
+            "bpfo_1.0mm": {
+              "f_eixo": 50.17,
+              "f0_bpfo": 183.3893522943797,
+              "f0_bpfi": 266.7701863021206
+            }
+          },
+          "fracao_f0_na_borda_por_classe": {
+            "normal": {
+              "bpfo": 0.0,
+              "bpfi": 0.0
+            },
+            "bpfi_0.3mm": {
+              "bpfo": 0.0,
+              "bpfi": 0.0
+            },
+            "bpfi_1.0mm": {
+              "bpfo": 0.0,
+              "bpfi": 0.0
+            },
+            "bpfo_0.3mm": {
+              "bpfo": 0.0,
+              "bpfi": 0.0
+            },
+            "bpfo_1.0mm": {
+              "bpfo": 0.0,
+              "bpfi": 0.0
+            }
+          },
+          "decisao": {
+            "por_externo": {
+              "B_bpfi_0.3mm": {
+                "medias": {
+                  "mfcc": 0.8333333333333334,
+                  "mfcc+pente": 0.8333333333333334
+                },
+                "especificidade": {
+                  "mfcc": 1.0,
+                  "mfcc+pente": 1.0
+                },
+                "pior_falha": {
+                  "mfcc": 0.5,
+                  "mfcc+pente": 0.5
+                },
+                "escolhido_escolher": "mfcc",
+                "perde_especificidade": false,
+                "escolhido": "mfcc"
+              },
+              "B_bpfi_1.0mm": {
+                "medias": {
+                  "mfcc": 0.8333333333333334,
+                  "mfcc+pente": 0.8333333333333334
+                },
+                "especificidade": {
+                  "mfcc": 1.0,
+                  "mfcc+pente": 1.0
+                },
+                "pior_falha": {
+                  "mfcc": 0.5,
+                  "mfcc+pente": 0.5
+                },
+                "escolhido_escolher": "mfcc",
+                "perde_especificidade": false,
+                "escolhido": "mfcc"
+              },
+              "B_bpfo_0.3mm": {
+                "medias": {
+                  "mfcc": 1.0,
+                  "mfcc+pente": 1.0
+                },
+                "especificidade": {
+                  "mfcc": 1.0,
+                  "mfcc+pente": 1.0
+                },
+                "pior_falha": {
+                  "mfcc": 1.0,
+                  "mfcc+pente": 1.0
+                },
+                "escolhido_escolher": "mfcc",
+                "perde_especificidade": false,
+                "escolhido": "mfcc"
+              },
+              "B_bpfo_1.0mm": {
+                "medias": {
+                  "mfcc": 0.8333333333333334,
+                  "mfcc+pente": 0.8333333333333334
+                },
+                "especificidade": {
+                  "mfcc": 1.0,
+                  "mfcc+pente": 1.0
+                },
+                "pior_falha": {
+                  "mfcc": 0.5,
+                  "mfcc+pente": 0.5
+                },
+                "escolhido_escolher": "mfcc",
+                "perde_especificidade": false,
+                "escolhido": "mfcc"
+              }
+            },
+            "entra": false,
+            "situacao": "fica fora (não ganha por mais que a margem em nenhuma falha externa)",
+            "margem": 0.02
+          },
+          "protocolo_b_externo": {
+            "mfcc": {
+              "protocolo": "B",
+              "leitura": "resultado principal — meta: acurácia balanceada média ≥ 85%",
+              "n_folds": 24,
+              "acuracia_balanceada_media": 0.875,
+              "sensibilidade_media": 0.75,
+              "especificidade_media": 1.0,
+              "pior_falha": "bpfo_0.3mm",
+              "pior_falha_acuracia_balanceada": 0.5,
+              "pior_fold": "B_bpfo_0.3mm_bloco0",
+              "pior_fold_acuracia_balanceada": 0.5,
+              "meta_atingida": true,
+              "por_falha": {
+                "bpfi_0.3mm": {
+                  "sensibilidade": 1.0,
+                  "especificidade": 1.0,
+                  "acuracia_balanceada": 1.0,
+                  "n_folds": 6
+                },
+                "bpfi_1.0mm": {
+                  "sensibilidade": 1.0,
+                  "especificidade": 1.0,
+                  "acuracia_balanceada": 1.0,
+                  "n_folds": 6
+                },
+                "bpfo_0.3mm": {
+                  "sensibilidade": 0.0,
+                  "especificidade": 1.0,
+                  "acuracia_balanceada": 0.5,
+                  "n_folds": 6
+                },
+                "bpfo_1.0mm": {
+                  "sensibilidade": 1.0,
+                  "especificidade": 1.0,
+                  "acuracia_balanceada": 1.0,
+                  "n_folds": 6
+                }
+              }
+            },
+            "mfcc+pente": {
+              "protocolo": "B",
+              "leitura": "resultado principal — meta: acurácia balanceada média ≥ 85%",
+              "n_folds": 24,
+              "acuracia_balanceada_media": 0.875,
+              "sensibilidade_media": 0.75,
+              "especificidade_media": 1.0,
+              "pior_falha": "bpfo_0.3mm",
+              "pior_falha_acuracia_balanceada": 0.5,
+              "pior_fold": "B_bpfo_0.3mm_bloco0",
+              "pior_fold_acuracia_balanceada": 0.5,
+              "meta_atingida": true,
+              "por_falha": {
+                "bpfi_0.3mm": {
+                  "sensibilidade": 1.0,
+                  "especificidade": 1.0,
+                  "acuracia_balanceada": 1.0,
+                  "n_folds": 6
+                },
+                "bpfi_1.0mm": {
+                  "sensibilidade": 1.0,
+                  "especificidade": 1.0,
+                  "acuracia_balanceada": 1.0,
+                  "n_folds": 6
+                },
+                "bpfo_0.3mm": {
+                  "sensibilidade": 0.0,
+                  "especificidade": 1.0,
+                  "acuracia_balanceada": 0.5,
+                  "n_folds": 6
+                },
+                "bpfo_1.0mm": {
+                  "sensibilidade": 1.0,
+                  "especificidade": 1.0,
+                  "acuracia_balanceada": 1.0,
+                  "n_folds": 6
+                }
+              }
+            }
+          },
+          "lda_b_externo": {
+            "mfcc": {
+              "coef_abs_medio": {
+                "media_c0": 1915.875610487343,
+                "media_c1": 739.8942655919122,
+                "media_c2": 479.1386975484451,
+                "media_c3": 381.96863017677043,
+                "media_c4": 890.6675220461049,
+                "media_c5": 349.5552968731688,
+                "media_c6": 1172.4125467901063,
+                "media_c7": 569.5013802755285,
+                "media_c8": 478.6206319690046,
+                "media_c9": 56.87017767043552,
+                "media_c10": 655.6668776697298,
+                "media_c11": 224.8490860579635,
+                "media_c12": 158.12692095342706,
+                "desvio_c0": 29.573682160880196,
+                "desvio_c1": 7.563307774757269,
+                "desvio_c2": 6.879584121922087,
+                "desvio_c3": 26.00491901689684,
+                "desvio_c4": 9.874375352298518,
+                "desvio_c5": 4.966711949112919,
+                "desvio_c6": 24.77396073605665,
+                "desvio_c7": 51.099073197482404,
+                "desvio_c8": 28.288306196809597,
+                "desvio_c9": 32.812933164042846,
+                "desvio_c10": 12.36845280944227,
+                "desvio_c11": 23.716451163144853,
+                "desvio_c12": 7.325187813353097
+              },
+              "coef_abs_medio_mfcc": 320.7074842140822,
+              "coef_abs_medio_pente": null,
+              "fracao_do_peso_no_pente": null,
+              "posicao_eixo_lda": {
+                "bpfi_0.3mm": 0.11989969509373888,
+                "bpfi_1.0mm": 0.014395228082482128,
+                "bpfo_0.3mm": 0.7974353714266632,
+                "bpfo_1.0mm": -0.5153657449553559
+              }
+            },
+            "mfcc+pente": {
+              "coef_abs_medio": {
+                "media_c0": 2125.211435282131,
+                "media_c1": 695.1101996728262,
+                "media_c2": 684.7727794166884,
+                "media_c3": 335.70292140608973,
+                "media_c4": 999.003347019459,
+                "media_c5": 354.16951355814973,
+                "media_c6": 1373.5937693702042,
+                "media_c7": 635.7453207913037,
+                "media_c8": 544.0008294154646,
+                "media_c9": 47.26094805999079,
+                "media_c10": 781.4628700892732,
+                "media_c11": 299.4196354948418,
+                "media_c12": 174.13724444994338,
+                "desvio_c0": 29.396039368504955,
+                "desvio_c1": 9.514229331921568,
+                "desvio_c2": 5.45623349458723,
+                "desvio_c3": 26.393390350842058,
+                "desvio_c4": 14.126065894539893,
+                "desvio_c5": 7.746781782728097,
+                "desvio_c6": 32.02215321448475,
+                "desvio_c7": 57.557329149729554,
+                "desvio_c8": 35.56207602756391,
+                "desvio_c9": 33.21507299069407,
+                "desvio_c10": 12.89333358726114,
+                "desvio_c11": 24.079226254303293,
+                "desvio_c12": 9.04261730167578,
+                "pontuacao_bpfo": 509.6857814635138,
+                "pontuacao_bpfi": 212.9239143370779,
+                "fracao_bpfo": 11.793103689219189,
+                "fracao_bpfi": 10.604418871521984
+              },
+              "coef_abs_medio_mfcc": 359.48443702981547,
+              "coef_abs_medio_pente": 186.2518045903332,
+              "fracao_do_peso_no_pente": 0.07382447063005812,
+              "posicao_eixo_lda": {
+                "bpfi_0.3mm": 0.09633357643928771,
+                "bpfi_1.0mm": 0.17702474712002558,
+                "bpfo_0.3mm": 0.7920900807498231,
+                "bpfo_1.0mm": -0.6206268147595937
+              }
+            }
+          },
+          "achado_c": {
+            "resumo": {
+              "protocolo": "B",
+              "leitura": "resultado principal — meta: acurácia balanceada média ≥ 85%",
+              "n_folds": 24,
+              "acuracia_balanceada_media": 1.0,
+              "sensibilidade_media": 1.0,
+              "especificidade_media": 1.0,
+              "pior_falha": "bpfi_0.3mm",
+              "pior_falha_acuracia_balanceada": 1.0,
+              "pior_fold": "B_bpfi_0.3mm_bloco0",
+              "pior_fold_acuracia_balanceada": 1.0,
+              "meta_atingida": true,
+              "por_falha": {
+                "bpfi_0.3mm": {
+                  "sensibilidade": 1.0,
+                  "especificidade": 1.0,
+                  "acuracia_balanceada": 1.0,
+                  "n_folds": 6
+                },
+                "bpfi_1.0mm": {
+                  "sensibilidade": 1.0,
+                  "especificidade": 1.0,
+                  "acuracia_balanceada": 1.0,
+                  "n_folds": 6
+                },
+                "bpfo_0.3mm": {
+                  "sensibilidade": 1.0,
+                  "especificidade": 1.0,
+                  "acuracia_balanceada": 1.0,
+                  "n_folds": 6
+                },
+                "bpfo_1.0mm": {
+                  "sensibilidade": 1.0,
+                  "especificidade": 1.0,
+                  "acuracia_balanceada": 1.0,
+                  "n_folds": 6
+                }
+              }
+            },
+            "permutacao_media": 0.5331958176396735,
+            "permutacao_max": 0.6239799121155054,
+            "k_desvios": 4.0
+          }
+        }
+      }
+    }
+  }
+}
