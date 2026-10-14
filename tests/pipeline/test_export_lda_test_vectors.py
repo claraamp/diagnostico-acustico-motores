@@ -133,3 +133,11 @@ def test_cabecalhos_compilam_juntos_sem_promocao_a_double(tmp_path):
                        capture_output=True, text=True)
     assert c.returncode == 0, c.stderr
     assert subprocess.run([str(exe)]).returncode == 0
+
+
+def test_commit_antes_de_gerar_so_aborta_no_caminho_versionado(tmp_path):
+    abortar, msg = V.checar_commit(V.OUT_VERSIONADO, ["scripts/pipeline/07_export_lda_test_vectors.py"])
+    assert abortar and "commit antes de gerar" in msg
+    abortar, msg = V.checar_commit(tmp_path / V.NOME_H, ["reports/modelo_final/lda_final.json"])
+    assert not abortar and "+mudancas" in msg
+    assert V.checar_commit(V.OUT_VERSIONADO, []) == (False, "")

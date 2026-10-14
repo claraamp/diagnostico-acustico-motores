@@ -46,6 +46,12 @@ commit e o bias do modelo (`VT_LDA_BIAS`), que o firmware compara com o
 modelos diferentes. Não há linha no registry: o arquivo é uma fixture de
 teste, sem métrica; o resultado do marco é o log da placa.
 
+**Commit antes de gerar.** Como no `06`, o commit escrito no `.h` só identifica
+o que o gerou se o script e as entradas versionadas (`lda_final.json`,
+`escores_referencia.csv`, `lda_modelo.h`) não tiverem mudanças não commitadas.
+Gravando no caminho versionado, o script aborta se houver; com `--out` em outro
+lugar (teste), só avisa e marca o commit no `.h` com `+mudancas`.
+
 Saída: reports/modelo_final/lda_vetores_teste.h (--out para outro caminho)
 
 Uso
@@ -78,6 +84,7 @@ _spec.loader.exec_module(H)
 
 U_FLOAT32 = H.U_FLOAT32
 NOME_H = "lda_vetores_teste.h"
+OUT_VERSIONADO = Path("reports/modelo_final") / NOME_H
 
 
 def selecionar(gravacoes: np.ndarray, por_gravacao: int) -> np.ndarray:
@@ -265,6 +272,20 @@ def aprovada(c: dict) -> bool:
     return ok
 
 
+def checar_commit(out: Path, sujos: list[str]) -> tuple[bool, str]:
+    """
+    (abortar, mensagem). Gravando no `.h` versionado, mudanças não commitadas no
+    gerador ou nas entradas abortam; em outro caminho, viram só um aviso.
+    """
+    if not sujos:
+        return False, ""
+    lista = "\n  " + "\n  ".join(sujos)
+    if Path(out).resolve() == OUT_VERSIONADO.resolve():
+        return True, "Abortado: commit antes de gerar; há mudanças não commitadas em:" + lista
+    return False, ("aviso: mudanças não commitadas (o commit no .h fica marcado com "
+                   "+mudancas):" + lista)
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -273,10 +294,17 @@ def main() -> int:
     ap.add_argument("--escores", type=Path, default=Path("reports/modelo_final/escores_referencia.csv"))
     ap.add_argument("--features", type=Path,
                     default=Path(config.dir_features(config.FS_TRABALHO)) / "mfcc_features.npz")
-    ap.add_argument("--out", type=Path, default=Path("reports/modelo_final") / NOME_H)
+    ap.add_argument("--out", type=Path, default=OUT_VERSIONADO)
     ap.add_argument("--por-gravacao", type=int, default=0,
                     help="segmentos por gravação, igualmente espaçados (0 = todos)")
     args = ap.parse_args()
+
+    sujos = H.nao_commitados([Path(__file__), args.modelo, args.escores, args.lda_h])
+    abortar, msg = checar_commit(args.out, sujos)
+    if msg:
+        print(msg)
+    if abortar:
+        return 1
 
     p = json.loads(args.modelo.read_text(encoding="utf-8"))
     H.validar_modelo(p)
@@ -301,7 +329,7 @@ def main() -> int:
         "sha256_csv": hashlib.sha256(args.escores.read_bytes()).hexdigest(),
         "features": args.features.as_posix(),
         "features_commit": manifesto.get("git_commit", "?"),
-        "commit": experimentos.git_short_hash(),
+        "commit": experimentos.git_short_hash() + ("+mudancas" if sujos else ""),
     }
     texto = gerar_header(p, origem, X, ref, falha, segmento, gravacao, tol, demo_idx)
 
