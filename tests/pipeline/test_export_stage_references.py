@@ -5,8 +5,9 @@ versionadas (se já existirem) são conferidas a partir do próprio int16 gravad
 
 Garantias: o formato volta igual do arquivo (o que o harness em C lê); a seleção
 padrão é o segmento do meio de cada gravação, sem olhar o sinal; o tolerancias.txt
-é o dsp.ESTAGIOS_PORTE; e as referências versionadas são as do dsp atual, com o
-tolerancias.txt atual e os SHA-256 do manifest.
+é o dsp.ESTAGIOS_PORTE; e as referências versionadas são as do dsp atual (até o
+último bit, que varia entre plataformas), com o tolerancias.txt atual e os SHA-256
+do manifest.
 """
 
 from __future__ import annotations
@@ -84,7 +85,13 @@ def test_referencias_versionadas_sao_as_do_dsp_atual():
     for pasta in pastas:
         lido = R.ler_segmento(VERSIONADO / pasta)
         e = dsp.estagios_mfcc(lido["entrada"].ravel())
+        np.testing.assert_array_equal(lido["entrada"].ravel(), e["entrada"])
         for nome, _ in R.ARQUIVOS:
-            if nome != "escore":
-                np.testing.assert_array_equal(lido[nome].ravel(), np.asarray(e[nome]).ravel(),
-                                              err_msg=f"{pasta}/{nome}: rode o 08 de novo")
+            if nome in ("entrada", "escore"):
+                continue
+            # não bit a bit: o cos do np.hanning e a FFT variam no último bit entre
+            # plataformas (Linux e Windows); uma mudança no dsp erra muitas ordens acima
+            ref = np.asarray(e[nome]).ravel()
+            np.testing.assert_allclose(lido[nome].ravel(), ref, rtol=1e-12,
+                                       atol=1e-12 * np.max(np.abs(ref)),
+                                       err_msg=f"{pasta}/{nome}: rode o 08 de novo")
