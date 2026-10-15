@@ -37,3 +37,6 @@
 *.mat binary
 *.png binary
 *.pdf binary
+# referências por estágio do 08 (reports/c_reference/estagios/)
+*.f64 binary
+*.i16 binary

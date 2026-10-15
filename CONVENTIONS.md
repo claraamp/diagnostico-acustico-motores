@@ -47,7 +47,7 @@ diagnostico-acustico-motores/
 │   ├── decimation/           # saída do estudo de taxas: métricas, figuras e relatório
 │   ├── exploration/          # figuras dos scripts de scripts/exploration/
 │   ├── signature/            # caracterização da assinatura acústica (BPFI/BPFO medidas, envelope, Mel)
-│   ├── c_reference/          # reference_data.h do 04 --ref-c, VERSIONADO (referência da Fase 2)
+│   ├── c_reference/          # reference_data.h do 04 --ref-c e estagios/ do 08, VERSIONADOS (referência da Fase 2)
 │   ├── modelo_final/         # lda_final.json e escores_referencia.csv do 05 e lda_modelo.h do 06 e lda_vetores_teste.h do 07, VERSIONADOS (referência da Fase 2)
 │   └── validation/           # uma pasta por rodada dos protocolos: metrics.json e folds.csv
 │
@@ -74,7 +74,7 @@ O estudo de escolha do classificador seguiu a mesma regra: nasceu como `validati
 A linha entre as duas pastas é o que o script **faz**, não o seu tamanho: `pipeline/` é transformação que roda de novo toda vez que o dado muda; `exploration/` responde uma pergunta uma vez. O caso que fixou a regra: a escolha da taxa de decimação nasceu misturada com a decimação em si, num arquivo de 1.200 linhas. O estudo — varredura de cinco taxas, métricas, figuras e relatório — foi para `exploration/compare_decimation_rates.py`, e a etapa que aplica a taxa escolhida ficou em `pipeline/02_decimate_pcm.py`, com 105 linhas. Um estudo fica versionado para a decisão continuar auditável, não para ser reexecutado.
 
 **Scripts de pipeline** (`scripts/pipeline/`): prefixo numérico de duas casas indicando a ordem de execução, seguido do verbo da ação em `snake_case`.
-Sequência atual: `01_convert_mat_to_pcm.py`, `02_decimate_pcm.py`, `03_make_splits.py`, `04_extract_features.py`, `05_train_classifier.py`, `06_export_lda_header.py`, `07_export_lda_test_vectors.py`.
+Sequência atual: `01_convert_mat_to_pcm.py`, `02_decimate_pcm.py`, `03_make_splits.py`, `04_extract_features.py`, `05_train_classifier.py`, `06_export_lda_header.py`, `07_export_lda_test_vectors.py`, `08_export_stage_references.py`.
 Regra: se um script novo precisa rodar *entre* dois existentes, renumerar em vez de usar sufixos como `01b_`. Foi o que aconteceu com a partição: ela entrou como `03` porque a extração de features opera sobre os segmentos que ela define, e a extração e o treino passaram a `04` e `05`.
 
 O `05_train_classifier.py` produz o modelo que vai para o firmware; ele **não** mede desempenho. Medir desempenho é papel de `scripts/validation/run_protocol.py`, que treina e descarta um modelo por fold. As duas coisas ficam em scripts separados de propósito.
@@ -160,7 +160,7 @@ Módulos importáveis ficam na raiz de `scripts/` quando praticamente toda etapa
 | módulo | responsabilidade |
 |---|---|
 | `config.py` | parâmetros que atravessam etapas: taxa de trabalho, janela, hop, banco de Mel, rótulos, segmentação e partição |
-| `dsp.py` | blocos de sinal: PSD, espectro de envelope, banco de Mel, MFCC, projeto de decimação; para o porte em C, os coeficientes do FIR (`taps_decimacao`), o recorte que o decimador do firmware lê (`recorte_para_decimar`) e a média e o desvio em float32 (`media_desvio_float32`) |
+| `dsp.py` | blocos de sinal: PSD, espectro de envelope, banco de Mel, MFCC, projeto de decimação; para o porte em C, os coeficientes do FIR (`taps_decimacao`), o recorte que o decimador do firmware lê (`recorte_para_decimar`) a média e o desvio em float32 (`media_desvio_float32`), a saída de cada estágio (`estagios_mfcc`) e as tolerâncias por estágio (`ESTAGIOS_PORTE`, `erro_estagio`) |
 | `pcm_io.py` | leitura e escrita dos `.bin` e dos `manifest.json` |
 | `experimentos.py` | numeração, hash do commit e escrita do `registry.csv` |
 | `validation/particao.py` | segmentação das gravações, folds dos protocolos A e B, verificação das garantias, leitura e escrita do `splits.json` |

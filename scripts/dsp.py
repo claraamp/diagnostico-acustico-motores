@@ -18,7 +18,9 @@ Conteúdo:
     Decimação         FirSpec, design_decimation, taps_decimacao, resample_clip,
                       aliasing_energy_db, usable_band
     Porte em C        recorte_para_decimar (trecho que o decimador do firmware lê),
-                      media_desvio_float32 (média e desvio em float32, por método)
+                      media_desvio_float32 (média e desvio em float32, por método),
+                      estagios_mfcc (referência de cada estágio), ESTAGIOS_PORTE e
+                      erro_estagio (tolerâncias por estágio e a métrica de cada um)
 """
 
 from __future__ import annotations
@@ -160,11 +162,13 @@ def mel_filterbank(fs: float, n_fft: int, n_mels: int, fmin: float = config.MFCC
 def log_mel(x: np.ndarray, fs: float,
             frame_ms: float = float(config.MFCC_WINDOW_MS),
             hop_ms: float = float(config.MFCC_HOP_MS),
-            n_mels: int = config.MFCC_N_MELS) -> np.ndarray:
+            n_mels: int = config.MFCC_N_MELS,
+            estagios: dict | None = None) -> np.ndarray:
     """
     Calcula as energias log-Mel por quadro (etapa anterior à DCT).
     Exposta separadamente para permitir análise direta das bandas de frequência
-    na investigação de falhas sutis (ex: bpfo_0.3mm).
+    na investigação de falhas sutis (ex: bpfo_0.3mm). Com `estagios`, guarda nele
+    os quadros janelados, o espectro, o Mel e o log-Mel (ver `estagios_mfcc`).
     """
     n_frame = int(round(frame_ms / 1000 * fs))
     n_hop = int(round(hop_ms / 1000 * fs))
@@ -187,19 +191,26 @@ def log_mel(x: np.ndarray, fs: float,
     mel = spec @ fb.T
 
     # Logaritmo com proteção contra zeros
-    return np.log(mel + 1e-10)
+    lmel = np.log(mel + 1e-10)
+    if estagios is not None:
+        estagios.update(janela=frames, espectro=spec, mel=mel, logmel=lmel)
+    return lmel
 
 
 def mfcc(x: np.ndarray, fs: float,
          frame_ms: float = float(config.MFCC_WINDOW_MS),
          hop_ms: float = float(config.MFCC_HOP_MS),
          n_mels: int = config.MFCC_N_MELS,
-         n_mfcc: int = config.MFCC_N_COEFS) -> np.ndarray:
+         n_mfcc: int = config.MFCC_N_COEFS,
+         estagios: dict | None = None) -> np.ndarray:
     """MFCC no formato que será portado: Hanning → FFT → mel → log → DCT-II."""
-    lmel = log_mel(x, fs, frame_ms, hop_ms, n_mels)
+    lmel = log_mel(x, fs, frame_ms, hop_ms, n_mels, estagios)
     if lmel.shape[0] == 0:
         return np.zeros((0, n_mfcc))
-    return dct(lmel, type=2, axis=1, norm="ortho")[:, :n_mfcc]
+    m = dct(lmel, type=2, axis=1, norm="ortho")[:, :n_mfcc]
+    if estagios is not None:
+        estagios["mfcc"] = m
+    return m
 
 
 def _fir_kaiser(fs_work: float, cutoff: float, transition: float, atten_db: float) -> np.ndarray:
@@ -366,3 +377,75 @@ def media_desvio_float32(quadros: np.ndarray, metodo: str) -> tuple[np.ndarray, 
             s2 = (s2 + d * d).astype(np.float32)
         return media, np.sqrt(s2 / n_q).astype(np.float32)
     raise ValueError(f"método desconhecido: {metodo}; use um de {METODOS_RESUMO}")
+
+
+# --------------------------------------------------------------------------- #
+# Referências e tolerâncias por estágio para o porte em C
+# (docs/contrato_numerico.md, seção "Tolerâncias por estágio (A4)")
+# --------------------------------------------------------------------------- #
+def estagios_mfcc(pcm: np.ndarray, fs: float = config.FS_TRABALHO) -> dict[str, np.ndarray]:
+    """
+    Saída de cada estágio da cadeia, em float64, para um segmento `int16`: a
+    referência com que o porte em C é comparado estágio a estágio. Usa o mesmo
+    `mfcc` da extração (os intermediários saem da mesma conta, não de uma cópia).
+
+    Chaves, na ordem da cadeia: entrada (o `int16`), escala, janela (98 × 320),
+    espectro (98 × 257), mel (98 × 20), logmel, mfcc (98 × 13), media e desvio
+    (13 cada, desvio populacional; juntos, as 26 características).
+    """
+    pcm = np.asarray(pcm)
+    if pcm.dtype != np.int16:
+        raise ValueError("estagios_mfcc espera o segmento em int16")
+    e: dict[str, np.ndarray] = {"entrada": pcm, "escala": pcm.astype(np.float64) / config.INT16_FULL}
+    m = mfcc(e["escala"], fs, estagios=e)
+    e["media"], e["desvio"] = m.mean(axis=0), m.std(axis=0)
+    return {k: e[k] for k in ("entrada", "escala", "janela", "espectro", "mel", "logmel",
+                              "mfcc", "media", "desvio")}
+
+
+# Tolerâncias do porte, estágio a estágio: (estágio, métrica, isolado, encadeado).
+# "isolado": o estágio recebe a referência do estágio anterior; "encadeado": a
+# cadeia em C desde o int16. Cada valor é 10 × o maior erro da cadeia em float32
+# nos 295 segmentos, arredondado para cima em 1, 2, 5
+# (exploration/inspect_tolerancias_estagio.py); a métrica está em `erro_estagio`.
+ESTAGIOS_PORTE = (
+    ("escala",   "rel_quadro", 1e-6, 1e-6),
+    ("janela",   "rel_quadro", 5e-6, 5e-6),
+    ("espectro", "rel_quadro", 5e-6, 5e-6),
+    ("mel",      "rel_quadro", 5e-6, 5e-6),
+    ("logmel",   "abs",        1e-5, 2e-4),
+    ("mfcc",     "abs",        5e-5, 1e-4),
+    ("media",    "abs",        1e-4, 1e-4),
+    ("desvio",   "rel",        5e-5, 5e-5),
+    ("escore",   "rel",        5e-6, 1e-5),
+)
+METRICAS_ESTAGIO = ("rel_quadro", "abs", "rel")
+
+
+def erro_estagio(calculado: np.ndarray, referencia: np.ndarray, metrica: str) -> float:
+    """
+    Erro de um estágio do porte contra a referência, pela métrica do A4:
+
+    - "rel_quadro": por quadro (linha), max|c − r| / max|r|; vale o pior quadro.
+      Um vetor conta como um quadro só. Mede o erro contra a escala do próprio
+      quadro, para que um quadro silencioso não seja julgado pela escala de um forte.
+    - "abs":        max|c − r| (log-Mel e MFCC, já em escala logarítmica).
+    - "rel":        max|c − r| / |r|, elemento a elemento (desvios e escore, longe de zero).
+    """
+    c = np.atleast_2d(np.asarray(calculado, dtype=np.float64))
+    r = np.atleast_2d(np.asarray(referencia, dtype=np.float64))
+    if c.shape != r.shape:
+        raise ValueError(f"formas diferentes: {c.shape} e {r.shape}")
+    d = np.abs(c - r)
+    if metrica == "rel_quadro":
+        escala = np.max(np.abs(r), axis=1)
+        if np.any(escala == 0):
+            raise ValueError("quadro de referência todo em zero: a métrica rel_quadro não se aplica")
+        return float(np.max(np.max(d, axis=1) / escala))
+    if metrica == "abs":
+        return float(d.max())
+    if metrica == "rel":
+        if np.any(r == 0):
+            raise ValueError("referência com zero: a métrica rel não se aplica")
+        return float(np.max(d / np.abs(r)))
+    raise ValueError(f"métrica desconhecida: {metrica}; use uma de {METRICAS_ESTAGIO}")

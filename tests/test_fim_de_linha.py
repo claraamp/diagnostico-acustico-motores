@@ -22,7 +22,7 @@ RAIZ = Path(__file__).resolve().parents[1]
 
 # o que pode ficar fora de LF no repositório (ver .gitattributes)
 SEM_CONVERSAO = (".csv",)                 # gravados pelo módulo csv, com CRLF, e mantidos como estão
-BINARIOS = (".png", ".pdf", ".bin", ".npz", ".npy", ".mat")
+BINARIOS = (".png", ".pdf", ".bin", ".npz", ".npy", ".mat", ".f64", ".i16")
 
 
 @pytest.mark.parametrize("relativo", ["reports/modelo_final/lda_final.json",
