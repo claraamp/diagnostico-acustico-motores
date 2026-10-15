@@ -252,3 +252,92 @@ def test_soma_dos_quadrados_perde_precisao_com_media_grande():
 def test_metodo_desconhecido():
     with pytest.raises(ValueError):
         dsp.media_desvio_float32(np.zeros((98, 13)), "kahan")
+
+
+# --------------------------------------------------------------------------- #
+# Referências e tolerâncias por estágio (seções "Referência numérica" e "A4")
+# --------------------------------------------------------------------------- #
+def _pcm(semente=5):
+    return np.clip(np.round(_segmento(semente) * 32767), -32768, 32767).astype(np.int16)
+
+
+def test_estagios_sao_os_da_extracao():
+    """Os intermediários saem da mesma conta do dsp.mfcc e do resumo do 04, sem cópia."""
+    import importlib.util
+    from pathlib import Path
+    pcm = _pcm()
+    e = dsp.estagios_mfcc(pcm)
+    assert list(e) == ["entrada", "escala", "janela", "espectro", "mel", "logmel", "mfcc",
+                       "media", "desvio"]
+    x = pcm.astype(np.float64) / config.INT16_FULL
+    np.testing.assert_array_equal(e["escala"], x)
+    np.testing.assert_array_equal(e["mfcc"], dsp.mfcc(x, FS))
+    np.testing.assert_array_equal(e["logmel"], dsp.log_mel(x, FS))
+    assert e["janela"].shape == (98, 320) and e["espectro"].shape == (98, 257)
+    caminho = Path(__file__).resolve().parents[1] / "scripts" / "pipeline" / "04_extract_features.py"
+    spec = importlib.util.spec_from_file_location("extract_features", caminho)
+    E = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(E)
+    np.testing.assert_array_equal(np.concatenate([e["media"], e["desvio"]]),
+                                  E.resumo_mfcc(x, norm_clipe=False))
+    with pytest.raises(ValueError):
+        dsp.estagios_mfcc(x)                          # só aceita o int16
+
+
+def test_metricas_do_a4():
+    r = np.array([[1.0, -2.0], [0.01, 0.02]])
+    c = r + np.array([[0.0, 0.002], [0.0, 0.0001]])
+    # o quadro fraco é julgado pela própria escala: 0,0001 / 0,02 = 0,005 > 0,002 / 2
+    assert dsp.erro_estagio(c, r, "rel_quadro") == pytest.approx(0.005)
+    assert dsp.erro_estagio(c, r, "abs") == pytest.approx(0.002)
+    assert dsp.erro_estagio(c, r, "rel") == pytest.approx(0.005)
+    assert dsp.erro_estagio(np.array([1.5]), np.array([1.0]), "rel_quadro") == pytest.approx(0.5)
+    with pytest.raises(ValueError):
+        dsp.erro_estagio(c, r, "relativo")
+    with pytest.raises(ValueError):
+        dsp.erro_estagio(c[:1], r, "abs")
+
+
+def test_tabela_do_a4_no_documento_e_a_do_dsp():
+    """A tabela do A4 no contrato e dsp.ESTAGIOS_PORTE (que o 08 exporta ao harness) coincidem."""
+    import re
+    from pathlib import Path
+    texto = (Path(__file__).resolve().parents[1] / "docs" / "contrato_numerico.md").read_text(encoding="utf-8")
+    secao = texto.split("## Tolerâncias por estágio (A4)")[1]
+
+    def numero(v):
+        m = re.fullmatch(r"(\d+(?:,\d+)?) × 10⁻([⁰¹²³⁴⁵⁶⁷⁸⁹]+)", v.strip())
+        sup = str.maketrans("⁰¹²³⁴⁵⁶⁷⁸⁹", "0123456789")
+        return float(f"{m.group(1).replace(',', '.')}e-{m.group(2).translate(sup)}")
+
+    linhas = {}
+    for l in secao.splitlines():
+        cel = [c.strip() for c in l.strip().strip("|").split("|")]
+        if len(cel) == 6 and cel[1] in dsp.METRICAS_ESTAGIO:
+            linhas[cel[0]] = (cel[1], numero(cel[3]), numero(cel[5]))
+    esperado = {e: (m, i, c) for e, m, i, c in dsp.ESTAGIOS_PORTE}
+    assert linhas == esperado
+    for _, _, iso, enc in dsp.ESTAGIOS_PORTE:
+        assert enc >= iso                              # o encadeado acumula os anteriores
+
+
+def test_tolerancias_pegam_erros_de_porte():
+    """Cada divergência clássica da tabela do contrato passa da tolerância do seu estágio."""
+    from scipy.fft import dct, rfft
+    tol = {e: (m, i) for e, m, i, _ in dsp.ESTAGIOS_PORTE}
+    r = dsp.estagios_mfcc(_pcm())
+
+    def passa(estagio, calculado, vezes=10):
+        metrica, t = tol[estagio]
+        return dsp.erro_estagio(calculado, r[estagio], metrica) > vezes * t
+
+    assert passa("escala", r["entrada"] / 32768.0)                     # Q15 da CMSIS
+    periodica = 0.5 - 0.5 * np.cos(2 * np.pi * np.arange(320) / 320)
+    idx = np.arange(320)[None, :] + 128 * np.arange(98)[:, None]
+    assert passa("janela", r["escala"][idx] * periodica)                # Hann periódica
+    assert passa("espectro", np.abs(rfft(r["janela"], n=512, axis=1)))  # magnitude, não potência
+    assert passa("logmel", np.log10(r["mel"] + 1e-10))                  # log10 em vez de ln
+    assert passa("mfcc", dct(r["logmel"], type=2, axis=1)[:, :13])      # DCT sem ortho
+    assert passa("desvio", r["mfcc"].std(axis=0, ddof=1))               # desvio amostral
+    _, d32 = dsp.media_desvio_float32(r["mfcc"] + 1000.0, "soma_quadrados")
+    assert dsp.erro_estagio(d32, r["desvio"], "rel") > tol["desvio"][1]  # soma dos quadrados

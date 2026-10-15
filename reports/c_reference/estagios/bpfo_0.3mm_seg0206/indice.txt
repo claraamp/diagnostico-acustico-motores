@@ -1,0 +1,12 @@
+# segmento 206 gravacao bpfo_0.3mm indice 29 amostras 371200..383999 do PCM decimado a 12800 Hz
+# estagio tipo linhas colunas arquivo
+entrada i16 1 12800 entrada.i16
+escala f64 1 12800 escala.f64
+janela f64 98 320 janela.f64
+espectro f64 98 257 espectro.f64
+mel f64 98 20 mel.f64
+logmel f64 98 20 logmel.f64
+mfcc f64 98 13 mfcc.f64
+media f64 1 13 media.f64
+desvio f64 1 13 desvio.f64
+escore f64 1 1 escore.f64

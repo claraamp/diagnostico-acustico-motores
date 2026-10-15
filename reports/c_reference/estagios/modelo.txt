@@ -1,0 +1,3 @@
+id exp239
+json_sha256_12 ee0c3e088366
+bias 2527.68311
