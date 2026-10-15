@@ -1,0 +1,13 @@
+# tolerancias do porte por estagio (A4, docs/contrato_numerico.md);
+# metricas: rel_quadro = por quadro, max|c-r|/max|r|; abs = max|c-r|;
+# rel = max|c-r|/|r| elemento a elemento
+# estagio metrica tol_isolado tol_encadeado
+escala rel_quadro 1e-06 1e-06
+janela rel_quadro 5e-06 5e-06
+espectro rel_quadro 5e-06 5e-06
+mel rel_quadro 5e-06 5e-06
+logmel abs 1e-05 2e-04
+mfcc abs 5e-05 1e-04
+media abs 1e-04 1e-04
+desvio rel 5e-05 5e-05
+escore rel 5e-06 1e-05

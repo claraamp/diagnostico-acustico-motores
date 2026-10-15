@@ -1,0 +1,133 @@
+{
+  "id": "exp253",
+  "splits": "772c8e1eb1",
+  "modelo": "exp239",
+  "n_segmentos": 295,
+  "regra": "10 × o maior erro, para cima em 1, 2, 5; encadeada ≥ isolada",
+  "medido": {
+    "isolado": {
+      "escala": {
+        "erro": 5.1162662721760173e-08,
+        "segmento": 202
+      },
+      "janela": {
+        "erro": 3.1395267696130605e-07,
+        "segmento": 161
+      },
+      "espectro": {
+        "erro": 3.870476195212238e-07,
+        "segmento": 278
+      },
+      "mel": {
+        "erro": 4.818473669558186e-07,
+        "segmento": 9
+      },
+      "logmel": {
+        "erro": 5.538112581859878e-07,
+        "segmento": 146
+      },
+      "mfcc": {
+        "erro": 3.1881839763769904e-06,
+        "segmento": 247
+      },
+      "media": {
+        "erro": 5.112295198728134e-06,
+        "segmento": 138
+      },
+      "desvio": {
+        "erro": 2.0617064769695426e-06,
+        "segmento": 138
+      },
+      "escore": {
+        "erro": 4.1816952871648714e-07,
+        "segmento": 150
+      }
+    },
+    "encadeado": {
+      "escala": {
+        "erro": 5.1162662721760173e-08,
+        "segmento": 202
+      },
+      "janela": {
+        "erro": 3.1395267696130605e-07,
+        "segmento": 161
+      },
+      "espectro": {
+        "erro": 4.0653265457867435e-07,
+        "segmento": 248
+      },
+      "mel": {
+        "erro": 4.954545554524573e-07,
+        "segmento": 141
+      },
+      "logmel": {
+        "erro": 1.702907539868903e-05,
+        "segmento": 173
+      },
+      "mfcc": {
+        "erro": 5.890510068606858e-06,
+        "segmento": 173
+      },
+      "media": {
+        "erro": 5.112295198728134e-06,
+        "segmento": 138
+      },
+      "desvio": {
+        "erro": 1.804088539801631e-06,
+        "segmento": 250
+      },
+      "escore": {
+        "erro": 9.943718760625826e-07,
+        "segmento": 66
+      }
+    }
+  },
+  "tolerancias": {
+    "escala": {
+      "metrica": "rel_quadro",
+      "isolado": 1e-06,
+      "encadeado": 1e-06
+    },
+    "janela": {
+      "metrica": "rel_quadro",
+      "isolado": 5e-06,
+      "encadeado": 5e-06
+    },
+    "espectro": {
+      "metrica": "rel_quadro",
+      "isolado": 5e-06,
+      "encadeado": 5e-06
+    },
+    "mel": {
+      "metrica": "rel_quadro",
+      "isolado": 5e-06,
+      "encadeado": 5e-06
+    },
+    "logmel": {
+      "metrica": "abs",
+      "isolado": 1e-05,
+      "encadeado": 0.0002
+    },
+    "mfcc": {
+      "metrica": "abs",
+      "isolado": 5e-05,
+      "encadeado": 0.0001
+    },
+    "media": {
+      "metrica": "abs",
+      "isolado": 0.0001,
+      "encadeado": 0.0001
+    },
+    "desvio": {
+      "metrica": "rel",
+      "isolado": 5e-05,
+      "encadeado": 5e-05
+    },
+    "escore": {
+      "metrica": "rel",
+      "isolado": 5e-06,
+      "encadeado": 1e-05
+    }
+  },
+  "estagios_porte_confere": true
+}
