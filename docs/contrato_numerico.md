@@ -368,9 +368,10 @@ grandeza (teste `test_tolerancias_pegam_erros_de_porte`):
 
 **Limites.** A FFT emulada é a do scipy, não a da CMSIS, e a emulação não faz a
 fusão de multiplicação e soma (FMA) do Cortex-M4. O harness mede a CMSIS de
-verdade, no PC. Nos 5 segmentos das referências, os estágios já portados
-(escala, janela, espectro, média, desvio e, com o `lda_modelo.h` do firmware, o
-escore) ficaram entre 0,6% e 7,5% da tolerância isolada. A placa, com FMA, muda o último bit de cada operação, mas
+verdade, no PC. Nos 5 segmentos das referências, todos os estágios (do
+`int16` ao escore, com o `lda_modelo.h` do firmware) ficaram entre 0,6% e 7,8% da
+tolerância, nos dois modos; o escore encadeado erra 3,4 × 10⁻⁷
+relativo, 3,4% da tolerância. A placa, com FMA, muda o último bit de cada operação, mas
 não a ordem de grandeza; a margem de 10 vezes cobre isso. Se um estágio passar
 da tolerância por pouco, confira a margem antes de procurar erro no porte.
 
@@ -379,7 +380,10 @@ da tolerância por pouco, confira a margem antes de procurar erro no porte.
 `reports/c_reference/estagios/`, roda os estágios de `Core/Src/mfcc_estagios.c`
 com a implementação genérica em C da CMSIS-DSP e imprime, por estágio e nos dois
 modos, o maior erro absoluto, o maior erro relativo à escala do estágio, a
-métrica do A4, a tolerância e OK ou FALHOU. O Mel (bloco 3), o log (bloco 4) e a
-DCT (bloco 5) aparecem como "não portado" até existirem em C. Ele recusa (código
+métrica do A4, a tolerância e OK ou FALHOU. Todos os estágios estão portados;
+um estágio que entre depois aparece como "não portado" até existir em C. No modo
+encadeado, ele também confere que o `mfcc_segmento()`, a chamada única que a placa
+usa (`int16` → 26 características), dá bit a bit o mesmo que o laço estágio a
+estágio. Ele recusa (código
 2) referências de outro modelo, sem o `modelo.txt`, com forma diferente da
 esperada ou com zero onde a métrica não se aplica, como o `dsp.erro_estagio`.
