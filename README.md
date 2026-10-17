@@ -114,6 +114,7 @@ diagnostico-acustico-motores/
 │   │   ├── compare_classifiers.py         # estudo que escolheu o classificador (validação interna ao B)
 │   │   ├── inspect_lda_harmonicos.py      # controle: peso da LDA nas bandas dos harmônicos do eixo
 │   │   ├── inspect_comb_features.py       # pente harmônico (BPFO/BPFI) junto ao MFCC: entra na cadeia? (validação interna)
+│   │   ├── inspect_deteccao_novidade.py   # detecção de novidade para a bpfo_0.3mm (D1–D4, sensibilidade no B; docs/criterio_deteccao_novidade.md)
 │   │   ├── inspect_left_out_fault.py      # posição da falha deixada de fora (Protocolo B)
 │   │   ├── inspect_acumulacao_float32.py  # média e desvio do MFCC em float32, por método (contrato numérico, A3)
 │   │   ├── inspect_tolerancias_estagio.py # erro de cada estágio do MFCC em float32 e tolerâncias do porte (contrato numérico, A4)
@@ -158,6 +159,7 @@ diagnostico-acustico-motores/
 │   │   ├── test_export_lda_test_vectors.py # os vetores de teste ficam dentro da tolerância, a seleção não olha o escore, recusa .h de outro modelo
 │   │   └── test_export_stage_references.py # o formato volta igual do arquivo; as referências versionadas são as do dsp atual
 │   ├── exploration/
+│   │   ├── test_deteccao_novidade.py      # D1b, amplitude da série sintética, D4 só com normais de treino, controle e regra de escolha
 │   │   ├── test_comb_features.py          # candidatos A/B/C do card (A inviável); acha a série fora da razão cinemática; decisão pela validação interna
 │   │   └── test_compare_classifiers.py    # critério de escolha: mais barato na margem, em qualquer ordem (pula sem torch)
 │   └── validation/
@@ -189,7 +191,8 @@ diagnostico-acustico-motores/
 │       └── consolidacao/     # tabelas .tex, figuras e rastreabilidade do relatório (run_consolidacao.py)
 │
 └── docs/                     # proposta, documentação técnica complementar
-    └── contrato_numerico.md  # o que o C tem que reproduzir da extração de características (Fase 2)
+    ├── contrato_numerico.md  # o que o C tem que reproduzir da extração de características (Fase 2)
+    └── criterio_deteccao_novidade.md  # candidatos, limiar e regra de escolha da detecção de novidade (bpfo_0.3mm)
 ```
 
 Ver [`CONVENTIONS.md`](./CONVENTIONS.md) para as convenções de nomenclatura de scripts, classes e commits, e para o formato do registro de experimentos.

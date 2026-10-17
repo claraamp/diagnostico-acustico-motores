@@ -132,7 +132,7 @@ Cada rodada de um experimento (extração de features, treino de classificador, 
 |---|---|
 | `id` | identificador curto e sequencial, ex. `exp001` |
 | `data` | data da rodada (AAAA-MM-DD) |
-| `etapa` | qual etapa do pipeline foi exercitada, ex. `decimacao`, `extracao_features`, `validacao_classificador`, `escolha_classificador`, `treino_classificador`, `exportacao_firmware`, `caracterizacao_assinatura`, `caracterizacao_pente`, `contrato_numerico` |
+| `etapa` | qual etapa do pipeline foi exercitada, ex. `decimacao`, `extracao_features`, `validacao_classificador`, `escolha_classificador`, `treino_classificador`, `exportacao_firmware`, `caracterizacao_assinatura`, `caracterizacao_pente`, `deteccao_novidade`, `contrato_numerico` |
 | `script` | script executado, ex. `02_decimate_pcm.py` |
 | `git_commit` | hash curto do commit em que o script estava (`git rev-parse --short HEAD`) — garante que dá pra reproduzir exatamente aquela rodada |
 | `parametros` | parâmetros relevantes da rodada, em formato `chave=valor;chave=valor` (ex. `fator_decimacao=4;filtro=fir_lowpass_order8`) |
