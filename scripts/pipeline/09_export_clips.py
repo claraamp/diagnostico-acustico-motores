@@ -34,16 +34,37 @@ caminhos depois de decimar:
 As duas diferem em ~10⁻⁵ relativo, perto da tolerância encadeada do escore no
 A4: compare com a referência do caminho que a placa usar.
 
+**Na placa, a decimação é em float32.** Em float64 (Python), o recorte decimado
+e requantizado é bit a bit o segmento do `02`; em float32 não precisa ser: a
+saída difere da de float64 em ~0,003 LSB, e uma amostra que cai perto de um
+empate (x,5) pode arredondar para o outro lado. `decimar_cmsis_f32` emula o
+`arm_fir_decimate_f32` (acumulador float32, do tap mais antigo ao mais novo,
+com e sem o FMA do Cortex-M4) e o script aborta se a emulação diferir do clipe
+em mais de 1 LSB ou se o escore sair da tolerância encadeada do A4 (a
+requantização também é emulada em float32, `lrintf(y * 32767.0f)`). Com o
+recorte padrão, diferem 1 amostra sem FMA e 2 com FMA, e o `.h` registra isso:
+na placa, compare o recorte com o clipe com folga de 1 LSB, e o escore com
+tolerância.
+
+**Uso na placa (flash e RAM).** O `.h` só *declara* os vetores (`extern const`);
+eles são definidos no único `.c` que fizer `#define CLIPES_DEMO_DADOS` antes do
+`#include`. Com `static const` no `.h`, cada `.c` que o incluísse levaria uma
+cópia dos ~350 KB de áudio, e dois `.c` já passariam dos 512 KB da flash da
+F411. O recorte não cabe inteiro em float na RAM (51.348 × 4 B = 200 KB, contra
+128 KB): a placa decima em blocos, convertendo `int16` → float um bloco por vez
+(blocos de 512 amostras dão 128 saídas, um passo de quadro).
+
 **Orçamento** (C1): a flash da F411 tem 512 KB; o README do firmware reserva
 64 KB para o resto do firmware e deixa ~434 KB para áudio, ~13 s a 12,8 kHz
 com o recorte de 51,2 kHz. O script aborta se os clipes passarem de
 `--orcamento-kb`. O padrão (2 s por gravação, 10 s, mais o recorte) ocupa
-~359 KB.
+~350 KB (358.696 B).
 
 **Conferências antes de gravar** (aborta se alguma falhar): PCM e partição
 íntegros; o escore de cada segmento, recalculado do `int16` do clipe com o
 `dsp.mfcc` e a LDA final, é o do `escores_referencia.csv`; o recorte, decimado
-como na placa e requantizado, é **bit a bit** o segmento a 12,8 kHz do `02`.
+em float64 e requantizado, é **bit a bit** o segmento a 12,8 kHz do `02`, e,
+decimado como na placa (float32), fica a no máximo 1 LSB dele.
 
 **Fidelidade, não desempenho.** Todos os segmentos estão no treino do modelo
 final: a demonstração mede se a placa reproduz o Python, não o desempenho do
@@ -115,6 +136,7 @@ class Recorte:
     taps: np.ndarray           # float64, os do resample_clip
     escore_float: float
     escore_int16: float
+    difere_na_placa: dict      # amostras que, decimadas em float32, diferem do 02 (sem e com FMA)
 
 
 def selecionar(segmentos, segundos: int) -> dict[str, list]:
@@ -155,6 +177,39 @@ def decimar_recorte(pcm_recorte: np.ndarray, taps: np.ndarray, descartar: int,
     return lfilter(taps, 1.0, x)[fase::fator][descartar:]
 
 
+def decimar_cmsis_f32(pcm_recorte: np.ndarray, fir: np.ndarray, descartar: int,
+                      fator: int = config.FATOR_DECIMACAO, fma: bool = True) -> np.ndarray:
+    """
+    Emula o `arm_fir_decimate_f32` (fase 0) em float32: `x = int16 / 32767.0f`,
+    estado inicial zerado e, para cada saída, um acumulador float32 somado do tap
+    mais antigo ao mais novo, como no laço da CMSIS. Com `fma`, cada passo
+    arredonda uma vez só, como o `vfma.f32` que o gcc gera para o Cortex-M4 (a
+    soma em float64 antes de arredondar para float32 é uma aproximação disso).
+    `fir` está na ordem do tempo; a CMSIS o recebe invertido, o que, simétrico,
+    dá no mesmo. Devolve float32, sem as `descartar` primeiras saídas.
+    """
+    fir = np.asarray(fir, dtype=np.float32)
+    n = len(fir)
+    x = pcm_recorte.astype(np.float32) / np.float32(config.INT16_FULL)
+    xp = np.concatenate([np.zeros(n - 1, np.float32), x])
+    inicio = np.arange(len(x) // fator) * fator           # a janela da saída j termina em x[fator·j]
+    coef = fir[::-1]                                       # pCoeffs: coef[0] multiplica a mais antiga
+    acc = np.zeros(len(inicio), np.float32)
+    for k in range(n):
+        if fma:
+            acc = (acc.astype(np.float64) + float(coef[k]) * xp[inicio + k].astype(np.float64)
+                   ).astype(np.float32)
+        else:
+            acc = acc + coef[k] * xp[inicio + k]
+    return acc[descartar:]
+
+
+def requantizar_f32(y: np.ndarray) -> np.ndarray:
+    """`lrintf(y * 32767.0f)` saturado em 16 bits, em float32, como a placa faria."""
+    v = np.rint(np.asarray(y, dtype=np.float32) * np.float32(config.INT16_FULL))
+    return np.clip(v, -32768, 32767).astype(np.int16)
+
+
 def montar_recorte(seg, raw: np.ndarray, decimado: np.ndarray, pesos, bias,
                    escore_csv: float) -> Recorte:
     spec = dsp.design_decimation(config.FS_ORIGINAL, config.FS_TRABALHO)
@@ -173,10 +228,40 @@ def montar_recorte(seg, raw: np.ndarray, decimado: np.ndarray, pesos, bias,
                               pesos, bias)
     if abs(escore_int16 - escore_csv) > 1e-8 * abs(escore_csv) + 1e-9:
         raise SystemExit(f"Abortado: escore int16 do recorte ({escore_int16}) difere do CSV ({escore_csv})")
+    escore_float = escore_lda(y, pesos, bias)
+    difere = conferir_como_na_placa(pcm, taps, descartar, decimado[seg.inicio:seg.fim],
+                                    pesos, bias, escore_float, escore_csv)
     d = config.FATOR_DECIMACAO * seg.inicio - a
     return Recorte(segmento=seg, pcm=pcm, inicio_original=a, antes=d, depois=b - a - d - 4 * n,
-                   descartar=descartar, taps=taps, escore_float=escore_lda(y, pesos, bias),
-                   escore_int16=escore_csv)
+                   descartar=descartar, taps=taps, escore_float=escore_float,
+                   escore_int16=escore_csv, difere_na_placa=difere)
+
+
+def conferir_como_na_placa(pcm, taps, descartar, segmento_02, pesos, bias,
+                           escore_float: float, escore_int16: float) -> dict[str, int]:
+    """
+    Decima o recorte como a placa (float32, sem e com FMA) e confere: requantizado,
+    fica a no máximo 1 LSB do segmento do `02`, e os dois escores ficam dentro da
+    tolerância encadeada do escore no A4. Devolve quantas amostras diferem.
+    """
+    tol = next(c for e, _, _, c in dsp.ESTAGIOS_PORTE if e == "escore")
+    difere = {}
+    for fma in (False, True):
+        nome = "com FMA" if fma else "sem FMA"
+        y32 = decimar_cmsis_f32(pcm, taps.astype(np.float32), descartar, fma=fma)
+        q = requantizar_f32(y32)
+        dif = np.abs(q.astype(np.int32) - segmento_02.astype(np.int32))
+        if dif.max() > 1:
+            raise SystemExit(f"Abortado: decimado em float32 ({nome}), o recorte difere do segmento "
+                             f"do 02 em até {dif.max()} LSB")
+        for e, ref, o_que in ((escore_lda(y32.astype(np.float64), pesos, bias), escore_float, "float"),
+                              (escore_lda(q.astype(np.float64) / config.INT16_FULL, pesos, bias),
+                               escore_int16, "int16")):
+            if abs(e - ref) > tol * abs(ref):
+                raise SystemExit(f"Abortado: decimado em float32 ({nome}), o escore {o_que} do recorte "
+                                 f"({e:.4f}) sai da tolerância {tol:.0e} de {ref:.4f}")
+        difere[nome] = int(np.count_nonzero(dif))
+    return difere
 
 
 def _lista(valores, fmt, por_linha: int) -> list[str]:
@@ -209,6 +294,13 @@ def gerar_header(clipes: list[Clipe], recorte: Recorte | None, origem: dict, p: 
         " * fidelidade do porte (a placa reproduz o Python), nao o desempenho do",
         " * classificador, que e o do Protocolo B.",
         " *",
+        " * USO: este .h so DECLARA os vetores. Em UM unico .c, faca",
+        " *     #define CLIPES_DEMO_DADOS",
+        " *     #include \"clipes_demo.h\"",
+        " * para defini-los (na flash, const); nos outros .c, so o #include. Assim o",
+        f" * audio ({bytes_audio} B) entra uma vez so: com static const no .h, cada .c que",
+        " * o incluisse levaria uma copia, e dois .c ja passariam dos 512 KB da F411.",
+        " *",
         f" * Clipes a {config.FS_TRABALHO} Hz: int16 do PCM decimado (02), segmentos consecutivos de",
         f" * {n_amostras} amostras; o segmento k de um clipe comeca em k * CLIPES_AMOSTRAS_POR_SEGMENTO.",
         " * Escala da entrada: x = int16 / 32767 (docs/contrato_numerico.md).",
@@ -218,10 +310,21 @@ def gerar_header(clipes: list[Clipe], recorte: Recorte | None, origem: dict, p: 
             " *",
             f" * Recorte a {config.FS_ORIGINAL} Hz: o segmento {recorte.segmento.id} ({recorte.segmento.rotulo}) com as",
             f" * margens do decimador causal de fase {FASE} (arm_fir_decimate_f32): {recorte.antes} amostras",
-            f" * antes e {recorte.depois} depois; descartar as {recorte.descartar} primeiras saidas. Decimado e",
-            " * requantizado (round(y*32767), saturado), da bit a bit o primeiro segmento",
-            f" * do clipe '{recorte.segmento.rotulo}'. RECORTE_ESCORE_REF: MFCC da saida em float da",
-            " * decimacao; RECORTE_ESCORE_REF_INT16: depois de requantizar (o do CSV).",
+            f" * antes e {recorte.depois} depois; descartar as {recorte.descartar} primeiras saidas.",
+            " * RECORTE_ESCORE_REF: MFCC da saida em float da decimacao;",
+            " * RECORTE_ESCORE_REF_INT16: depois de requantizar com lrintf(y * 32767.0f) e",
+            " * saturar (o escore do CSV).",
+            " * - Em float64 (Python), o recorte decimado e requantizado da bit a bit o",
+            f" *   primeiro segmento do clipe '{recorte.segmento.rotulo}'. Em float32 (placa) nao precisa:",
+            " *   amostras perto de um empate (x,5) podem arredondar para o outro lado.",
+            " *   Na emulacao da CMSIS em float32, amostras que diferem (de 1 LSB): "
+            + ", ".join(f"{v} {k}" for k, v in recorte.difere_na_placa.items()) + ";",
+            " *   compare com folga de 1 LSB e o escore com tolerancia, nao bit a bit.",
+            f" * - RAM: o recorte inteiro em float ocuparia {recorte.pcm.size * 4} B (a F411 tem 128 KB).",
+            " *   Decime em blocos, convertendo int16 -> float um bloco por vez: com",
+            f" *   blockSize = 512 (multiplo de RECORTE_FATOR), o estado da CMSIS tem",
+            f" *   RECORTE_N_TAPS + 511 floats ({(len(recorte.taps) + 511) * 4} B) e cada bloco da 128 saidas,",
+            " *   um passo de quadro do MFCC.",
         ]
     linhas += [
         " */",
@@ -239,13 +342,6 @@ def gerar_header(clipes: list[Clipe], recorte: Recorte | None, origem: dict, p: 
         f"#define CLIPES_JSON_SHA256_12 \"{origem['sha256_json'][:12]}\"",
         f"#define CLIPES_BYTES_AUDIO {bytes_audio}",
         "",
-    ]
-    for c in clipes:
-        ident = _c_ident(c.rotulo)
-        linhas += [f"/* {c.rotulo}: segmentos {', '.join(str(s.id) for s in c.segmentos)} */",
-                   f"static const int16_t clipe_{ident}[{len(c.pcm)}] = {{",
-                   *_lista(c.pcm, str, 16), "};", ""]
-    linhas += [
         "typedef struct {",
         "    const char *classe;        /* gravacao de origem */",
         "    const int16_t *pcm;",
@@ -261,18 +357,11 @@ def gerar_header(clipes: list[Clipe], recorte: Recorte | None, origem: dict, p: 
         "    float escore_ref;          /* escores_referencia.csv */",
         "} clipe_segmento_t;",
         "",
-        "static const clipe_t clipes[CLIPES_N_CLIPES] = {",
     ]
-    primeiro = 0
-    for c in clipes:
-        linhas.append(f"    {{ \"{c.rotulo}\", clipe_{_c_ident(c.rotulo)}, {len(c.pcm)}u, "
-                      f"{primeiro}u, {len(c.segmentos)}u }},")
-        primeiro += len(c.segmentos)
-    linhas += ["};", "", "static const clipe_segmento_t clipes_segmentos[CLIPES_N_SEGMENTOS] = {"]
-    for i, c in enumerate(clipes):
-        for s, e, f in zip(c.segmentos, c.escores, c.falha):
-            linhas.append(f"    {{ {s.id}u, {i}u, {int(f)}u, {_f32(e)} }},  /* {c.rotulo} */")
-    linhas += ["};", ""]
+    decl = [f"extern const int16_t clipe_{_c_ident(c.rotulo)}[{len(c.pcm)}];" for c in clipes]
+    decl += ["extern const clipe_t clipes[CLIPES_N_CLIPES];",
+             "extern const clipe_segmento_t clipes_segmentos[CLIPES_N_SEGMENTOS];"]
+    linhas += decl + [""]
     if recorte:
         s = recorte.segmento
         linhas += [
@@ -290,18 +379,47 @@ def gerar_header(clipes: list[Clipe], recorte: Recorte | None, origem: dict, p: 
             f"#define RECORTE_ESCORE_REF {_f32(recorte.escore_float)}",
             f"#define RECORTE_ESCORE_REF_INT16 {_f32(recorte.escore_int16)}",
             "",
-            "/* FIR da decimacao (dsp.taps_decimacao), em float32; simetrico, entao a ordem",
-            " * invertida que a CMSIS espera nao muda nada */",
-            "static const float recorte_fir[RECORTE_N_TAPS] = {",
+            "/* FIR da decimacao (dsp.taps_decimacao), em float32; simetrico bit a bit, entao",
+            " * a ordem invertida que a CMSIS espera nao muda nada */",
+            "extern const float recorte_fir[RECORTE_N_TAPS];",
+            f"extern const int16_t recorte_{config.FS_ORIGINAL}[RECORTE_N_AMOSTRAS];",
+            "",
+        ]
+    linhas += [
+        "#endif /* CLIPES_DEMO_H */",
+        "",
+        "/* Definicoes: so no .c que define CLIPES_DEMO_DADOS (uma vez, mesmo incluido de novo) */",
+        "#if defined(CLIPES_DEMO_DADOS) && !defined(CLIPES_DEMO_DADOS_DEFINIDOS)",
+        "#define CLIPES_DEMO_DADOS_DEFINIDOS",
+        "",
+    ]
+    for c in clipes:
+        linhas += [f"/* {c.rotulo}: segmentos {', '.join(str(s.id) for s in c.segmentos)} */",
+                   f"const int16_t clipe_{_c_ident(c.rotulo)}[{len(c.pcm)}] = {{",
+                   *_lista(c.pcm, str, 16), "};", ""]
+    linhas.append("const clipe_t clipes[CLIPES_N_CLIPES] = {")
+    primeiro = 0
+    for c in clipes:
+        linhas.append(f"    {{ \"{c.rotulo}\", clipe_{_c_ident(c.rotulo)}, {len(c.pcm)}u, "
+                      f"{primeiro}u, {len(c.segmentos)}u }},")
+        primeiro += len(c.segmentos)
+    linhas += ["};", "", "const clipe_segmento_t clipes_segmentos[CLIPES_N_SEGMENTOS] = {"]
+    for i, c in enumerate(clipes):
+        for s, e, f in zip(c.segmentos, c.escores, c.falha):
+            linhas.append(f"    {{ {s.id}u, {i}u, {int(f)}u, {_f32(e)} }},  /* {c.rotulo} */")
+    linhas += ["};", ""]
+    if recorte:
+        linhas += [
+            "const float recorte_fir[RECORTE_N_TAPS] = {",
             *_lista(recorte.taps, _f32, 6),
             "};",
             "",
-            f"static const int16_t recorte_{config.FS_ORIGINAL}[RECORTE_N_AMOSTRAS] = {{",
+            f"const int16_t recorte_{config.FS_ORIGINAL}[RECORTE_N_AMOSTRAS] = {{",
             *_lista(recorte.pcm, str, 16),
             "};",
             "",
         ]
-    linhas += ["#endif /* CLIPES_DEMO_H */", ""]
+    linhas += ["#endif /* CLIPES_DEMO_DADOS */", ""]
     texto = "\n".join(linhas)
     if not texto.isascii():
         raise ValueError("o .h tem caracteres fora do ASCII")
@@ -432,6 +550,8 @@ def main() -> int:
               f"{len(recorte.pcm)} amostras ({recorte.antes} antes, {recorte.depois} depois, "
               f"descartar {recorte.descartar}); escore float {recorte.escore_float:.4f}, "
               f"int16 {recorte.escore_int16:.4f}")
+        print("  decimado em float32 como na placa, amostras a 1 LSB do 02: "
+              + ", ".join(f"{v} {k}" for k, v in recorte.difere_na_placa.items()))
     print(f"cabeçalho: {args.out} ({total / 1024:.0f} KB de áudio na flash, "
           f"orçamento {args.orcamento_kb:.0f} KB)")
     return 0
