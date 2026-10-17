@@ -282,13 +282,15 @@ problema cresce com a razão média/desvio: num caso sintético com média 1.000
 desvio 0,1, o desvio sai com erro de cerca de 500% (teste
 `test_soma_dos_quadrados_perde_precisao_com_media_grande`).
 
-**Recomendação.** **Welford**, que mantém o cálculo quadro a quadro, sem guardar
-a matriz, com erro relativo do desvio de 2 × 10⁻⁶. Se a Frente 1 aceitar os 5 KB
-da matriz, os dois passos são ainda mais precisos e permitem comparar o MFCC
-quadro a quadro com a referência do `reference_data.h`. Evitar a soma dos
-quadrados. A emulação não reproduz a fusão de multiplicação e soma (FMA) do
-Cortex-M4, que muda o último bit de cada operação, mas não a ordem de grandeza
-desses erros.
+**Decisão (17/10, Registro de Decisões).** **Welford**, que mantém o cálculo
+quadro a quadro, sem guardar a matriz, com erro relativo do desvio de 2 × 10⁻⁶.
+É o que o firmware usa (`mfcc_resumo_acumular` no `mfcc_estagios.c`); no harness,
+contra o Python, o desvio fica em 0,7% da tolerância. A soma dos quadrados fica
+descartada, pelo erro acima. Os dois passos ficam só como comparação: são um
+pouco mais precisos, mas exigem guardar a matriz 98 × 13 e quebram o cálculo
+quadro a quadro, e a precisão de Welford já sobra. A emulação não reproduz a
+fusão de multiplicação e soma (FMA) do Cortex-M4, que muda o último bit de cada
+operação, mas não a ordem de grandeza desses erros.
 
 ## Tolerâncias por estágio (A4)
 
@@ -368,12 +370,14 @@ grandeza (teste `test_tolerancias_pegam_erros_de_porte`):
 
 **Limites.** A FFT emulada é a do scipy, não a da CMSIS, e a emulação não faz a
 fusão de multiplicação e soma (FMA) do Cortex-M4. O harness mede a CMSIS de
-verdade, no PC. Nos 5 segmentos das referências, todos os estágios (do
-`int16` ao escore, com o `lda_modelo.h` do firmware) ficaram entre 0,6% e 7,8% da
-tolerância, nos dois modos; o escore encadeado erra 3,4 × 10⁻⁷
-relativo, 3,4% da tolerância. A placa, com FMA, muda o último bit de cada operação, mas
-não a ordem de grandeza; a margem de 10 vezes cobre isso. Se um estágio passar
-da tolerância por pouco, confira a margem antes de procurar erro no porte.
+verdade, no PC. Nos 5 segmentos das referências, todos os estágios (do `int16`
+ao escore, com o `lda_modelo.h` do firmware) ficaram entre 0,6% e 7,8% da
+tolerância, nos dois modos. A menor margem é a do Mel encadeado (7,8%, no
+`bpfo_0.3mm_seg0206`), seguido do espectro isolado (7,5%); a maior é a do
+desvio (0,6% a 0,7%). O escore encadeado erra 3,4 × 10⁻⁷ relativo, 3,4% da
+tolerância. A placa, com FMA, muda o último bit de cada operação, mas não a
+ordem de grandeza; a margem de 10 vezes cobre isso. Se um estágio passar da
+tolerância por pouco, confira a margem antes de procurar erro no porte.
 
 **Harness no PC.** Fica no repositório do firmware (`lab3-firmware-stm32`,
 `tests/host/harness`; instruções no README de lá). Ele lê
@@ -382,8 +386,10 @@ com a implementação genérica em C da CMSIS-DSP e imprime, por estágio e nos 
 modos, o maior erro absoluto, o maior erro relativo à escala do estágio, a
 métrica do A4, a tolerância e OK ou FALHOU. Todos os estágios estão portados;
 um estágio que entre depois aparece como "não portado" até existir em C. No modo
-encadeado, ele também confere que o `mfcc_segmento()`, a chamada única que a placa
-usa (`int16` → 26 características), dá bit a bit o mesmo que o laço estágio a
-estágio. Ele recusa (código
-2) referências de outro modelo, sem o `modelo.txt`, com forma diferente da
-esperada ou com zero onde a métrica não se aplica, como o `dsp.erro_estagio`.
+encadeado, ele também confere que o `mfcc_segmento()`, a chamada única que a
+placa usa (`int16` → 26 características), dá bit a bit o mesmo que o laço
+estágio a estágio. Ele recusa (código 2) referências de outro modelo, sem o
+`modelo.txt`, com forma diferente da esperada, com zero onde a métrica não se
+aplica, como o `dsp.erro_estagio`, ou com uma métrica desconhecida no
+`tolerancias.txt` (só valem `rel_quadro`, `abs` e `rel`; um nome errado não vira
+`rel` sem aviso).

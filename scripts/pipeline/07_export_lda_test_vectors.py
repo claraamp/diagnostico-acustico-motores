@@ -13,8 +13,8 @@ este `.h` ao lado do `lda_modelo.h`, calcula o escore de cada segmento com o
 resultado pela serial.
 
 O marco confere o **porte do classificador**, não o desempenho: as
-características vêm do Python (o MFCC ainda não está portado) e os segmentos
-são os do próprio treino do modelo final.
+características vêm do Python (na época do marco de 13/10, o MFCC ainda não
+estava portado) e os segmentos são os do próprio treino do modelo final.
 
 **Tolerância.** É a mesma do `06`: `limite_arredondamento()`, o limite do erro
 de arredondar x, os pesos e o bias para float32 e somar os N produtos em
