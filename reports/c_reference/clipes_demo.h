@@ -4,11 +4,18 @@
  * GERADO por scripts/pipeline/09_export_clips.py; nao editar a mao.
  * Modelo: reports/modelo_final/lda_final.json (exp239), SHA-256 do JSON ee0c3e088366
  * Escores: reports/modelo_final/escores_referencia.csv (SHA-256 2507e68b5489)
- * Particao: 772c8e1eb1; commit do gerador: d32240b
+ * Particao: 772c8e1eb1; commit do gerador: ee919e6
  *
  * TODOS OS SEGMENTOS ESTAO NO TREINO DO MODELO FINAL: a demonstracao mede a
  * fidelidade do porte (a placa reproduz o Python), nao o desempenho do
  * classificador, que e o do Protocolo B.
+ *
+ * USO: este .h so DECLARA os vetores. Em UM unico .c, faca
+ *     #define CLIPES_DEMO_DADOS
+ *     #include "clipes_demo.h"
+ * para defini-los (na flash, const); nos outros .c, so o #include. Assim o
+ * audio (358696 B) entra uma vez so: com static const no .h, cada .c que
+ * o incluisse levaria uma copia, e dois .c ja passariam dos 512 KB da F411.
  *
  * Clipes a 12800 Hz: int16 do PCM decimado (02), segmentos consecutivos de
  * 12800 amostras; o segmento k de um clipe comeca em k * CLIPES_AMOSTRAS_POR_SEGMENTO.
@@ -16,10 +23,20 @@
  *
  * Recorte a 51200 Hz: o segmento 29 (normal) com as
  * margens do decimador causal de fase 0 (arm_fir_decimate_f32): 75 amostras
- * antes e 73 depois; descartar as 37 primeiras saidas. Decimado e
- * requantizado (round(y*32767), saturado), da bit a bit o primeiro segmento
- * do clipe 'normal'. RECORTE_ESCORE_REF: MFCC da saida em float da
- * decimacao; RECORTE_ESCORE_REF_INT16: depois de requantizar (o do CSV).
+ * antes e 73 depois; descartar as 37 primeiras saidas.
+ * RECORTE_ESCORE_REF: MFCC da saida em float da decimacao;
+ * RECORTE_ESCORE_REF_INT16: depois de requantizar com lrintf(y * 32767.0f) e
+ * saturar (o escore do CSV).
+ * - Em float64 (Python), o recorte decimado e requantizado da bit a bit o
+ *   primeiro segmento do clipe 'normal'. Em float32 (placa) nao precisa:
+ *   amostras perto de um empate (x,5) podem arredondar para o outro lado.
+ *   Na emulacao da CMSIS em float32, amostras que diferem (de 1 LSB): 1 sem FMA, 2 com FMA;
+ *   compare com folga de 1 LSB e o escore com tolerancia, nao bit a bit.
+ * - RAM: o recorte inteiro em float ocuparia 205392 B (a F411 tem 128 KB).
+ *   Decime em blocos, convertendo int16 -> float um bloco por vez: com
+ *   blockSize = 512 (multiplo de RECORTE_FATOR), o estado da CMSIS tem
+ *   RECORTE_N_TAPS + 511 floats (2632 B) e cada bloco da 128 saidas,
+ *   um passo de quadro do MFCC.
  */
 
 #ifndef CLIPES_DEMO_H
@@ -35,8 +52,56 @@
 #define CLIPES_JSON_SHA256_12 "ee0c3e088366"
 #define CLIPES_BYTES_AUDIO 358696
 
+typedef struct {
+    const char *classe;        /* gravacao de origem */
+    const int16_t *pcm;
+    uint32_t n_amostras;
+    uint16_t primeiro_segmento; /* indice em clipes_segmentos[] */
+    uint16_t n_segmentos;
+} clipe_t;
+
+typedef struct {
+    uint16_t id;               /* segmento da particao (splits.json) */
+    uint8_t clipe;             /* indice em clipes[] */
+    uint8_t falha_ref;         /* decisao do CSV: 1 = falha, 0 = normal */
+    float escore_ref;          /* escores_referencia.csv */
+} clipe_segmento_t;
+
+extern const int16_t clipe_normal[25600];
+extern const int16_t clipe_bpfi_0_3mm[25600];
+extern const int16_t clipe_bpfi_1_0mm[25600];
+extern const int16_t clipe_bpfo_0_3mm[25600];
+extern const int16_t clipe_bpfo_1_0mm[25600];
+extern const clipe_t clipes[CLIPES_N_CLIPES];
+extern const clipe_segmento_t clipes_segmentos[CLIPES_N_SEGMENTOS];
+
+#define RECORTE_FS_HZ 51200
+#define RECORTE_N_AMOSTRAS 51348
+#define RECORTE_SEGMENTO 29
+#define RECORTE_CLIPE 0  /* o segmento e o primeiro deste clipe */
+#define RECORTE_INICIO_ORIGINAL 1484725  /* amostra a 51200 Hz na gravacao */
+#define RECORTE_MARGEM_ANTES 75
+#define RECORTE_MARGEM_DEPOIS 73
+#define RECORTE_FATOR 4
+#define RECORTE_FASE 0
+#define RECORTE_DESCARTAR 37
+#define RECORTE_N_TAPS 147
+#define RECORTE_ESCORE_REF -1331.7583f
+#define RECORTE_ESCORE_REF_INT16 -1331.7677f
+
+/* FIR da decimacao (dsp.taps_decimacao), em float32; simetrico bit a bit, entao
+ * a ordem invertida que a CMSIS espera nao muda nada */
+extern const float recorte_fir[RECORTE_N_TAPS];
+extern const int16_t recorte_51200[RECORTE_N_AMOSTRAS];
+
+#endif /* CLIPES_DEMO_H */
+
+/* Definicoes: so no .c que define CLIPES_DEMO_DADOS (uma vez, mesmo incluido de novo) */
+#if defined(CLIPES_DEMO_DADOS) && !defined(CLIPES_DEMO_DADOS_DEFINIDOS)
+#define CLIPES_DEMO_DADOS_DEFINIDOS
+
 /* normal: segmentos 29, 30 */
-static const int16_t clipe_normal[25600] = {
+const int16_t clipe_normal[25600] = {
     429, 1190, 1296, 123, -1162, -1483, -578, 852, 975, 918, -11, -256, -435, -498, 236, -470,
     -565, -592, 322, 1755, 684, -700, -1194, -1631, -1300, 349, 179, 186, 287, -718, -741, -1578,
     -773, -333, -49, 538, -123, 941, 62, -1520, -929, -1204, -566, 473, 218, -347, 160, -230,
@@ -1640,7 +1705,7 @@ static const int16_t clipe_normal[25600] = {
 };
 
 /* bpfi_0.3mm: segmentos 88, 89 */
-static const int16_t clipe_bpfi_0_3mm[25600] = {
+const int16_t clipe_bpfi_0_3mm[25600] = {
     1518, 3940, -323, -3369, -1721, 2831, -761, -1404, 1752, -5661, -2665, 7129, 48, -3199, 1191, -3132,
     -4902, 910, -340, -4229, -3215, -74, 1787, 3813, 4731, -1593, -7880, -5014, -283, 765, 1521, 134,
     -2778, -3766, -117, 828, -1768, -5716, -3214, 3608, 5614, 2549, -5955, -4072, -5307, -5892, 5078, 3411,
@@ -3244,7 +3309,7 @@ static const int16_t clipe_bpfi_0_3mm[25600] = {
 };
 
 /* bpfi_1.0mm: segmentos 147, 148 */
-static const int16_t clipe_bpfi_1_0mm[25600] = {
+const int16_t clipe_bpfi_1_0mm[25600] = {
     -5243, 9832, 11445, -2790, -11712, -4016, 13964, 18959, 5865, -10345, -17552, -7179, 9904, 13527, 4359, -8061,
     -10201, -1200, 7443, 7853, -1735, -8225, -6250, 4446, 13617, 9406, -1036, -9589, -10086, -764, 8963, 5416,
     -3702, -7048, -3597, 6816, 11873, 6094, -4250, -8891, -6966, 1725, 8254, 4570, -1336, -2778, 3329, 3724,
@@ -4848,7 +4913,7 @@ static const int16_t clipe_bpfi_1_0mm[25600] = {
 };
 
 /* bpfo_0.3mm: segmentos 206, 207 */
-static const int16_t clipe_bpfo_0_3mm[25600] = {
+const int16_t clipe_bpfo_0_3mm[25600] = {
     572, -745, -1629, -884, -940, -919, 1730, 1650, -330, -971, -1697, -425, 346, -359, -2099, -2289,
     -187, 1075, 875, -1388, -2438, -1600, -636, 205, 942, 1286, 938, -171, -1304, -1358, -1841, -681,
     -897, -1403, 809, 232, -392, 144, -864, -1828, -1201, 204, 949, 1552, 573, -1100, -565, -537,
@@ -6452,7 +6517,7 @@ static const int16_t clipe_bpfo_0_3mm[25600] = {
 };
 
 /* bpfo_1.0mm: segmentos 265, 266 */
-static const int16_t clipe_bpfo_1_0mm[25600] = {
+const int16_t clipe_bpfo_1_0mm[25600] = {
     -5409, -8461, -2559, 5571, 9969, 5657, -3886, -10731, -6935, -3536, -3972, 2095, 1997, -199, 4095, 3558,
     207, -306, -8563, -18066, -10321, 7031, 15123, 13766, 9046, -3812, -12479, -8937, -5728, -8391, -8618, -7717,
     -5115, 8998, 19693, 14428, 3270, -7632, -16335, -13661, -6862, -2955, 4479, 3011, -2197, 3603, 5308, -3934,
@@ -8055,22 +8120,7 @@ static const int16_t clipe_bpfo_1_0mm[25600] = {
     -11995, -6982, -683, 4268, 4954, 649, 3798, 8290, 4926, -5541, -16043, -10187, 6123, 17859, 19049, 8882,
 };
 
-typedef struct {
-    const char *classe;        /* gravacao de origem */
-    const int16_t *pcm;
-    uint32_t n_amostras;
-    uint16_t primeiro_segmento; /* indice em clipes_segmentos[] */
-    uint16_t n_segmentos;
-} clipe_t;
-
-typedef struct {
-    uint16_t id;               /* segmento da particao (splits.json) */
-    uint8_t clipe;             /* indice em clipes[] */
-    uint8_t falha_ref;         /* decisao do CSV: 1 = falha, 0 = normal */
-    float escore_ref;          /* escores_referencia.csv */
-} clipe_segmento_t;
-
-static const clipe_t clipes[CLIPES_N_CLIPES] = {
+const clipe_t clipes[CLIPES_N_CLIPES] = {
     { "normal", clipe_normal, 25600u, 0u, 2u },
     { "bpfi_0.3mm", clipe_bpfi_0_3mm, 25600u, 2u, 2u },
     { "bpfi_1.0mm", clipe_bpfi_1_0mm, 25600u, 4u, 2u },
@@ -8078,7 +8128,7 @@ static const clipe_t clipes[CLIPES_N_CLIPES] = {
     { "bpfo_1.0mm", clipe_bpfo_1_0mm, 25600u, 8u, 2u },
 };
 
-static const clipe_segmento_t clipes_segmentos[CLIPES_N_SEGMENTOS] = {
+const clipe_segmento_t clipes_segmentos[CLIPES_N_SEGMENTOS] = {
     { 29u, 0u, 0u, -1331.7677f },  /* normal */
     { 30u, 0u, 0u, -1392.13257f },  /* normal */
     { 88u, 1u, 1u, 1361.83594f },  /* bpfi_0.3mm */
@@ -8091,23 +8141,7 @@ static const clipe_segmento_t clipes_segmentos[CLIPES_N_SEGMENTOS] = {
     { 266u, 4u, 1u, 1499.84741f },  /* bpfo_1.0mm */
 };
 
-#define RECORTE_FS_HZ 51200
-#define RECORTE_N_AMOSTRAS 51348
-#define RECORTE_SEGMENTO 29
-#define RECORTE_CLIPE 0  /* o segmento e o primeiro deste clipe */
-#define RECORTE_INICIO_ORIGINAL 1484725  /* amostra a 51200 Hz na gravacao */
-#define RECORTE_MARGEM_ANTES 75
-#define RECORTE_MARGEM_DEPOIS 73
-#define RECORTE_FATOR 4
-#define RECORTE_FASE 0
-#define RECORTE_DESCARTAR 37
-#define RECORTE_N_TAPS 147
-#define RECORTE_ESCORE_REF -1331.7583f
-#define RECORTE_ESCORE_REF_INT16 -1331.7677f
-
-/* FIR da decimacao (dsp.taps_decimacao), em float32; simetrico, entao a ordem
- * invertida que a CMSIS espera nao muda nada */
-static const float recorte_fir[RECORTE_N_TAPS] = {
+const float recorte_fir[RECORTE_N_TAPS] = {
     8.64479662e-05f, 6.51422524e-05f, -1.06194493e-05f, -0.000115012328f, -0.00019232076f, -0.000183104974f,
     -6.14176824e-05f, 0.000137742813f, 0.000321026426f, 0.000376166106f, 0.000233960236f, -7.89134065e-05f,
     -0.000430236047f, -0.000632061507f, -0.000534943014f, -0.000122076322f, 0.00045088859f, 0.000904949266f,
@@ -8135,7 +8169,7 @@ static const float recorte_fir[RECORTE_N_TAPS] = {
     -1.06194493e-05f, 6.51422524e-05f, 8.64479662e-05f,
 };
 
-static const int16_t recorte_51200[RECORTE_N_AMOSTRAS] = {
+const int16_t recorte_51200[RECORTE_N_AMOSTRAS] = {
     -206, -342, -636, -671, -565, -311, -72, -80, -185, -165, 256, 770, 1194, 1541, 1534, 1108,
     552, 243, 11, -509, -910, -983, -704, -463, -574, -780, -1096, -1145, -900, -315, 307, 683,
     480, -9, 16, 200, 365, 841, 1127, 1037, 594, 249, 225, 241, 479, 797, 1017, 815,
@@ -11348,4 +11382,4 @@ static const int16_t recorte_51200[RECORTE_N_AMOSTRAS] = {
     2794, 2214, 1739, 1520,
 };
 
-#endif /* CLIPES_DEMO_H */
+#endif /* CLIPES_DEMO_DADOS */
