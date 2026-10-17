@@ -207,10 +207,14 @@ def inviavel(c: Candidato) -> str | None:
 # ---------------------------------------------------------------------------
 # Espectro e pente
 # ---------------------------------------------------------------------------
-def espectro(x: np.ndarray, c: Candidato) -> tuple[np.ndarray, np.ndarray]:
-    """Espectro de potência médio dos blocos do segmento, como seria calculado no chip."""
+def espectro(x: np.ndarray, c: Candidato, ja_decimado: bool = False) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Espectro de potência médio dos blocos do segmento, como seria calculado no chip.
+    Com `ja_decimado`, `x` já está na taxa do candidato (decimação contínua da
+    gravação, feita por quem chama).
+    """
     x = np.asarray(x, dtype=float)
-    if c.decimar > 1:
+    if c.decimar > 1 and not ja_decimado:
         x = dsp.resample_clip(x, config.FS_TRABALHO, c.fs, dsp.design_decimation(config.FS_TRABALHO, c.fs))
     janela = np.hanning(c.n_bloco)
     inicios = np.arange(c.n_blocos) * c.passo

@@ -131,3 +131,23 @@ def test_regra_de_escolha():
     assert N.avaliar(_resultado(0.9), ok, d2_alvo=0.89)["situacao"].startswith("descartado")
     assert N.avaliar(_resultado(0.95), ok, d2_alvo=0.90)["situacao"].startswith("candidato")
     assert N.avaliar(_resultado(0.9), ok, decide=False)["situacao"].startswith("só reporte")
+
+
+def test_controle_do_pente():
+    assert N.passa_controle("D1", real=1.0, sorteado=0.44)
+    assert not N.passa_controle("D1", real=0.6, sorteado=0.3)
+    # D3: só o ganho sobre o D2 conta
+    assert N.passa_controle("D3", real=0.9, sorteado=0.6, d2=0.5)        # sobra 0,1 de 0,4
+    assert not N.passa_controle("D3", real=0.9, sorteado=0.8, d2=0.5)    # sobra 0,3 de 0,4
+    assert not N.passa_controle("D3", real=0.5, sorteado=0.5, d2=0.5)    # sem ganho
+
+
+def test_custo_segue_as_medidas_da_frente_1():
+    d1 = N.custo("D1", N.CAND_B)
+    assert d1["flash_kb"] == 39.0 and d1["ram_kb"] == pytest.approx(40.0, abs=0.01)
+    assert d1["ciclos"] == pytest.approx(1.14e6, rel=0.02)              # ~11 ms por segundo de áudio
+    d1b = N.custo("D1", N.CAND_D1B)
+    assert d1b["flash_kb"] == 20.0 and d1b["ciclos"] >= d1["ciclos"]     # D1b economiza memória, não tempo
+    d2 = N.custo("D2")
+    assert d2["ram_kb"] == 0 and d2["flash_kb"] < 2                      # Cholesky: 351 floats
+    assert N.custo("D4") == {"ram_kb": 0.0, "flash_kb": 0.0, "ciclos": 0.0, "ms_por_segundo": 0.0}

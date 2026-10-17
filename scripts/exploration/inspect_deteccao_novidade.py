@@ -4,7 +4,7 @@
 inspect_deteccao_novidade.py — detecção de novidade para a bpfo_0.3mm (sensibilidade no B)
 =========================================================================================
 
-Segue o `docs/criterio_deteccao_novidade.md` (versão 2): roda, no Protocolo B, os
+Segue o `docs/criterio_deteccao_novidade.md` (versão 4): roda, no Protocolo B, os
 quatro candidatos do critério e diz quais ficam elegíveis. A especificidade em
 outra máquina (Protocolo C, HUSTmotor) fica para depois; aqui nada é adotado.
 
@@ -17,8 +17,9 @@ D4   LDA retreinada com falha sintética de linhas estreitas (troca os pesos)
 
 O pente roda em dois espectros: B (FFT de 4.096 pontos a 12,8 kHz, a do estudo do
 pente) e D1b (decima para 6,4 kHz e FFT de 2.048 pontos: a mesma resolução com
-metade da RAM, dentes até 2,8 kHz). Os dois com a rotação nominal (50,17 Hz, a
-que decide) e com a estimada no segmento (só reporte).
+metade da RAM e da flash, dentes até 2,8 kHz; a gravação inteira é decimada de
+forma contínua e o segmento é cortado depois, como a placa fará). Os dois com a
+rotação nominal (50,17 Hz, a que decide) e com a estimada no segmento (só reporte).
 
 Limiar (D1, D2, D3)
 -------------------
@@ -42,7 +43,9 @@ treino de um fold se o segmento de origem for normal de treino nele.
 Controles
 ---------
 - D4: permutação por bloco dos rótulos de treino (20 sorteios); as cópias
-  sintéticas continuam "falha". Passa com acurácia balanceada média ≤ 0,55.
+  sintéticas continuam "falha". Passa com acurácia balanceada média ≤ 0,55. Acima
+  disso, as cópias sintéticas carregam informação que não deveriam (por exemplo,
+  a identidade da gravação normal), e o D4 fica inelegível até investigar.
 - D1 e D3: pente fixo (sem a busca de ±3 %) em frequências sorteadas (20 sorteios),
   razões entre 2 e 7 ×
   rotação, fora de ±6 % de BPFO, de BPFI e das frações p/q delas (p, q ≤ 3, que
@@ -53,7 +56,12 @@ Controles
   fortes, até um pente fixo em frequência sorteada esbarra em algumas delas por
   acaso (o auto-teste sintético reprovava um detector correto).
 - D3: só segue se a bpfo_0.3mm passar a do D2 por mais de 0,02; senão, o pente não
-  acrescenta nada ao MFCC e é descartado pelo custo. O controle é o mesmo do D1.
+  acrescenta nada ao MFCC e é descartado pelo custo. O controle mede só o ganho
+  sobre o D2: passa se, com os pentes sorteados, pelo menos metade da detecção a
+  mais que o D2 desaparece (detecção sorteada ≤ D2 + 0,5 × (real − D2)).
+- D1 e D3 também reportam o pente de rolamento fixo (sem a busca), só como
+  referência: a BPFO real fica 1,8 % acima da cinemática, e um pente fixo nela erra
+  a série a partir do 2º harmônico.
 - D2: sem controle no B (mede "diferente da normal" por construção); fica para o
   Protocolo C.
 
@@ -93,7 +101,7 @@ sys.modules[_spec.name] = P          # o @dataclass do módulo procura o própri
 _spec.loader.exec_module(P)
 
 # ---------------------------------------------------------------------------
-# Parâmetros (docs/criterio_deteccao_novidade.md, versão 2)
+# Parâmetros (docs/criterio_deteccao_novidade.md, versão 4)
 # ---------------------------------------------------------------------------
 EIXO_NOMINAL_HZ = P.EIXO_ARTIGO_HZ           # 50,17 Hz, Jung et al. (2023)
 MODOS_EIXO = ("nominal", "estimado")         # o primeiro decide
@@ -128,13 +136,52 @@ FALHA_ALVO = "bpfo_0.3mm"
 # Pente: espectro uma vez por segmento, pontuação por razão
 # ---------------------------------------------------------------------------
 def preparar_espectros(clipes: dict, segmentos, c) -> list[tuple]:
-    """(f, pico, fundo) de cada segmento, para o candidato de espectro `c`."""
+    """
+    (f, pico, fundo) de cada segmento, para o candidato de espectro `c`. Com
+    decimação, a gravação inteira é decimada de uma vez (contínua, como a placa
+    fará) e o segmento é cortado depois, sem o transitório do começo de cada um.
+    """
+    decimadas = {}
+    if c.decimar > 1:
+        spec = dsp.design_decimation(config.FS_TRABALHO, c.fs)
+        decimadas = {r: dsp.resample_clip(cl.x, config.FS_TRABALHO, c.fs, spec) for r, cl in clipes.items()}
     out = []
     for s in segmentos:
-        f, p = P.espectro(clipes[s.rotulo].x[s.inicio:s.fim], c)
+        if c.decimar > 1:
+            a = s.inicio // c.decimar
+            f, p = P.espectro(decimadas[s.rotulo][a:a + (s.fim - s.inicio) // c.decimar], c, ja_decimado=True)
+        else:
+            f, p = P.espectro(clipes[s.rotulo].x[s.inicio:s.fim], c)
         pico, fundo = P.pico_e_fundo(f, p, c.fundo_hz)
         out.append((f, pico, fundo))
     return out
+
+
+# Custo no STM32F411 (critério v4, seção 8). Os ciclos da FFT são calibrados pela
+# FFT de 512 medida na placa (35,7 mil ciclos, contra 11,5 mil pela fórmula de
+# 2,5·N·log2 N flops: fator 3,1). A flash das tabelas da arm_rfft_fast_f32 vem da
+# conta da Frente 1 (~39 KB para 4.096 pontos, ~20 KB para 2.048).
+CICLOS_POR_FLOP_FFT = 35_700 / (2.5 * 512 * 9)
+FLASH_TABELAS_FFT_KB = {4096: 39.0, 2048: 20.0}
+CICLOS_POR_MAC_FIR = 2.0
+
+
+def custo(detector: str, c=None, n_dim: int = 26) -> dict:
+    """RAM, flash e ciclos a mais por segmento, por detector (estimativa; a medir com o DWT)."""
+    ram_kb, flash_kb, ciclos = 0.0, 0.0, 0.0
+    if c is not None:                                   # pente: FFT dedicada (D1, D3)
+        ram_kb += 4 * (2 * c.n_fft + c.n_fft // 2 + 1) / 1024
+        flash_kb += FLASH_TABELAS_FFT_KB[c.n_fft]
+        ciclos += CICLOS_POR_FLOP_FFT * c.n_blocos * 2.5 * c.n_fft * np.log2(c.n_fft)
+        if c.decimar > 1:                               # FIR de decimação, só as saídas mantidas
+            taps = dsp.design_decimation(config.FS_TRABALHO, c.fs).numtaps
+            ciclos += CICLOS_POR_MAC_FIR * taps * config.AMOSTRAS_POR_SEGMENTO / c.decimar
+    if detector in ("D2", "D3"):                        # Cholesky (triangular), média e escala
+        tri = n_dim * (n_dim + 1) // 2
+        flash_kb += 4 * (tri + 2 * n_dim + 1) / 1024
+        ciclos += tri + 2 * n_dim
+    return {"ram_kb": ram_kb, "flash_kb": flash_kb, "ciclos": float(ciclos),
+            "ms_por_segundo": float(ciclos / 100e6 * 1e3)}
 
 
 def eixos(cache: list[tuple], modo: str) -> np.ndarray:
@@ -311,6 +358,19 @@ def rodar_b(folds, segmentos, y, X_mfcc, detector: str, X_pente=None, sinteticas
             "deteccao_detector_alvo": fracao(det_alvo)}
 
 
+def passa_controle(detector: str, real: float, sorteado: float, d2: float | None = None) -> bool:
+    """
+    Controle do pente (critério v4, seção 7). D1: o pente de rolamento detecta a
+    bpfo_0.3mm pelo menos 0,5 acima dos pentes sorteados. D3: só o ganho sobre o D2
+    conta; pelo menos metade dele tem de sumir com os pentes sorteados.
+    """
+    if detector == "D1":
+        return real - sorteado >= CTRL_MARGEM
+    if detector == "D3":
+        return real > d2 and sorteado <= d2 + 0.5 * (real - d2)
+    raise ValueError(f"controle do pente só vale para D1 e D3, não para {detector}")
+
+
 def avaliar(r: dict, controle: dict | None, decide: bool = True, d2_alvo: float | None = None) -> dict:
     """
     Elegibilidade e situação pela regra de escolha do critério (seção 6). `decide`
@@ -410,7 +470,9 @@ def main() -> int:
     # D2: Mahalanobis no MFCC
     r2 = rodar_b(folds, segmentos, y, X_mfcc, "D2")
     d2_alvo = r2["resumo"]["por_falha"][FALHA_ALVO]["acuracia_balanceada"]
-    guardar("D2_mahalanobis_mfcc", r2, None, {"detector": "D2", "espectro": None, "rotacao": None})
+    d2_det = r2["deteccao_detector_alvo"]
+    guardar("D2_mahalanobis_mfcc", r2, None, {"detector": "D2", "espectro": None, "rotacao": None,
+                                              "custo_stm32": custo("D2")})
 
     # D1 e D3, nos dois espectros e nos dois modos de rotação
     controles_razoes = razoes_controle(N_CONTROLES)
@@ -427,13 +489,18 @@ def main() -> int:
                     vals = [rodar_b(folds, segmentos, y, X_mfcc, det,
                                     features_pente_fixo(cache, f_eixo, c, par))["deteccao_detector_alvo"]
                             for par in controles_razoes]
-                    real = r["deteccao_detector_alvo"]
-                    ctrl = {"tipo": "pente fixo em frequências sorteadas (relativo)", "valor": float(np.mean(vals)),
-                            "max": float(np.max(vals)), "deteccao_real": real, "margem": CTRL_MARGEM,
-                            "passa": real - float(np.mean(vals)) >= CTRL_MARGEM, "razoes": controles_razoes}
+                    real, sorteado = r["deteccao_detector_alvo"], float(np.mean(vals))
+                    rol_fixo = rodar_b(folds, segmentos, y, X_mfcc, det, features_pente_fixo(
+                        cache, f_eixo, c, (P.RAZAO_BPFO, P.RAZAO_BPFI)))["deteccao_detector_alvo"]
+                    ctrl = {"tipo": "pente fixo em frequências sorteadas (relativo)", "valor": sorteado,
+                            "max": float(np.max(vals)), "deteccao_real": real,
+                            "deteccao_pente_rolamento_fixo": rol_fixo, "razoes": controles_razoes}
+                    ctrl.update(passa=passa_controle(det, real, sorteado, d2_det))
+                    if det == "D3":
+                        ctrl["deteccao_d2"] = d2_det
                 nome = f"{det}_{'pente' if det == 'D1' else 'mahalanobis_mfcc_pente'}_{c.nome.split('_')[0]}_{modo}"
                 guardar(nome, r, ctrl, {"detector": det, "espectro": c.nome, "rotacao": modo,
-                                        "custo_stm32": P.custo_stm32(c)},
+                                        "custo_stm32": custo(det, c, 26 if det == "D1" else 30)},
                         decide=decide, d2_alvo=d2_alvo if det == "D3" else None)
 
     # D4: LDA com falha sintética (semente principal + dispersão)
@@ -447,7 +514,7 @@ def main() -> int:
     guardar("D4_lda_falha_sintetica", r4,
             {"tipo": "permutação por bloco", "valor": float(np.mean(perm)), "max": float(np.max(perm)),
              "limite": PERM_MAX, "passa": float(np.mean(perm)) <= PERM_MAX},
-            {"detector": "D4", "espectro": None, "rotacao": "nominal (só no treino)",
+            {"detector": "D4", "espectro": None, "rotacao": "nominal (só no treino)", "custo_stm32": custo("D4"),
              "bpfo_0.3mm_por_semente": disp})
 
     print("\nProtocolo B, cada candidato OU a LDA (D4: a LDA retreinada); alarme = detector sozinho na normal")
@@ -499,7 +566,7 @@ def main() -> int:
                 "controle_passa": None if ct is None else ("sim" if ct["passa"] else "nao"),
                 "elegivel": "sim" if av["elegivel"] else "nao"}),
             "responsavel": args.responsavel,
-            "notas": (f"detecção de novidade, critério v2: {av['situacao']}; sensibilidade no B, "
+            "notas": (f"detecção de novidade, critério v4: {av['situacao']}; sensibilidade no B, "
                       "especificidade só no Protocolo C" + (f"; {args.notas}" if args.notas else "")),
         })
     experimentos.append_registry(args.registry, linhas)
