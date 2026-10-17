@@ -130,7 +130,8 @@ diagnostico-acustico-motores/
 │   │   ├── 05_train_classifier.py         # modelo final para o firmware (não mede desempenho) → reports/modelo_final/
 │   │   ├── 06_export_lda_header.py        # .h da LDA final (float32), conferido contra os escores de referência
 │   │   ├── 07_export_lda_test_vectors.py  # .h com features e escores de referência para o marco na placa
-│   │   └── 08_export_stage_references.py  # referências por estágio (float64) e tolerâncias do A4 para o harness em C
+│   │   ├── 08_export_stage_references.py  # referências por estágio (float64) e tolerâncias do A4 para o harness em C
+│   │   └── 09_export_clips.py             # clipes int16 para a flash da placa (12,8 kHz e um recorte a 51,2 kHz) → .h
 │   └── validation/           # protocolo de validação do classificador
 │       ├── particao.py                    # segmentos, folds A e B, verificação
 │       ├── metricas.py                    # sensibilidade, especificidade, acurácia balanceada
@@ -156,7 +157,8 @@ diagnostico-acustico-motores/
 │   │   ├── test_train_classifier.py       # o 05 só aceita as features de referência da partição
 │   │   ├── test_export_lda_header.py      # o .h é paramétrico em N_FEATURES, traz o float32 do JSON e, compilado, reproduz o escore
 │   │   ├── test_export_lda_test_vectors.py # os vetores de teste ficam dentro da tolerância, a seleção não olha o escore, recusa .h de outro modelo
-│   │   └── test_export_stage_references.py # o formato volta igual do arquivo; as referências versionadas são as do dsp atual
+│   │   ├── test_export_stage_references.py # o formato volta igual do arquivo; as referências versionadas são as do dsp atual
+│   │   └── test_export_clips.py           # o clipe recalculado do .h dá o escore gravado; o recorte decimado é o clipe a 12,8 kHz
 │   ├── exploration/
 │   │   ├── test_comb_features.py          # candidatos A/B/C do card (A inviável); acha a série fora da razão cinemática; decisão pela validação interna
 │   │   └── test_compare_classifiers.py    # critério de escolha: mais barato na margem, em qualquer ordem (pula sem torch)
@@ -179,7 +181,8 @@ diagnostico-acustico-motores/
 │
 ├── reports/                  # figuras, tabelas e outputs para os relatórios
 │   ├── c_reference/          # reference_data.h: entrada int16 + MFCC esperado, para o porte em C;
-│   │                         #   estagios/: referências por estágio e tolerâncias do A4 (08), lidas pelo harness em C
+│   │                         #   estagios/: referências por estágio e tolerâncias do A4 (08), lidas pelo harness em C;
+│   │                         #   clipes_demo.h: clipes de áudio para a flash da placa (09)
 │   ├── classifier/           # estudo de escolha do classificador (compare_classifiers.json)
 │   ├── decimation/           # métricas, figuras e relatório da escolha da taxa
 │   ├── exploration/          # figuras dos scripts exploratórios
@@ -215,6 +218,7 @@ python scripts/pipeline/05_train_classifier.py --responsavel <nome>   # modelo f
 python scripts/pipeline/06_export_lda_header.py --responsavel <nome>  # .h da LDA → reports/modelo_final/lda_modelo.h
 python scripts/pipeline/07_export_lda_test_vectors.py                 # vetores de teste → reports/modelo_final/lda_vetores_teste.h
 python scripts/pipeline/08_export_stage_references.py                 # referências por estágio → reports/c_reference/estagios/
+python scripts/pipeline/09_export_clips.py                            # clipes para a flash → reports/c_reference/clipes_demo.h
 ```
 
 O `05` treina a LDA uma única vez, com os 295 segmentos e sem aumento, e grava em `reports/modelo_final/lda_final.json` os parâmetros nas duas formas equivalentes de `models/lda.py`: a padronizada (média, escala, coeficientes e intercepto) e a dobrada, `escore = pesos · x + bias`, que é a que o firmware usa. A convenção é **escore ≥ 0 → falha**: o empate exato segue o sklearn, que o classifica como falha (campo `escore_zero` do JSON). As 26 features seguem a ordem do `04` (as 13 médias, depois os 13 desvios, populacionais). Antes de gravar, o script confere que o JSON reproduz o sklearn em todos os segmentos. O `escores_referencia.csv` traz o escore de cada segmento para conferir a implementação em C. Esses segmentos são os do próprio treino: **o `05` não mede desempenho**, que continua sendo o do Protocolo B (`exp015`). O modelo final classifica corretamente os 295 segmentos, inclusive os da `bpfo_0.3mm`, porque todos estão no treino; **uma demonstração com trechos dessas gravações reproduz o treino, não o Protocolo B**, e não deve ser apresentada como desempenho. O tamanho do escore (±1.300 a ±1.600 nesses segmentos) também não é medida de confiança: a margem vem de o treino conter as cinco gravações, e não diz nada sobre uma gravação nova. **O firmware usa só o sinal do escore.** O JSON é o contrato com o firmware: além dos pesos, ele descreve a cadeia que produz as 26 features nos pontos em que um porte em C costuma divergir sem erro (bloco `entrada`): a origem do sinal a 12,8 kHz (FIR Kaiser de 147 taps, corte em 5.760 Hz, decimação por 4, com o atraso de grupo descartado), escala da entrada (`int16 / 32767`, e não `/ 32768` como a conversão Q15 da CMSIS), janela de Hann simétrica (`np.hanning`), FFT de 512 pontos com espectro de potência, banco de Mel HTK de 20 Hz a fs/2 com os bins já calculados, log natural com `+1e-10`, DCT-II ortonormal e desvio populacional. Um teste refaz o MFCC só a partir dessa descrição e compara com o `dsp.mfcc`. Ao comparar o C com o `escores_referencia.csv`, use tolerância relativa (~1e-3) no escore, porque o MFCC em `float32` difere um pouco do Python; a previsão tem que ser idêntica. Ele exige as features de referência (sem `--norm-clipe`); se o `04` foi rodado com outra opção, rode-o de novo sem opções antes.
@@ -224,6 +228,16 @@ O `06` lê o `lda_final.json` e gera o `reports/modelo_final/lda_modelo.h` com a
 O `07` gera o `reports/modelo_final/lda_vetores_teste.h`, que o firmware ([`lab3-firmware-stm32`](https://github.com/claraamp/lab3-firmware-stm32)) usa no marco de 13/10: as 26 características do `04` de cada segmento (todos, ou `--por-gravacao K` igualmente espaçados), o escore e a decisão do `escores_referencia.csv` e a tolerância de cada segmento. A tolerância é o limite do `06` mais o arredondamento do próprio escore de referência para float32. O `.h` também lista, por gravação, o segmento de menor |escore|, que a placa mostra em laço nos LEDs. Antes de gravar, o script confere que o `lda_modelo.h` versionado é o deste `lda_final.json` e que a soma em float32, em Python e com o `.h` compilado no host, a partir dos valores lidos de volta do arquivo gerado, fica dentro da tolerância e dá a decisão do CSV em todos os segmentos. Ele traz o bias do modelo (`VT_LDA_BIAS`), que o firmware compara com o do `lda_modelo.h` para recusar cabeçalhos de modelos diferentes. Como as características vêm do Python, o marco confere o porte do classificador, não o desempenho. Não há linha no registry: o arquivo é uma fixture de teste, e o resultado é o log da placa. Como o `.h` grava o commit do gerador, o script aborta, ao gravar no caminho versionado, se ele mesmo, o `lda_final.json`, o `escores_referencia.csv` ou o `lda_modelo.h` tiverem mudanças não commitadas; com `--out` em outro caminho, só avisa e marca o commit com `+mudancas`. Precisa das features do `04` sem opções.
 
 O `08` gera as referências por estágio do porte em C, em `reports/c_reference/estagios/`: para o segmento do meio de cada gravação, a saída em float64 de cada estágio da cadeia (escala, janela, espectro, Mel, log-Mel, MFCC, média, desvio e escore), em binários little-endian com um `indice.txt` por segmento, e o `tolerancias.txt` com as tolerâncias do A4 (`dsp.ESTAGIOS_PORTE`). É o que o harness em C do firmware ([`lab3-firmware-stm32`](https://github.com/claraamp/lab3-firmware-stm32), `tests/host/harness`) lê para conferir o porte estágio a estágio, no PC. Os intermediários saem de `dsp.estagios_mfcc`, que usa o mesmo `dsp.mfcc` da extração; o script aborta se o MFCC ou o escore não forem os do `04` e do `05`. As tolerâncias, a métrica de cada estágio e como foram fixadas estão no `docs/contrato_numerico.md` (seção "Tolerâncias por estágio (A4)", `inspect_tolerancias_estagio.py`). Como o `07`, grava o commit e aborta, no caminho versionado, se o script, o `dsp.py`, o `lda_final.json` ou o `escores_referencia.csv` tiverem mudanças não commitadas. Sem `data/`, o teste confere que as referências versionadas são as do `dsp` atual, recalculando-as a partir do `int16` gravado nelas.
+
+O `09` gera o `reports/c_reference/clipes_demo.h`, com o áudio que o firmware grava na flash para rodar a cadeia inteira na placa, do som à decisão:
+- **Clipes a 12,8 kHz:** por gravação, 2 segmentos consecutivos de 1 s (`--segundos`), a partir do segmento do meio, o mesmo das referências do `08`. Vêm em `int16` do PCM decimado, com o id, a classe, o escore e a decisão de cada segmento.
+- **Recorte a 51,2 kHz:** um segmento de 1 s do PCM original, para demonstrar a decimação na placa. Tem as margens do decimador causal de fase 0 (75 amostras antes e 73 depois; descartar as 37 primeiras saídas) e os 147 coeficientes do FIR.
+
+O recorte decimado e requantizado é, bit a bit, o primeiro segmento do clipe da `normal`. O escore de referência do recorte vem da saída em float da decimação; o `RECORTE_ESCORE_REF_INT16` é o escore depois de requantizar, para o caso de a placa requantizar antes do MFCC.
+
+O padrão ocupa cerca de 350 KB, dentro do orçamento de flash do firmware (cerca de 434 KB para áudio); o script aborta acima dele (`--orcamento-kb`). Antes de gravar, ele confere que o escore de cada segmento, recalculado do `int16`, é o do `escores_referencia.csv`.
+
+**Todos os segmentos dos clipes estão no treino do modelo final:** a demonstração na placa mede a fidelidade do porte (se a placa reproduz o Python), não o desempenho do classificador, que continua sendo o do Protocolo B. Como o `07` e o `08`, o script grava o commit e aborta, no caminho versionado, se houver mudanças não commitadas. Sem `data/`, o teste do clipe lê o `.h` versionado, recalcula as características de cada segmento e confere o escore e a decisão gravados. Ele também decima o recorte como a placa faz e confere que sai o clipe a 12,8 kHz.
 
 O `03` é determinístico: num clone novo, ele reconstrói exatamente o `splits.json` versionado e avisa que "já existe e é idêntico". Se disser que o arquivo é **diferente**, os dados reconstruídos não são os mesmos das rodadas registradas — pare e investigue antes de seguir.
 
