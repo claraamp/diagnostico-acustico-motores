@@ -155,15 +155,21 @@ class Candidato:
     passo: int
     n_blocos: int
     descricao: str
+    decimar: int = 1     # fator de decimação antes da FFT (1 = 12,8 kHz, sem decimar)
+    fmax: float = FMAX_DENTES   # último dente, abaixo do corte do anti-aliasing
+
+    @property
+    def fs(self) -> float:
+        return config.FS_TRABALHO / self.decimar
 
     @property
     def resolucao(self) -> float:
         """Resolução efetiva, pela duração do bloco."""
-        return config.FS_TRABALHO / self.n_bloco
+        return self.fs / self.n_bloco
 
     @property
     def bin_hz(self) -> float:
-        return config.FS_TRABALHO / self.n_fft
+        return self.fs / self.n_fft
 
     @property
     def mascara_hz(self) -> float:
@@ -204,11 +210,13 @@ def inviavel(c: Candidato) -> str | None:
 def espectro(x: np.ndarray, c: Candidato) -> tuple[np.ndarray, np.ndarray]:
     """Espectro de potência médio dos blocos do segmento, como seria calculado no chip."""
     x = np.asarray(x, dtype=float)
+    if c.decimar > 1:
+        x = dsp.resample_clip(x, config.FS_TRABALHO, c.fs, dsp.design_decimation(config.FS_TRABALHO, c.fs))
     janela = np.hanning(c.n_bloco)
     inicios = np.arange(c.n_blocos) * c.passo
     blocos = x[inicios[:, None] + np.arange(c.n_bloco)[None, :]] * janela
     p = (np.abs(np.fft.rfft(blocos, n=c.n_fft, axis=1)) ** 2).mean(axis=0)
-    return np.fft.rfftfreq(c.n_fft, 1 / config.FS_TRABALHO), p
+    return np.fft.rfftfreq(c.n_fft, 1 / c.fs), p
 
 
 def pico_e_fundo(f: np.ndarray, p: np.ndarray, fundo_hz: tuple[float, float]) -> tuple[np.ndarray, np.ndarray]:
@@ -245,8 +253,8 @@ def estimar_eixo(f: np.ndarray, pico: np.ndarray, fundo: np.ndarray) -> float:
     return _pente_eixo(f, pico, fundo, grosso - EIXO_REFINO_HZ, grosso + EIXO_REFINO_HZ, EIXO_HARMONICAS)
 
 
-def k_max(f0_cin: float) -> int:
-    return int(FMAX_DENTES // (f0_cin * (1 + BUSCA_REL)))
+def k_max(f0_cin: float, fmax: float = FMAX_DENTES) -> int:
+    return int(fmax // (f0_cin * (1 + BUSCA_REL)))
 
 
 def pente(f: np.ndarray, pico: np.ndarray, fundo: np.ndarray, f_eixo: float,
@@ -258,16 +266,16 @@ def pente(f: np.ndarray, pico: np.ndarray, fundo: np.ndarray, f_eixo: float,
     """
     res = f[1] - f[0]
     f0_cin = razao * f_eixo
-    km = k_max(f0_cin)
+    km = k_max(f0_cin, c.fmax)
     passo = res / (2 * max(km, 1))                       # o último dente anda ≤ meio bin
     f0s = np.arange(f0_cin * (1 - BUSCA_REL), f0_cin * (1 + BUSCA_REL) + passo, passo)
     k = np.arange(1, km + 1)
     dentes = f0s[:, None] * k[None, :]                   # (candidatos, dentes)
     harm = np.round(dentes / f_eixo) * f_eixo
-    valido = (np.abs(dentes - harm) >= c.mascara_hz) & (dentes <= FMAX_DENTES)
+    valido = (np.abs(dentes - harm) >= c.mascara_hz) & (dentes <= c.fmax)
     n_validos = valido.sum(axis=1)
     if not n_validos.any():
-        raise ValueError(f"nenhum dente válido abaixo de {FMAX_DENTES} Hz para f₀ ≈ {f0_cin:.1f} Hz")
+        raise ValueError(f"nenhum dente válido abaixo de {c.fmax} Hz para f₀ ≈ {f0_cin:.1f} Hz")
     b = np.clip(np.round(dentes / res).astype(int), 1, len(pico) - 2)
     sal = 10 * np.log10((pico[b] + 1e-30) / (fundo[b] + 1e-30))
     sal = np.where(valido, sal, np.nan)
@@ -317,7 +325,7 @@ def custo_stm32(c: Candidato) -> dict:
     ops_busca = 0.0
     for _, razao in FAMILIAS:
         f0 = razao * EIXO_ARTIGO_HZ
-        km = k_max(f0)
+        km = k_max(f0, c.fmax)
         n_cand = 2 * BUSCA_REL * f0 / (c.bin_hz / (2 * km))
         ops_busca += n_cand * km
     return {"ram_kb": ram / 1024, "flops_fft": float(flops_fft), "ops_fundo": float(ops_fundo),
