@@ -1,0 +1,141 @@
+# Critério da detecção de novidade
+
+*Especificação técnica do critério. A aprovação é feita por comentário na página "Critério da detecção de novidade", no Registro de Decisões do Notion; este arquivo é o que os scripts seguem, como o `contrato_numerico.md` para o porte. Situação: **Pendente**. Responsável: Júlia. Versão 3 (16/10): revisão da Clara e correção dos controles depois do auto-teste sintético.*
+
+## Objetivo
+
+Detectar a `bpfo_0.3mm` no Protocolo B, a falha que a LDA não detecta (0,500), **sem perder a especificidade**, com um custo que caiba no STM32F411 junto da cadeia atual. O que já se sabe:
+
+- A falha está no sinal: são linhas estreitas de BPFO, que o MFCC dilui.
+- Como entrada extra da LDA, o pente não muda nada (`exp249`–`exp252`).
+- Como detector separado, com limiar tirado só da normal, ele detectou a falha no B. A especificidade, porém, foi medida na mesma gravação normal de onde sai o limiar.
+
+**Ressalva de honestidade.** A equipe já viu os resultados da variante "LDA OU pente" no B (0,729 com a rotação estimada e 1,000 com a nominal). As escolhas abaixo não podem ser justificadas por esses números. Cada uma tem uma razão independente, escrita ao lado.
+
+## 1. Candidatos (lista fechada)
+
+**D1 a D3 são detectores de novidade:** aprendem só a normal e entram combinados com a LDA atual por **OU** (o segmento é falha se a LDA disser falha ou se o detector disparar). Neles, a LDA e o `lda_modelo.h` não mudam. **O D4 é diferente:** não é um detector à parte, e sim um retreino da própria LDA, que troca os pesos do `lda_modelo.h` (seção 8).
+
+| # | Candidato | O que aprende | Custo adicional no STM32 (estimado) |
+|---|---|---|---|
+| D1 | **Pente com limiar da normal** | pontuação do pente de BPFO e de BPFI nos segmentos normais | FFT dedicada: ~40 KB de RAM (4.096 pontos a 12,8 kHz) ou **~20 KB** (variante D1b, abaixo) |
+| D2 | **Mahalanobis no MFCC** (26 características) | média e covariância da normal | ~2,8 KB de flash (matriz 26 × 26 e média), ~700 MACs; sem RAM a mais |
+| D3 | **Mahalanobis no MFCC + pente** (30 características) | idem, com as 4 do pente | a FFT do D1, mais ~3,6 KB de flash |
+| D4 | **LDA retreinada com falha sintética de linhas estreitas** | a mesma LDA, treinada também com segmentos normais acrescidos de uma série harmônica sintética, rotulados como falha | **zero no firmware**: só os pesos do `.h` mudam; refaz do `05` ao `08` (seção 8) |
+
+**D1b, variante de memória do pente.** Decimar de 12,8 para 6,4 kHz e usar uma FFT de 2.048 pontos: resolução de 3,125 Hz, a mesma do candidato B do card do pente, com dentes até 2,8 kHz (cerca de 15 ordens de BPFO, das 21 identificadas na caracterização). Gasta metade da RAM. Entra porque a memória é o gargalo, não porque já tenha sido testada: não foi.
+
+**D4: por que pode funcionar, se o pente como entrada não funcionou.** As duas coisas falham por motivos diferentes. O pente como entrada não ajudou porque a LDA, treinada só com falhas de banda larga, não tinha motivo para usar as colunas novas. A `bpfo_0.3mm` aparece no MFCC: quatro bandas de Mel entre 685 e 1.220 Hz sobem de 6 a 14 dB, de forma consistente. O que falta é a LDA ter aprendido que essa direção também é falha. O D4 ensina isso ao acrescentar ao treino uma falha com a mesma *natureza* (linhas estreitas), sem usar os dados da `bpfo_0.3mm`. É uma aposta. Se o resultado for negativo, ele é registrado como tal. Como custa refazer os artefatos do `05` ao `08`, ele só é adotado se passar nos critérios da seção 6.
+
+**D4: especificação da injeção (fixada antes de rodar).**
+- **Onde:** na forma de onda, no segmento em ponto flutuante (`int16 / 32767`), antes de toda a cadeia (janela, FFT, Mel, log, DCT). A série sintética passa pela mesma extração que o firmware faria.
+- **Em quais segmentos:** só nos segmentos normais de treino de cada fold. Cada segmento normal de treino gera uma cópia "falha sintética". O teste e o descarte do fold nunca são usados.
+- **Série:**
+  - família BPFO ou BPFI, sorteada com a mesma chance;
+  - f₀ sorteado em ±3 % da razão cinemática × a rotação nominal;
+  - de 10 a 25 harmônicos, até 5,6 kHz;
+  - fase aleatória por harmônico.
+- **Amplitude:** cada dente é posto entre 10 e 40 dB (sorteio uniforme em dB) acima do fundo local do próprio segmento. O fundo é a mediana do espectro de 1 s entre 3 e 10 Hz em torno do dente, o mesmo estimador do pente. A faixa vem da literatura e da diferença entre as falhas de 1,0 mm e a normal, e não da `bpfo_0.3mm`.
+- **Semente:** fixa (`config.SEMENTE`). Reportar também 5 sementes para medir a dispersão.
+
+## 2. Regra de limiar (uma só, para D1, D2 e D3)
+
+As duas regras escritas não batem: a proposta usa média + 4 desvios, e o card do Mahalanobis, o percentil 97,5. Proposta: **uma regra única, sem suposição de distribuição e medida fora do bloco.**
+
+- Em cada fold do B, os ~47 segmentos normais de treino estão em 5 blocos. Para cada bloco, o detector é ajustado nos outros 4 (~38 segmentos) e pontua o bloco deixado de fora (~9 segmentos). Ao fim, há ~47 pontuações "fora da amostra".
+- **Limiar = maior dessas pontuações.** Com ~47 valores, isso corresponde a um alarme falso de cerca de 2 % por pontuação, numa normal parecida com a de treino. O detector final é ajustado nos 5 blocos.
+- **Por que esta regra.**
+  - O "média + 4σ" supõe uma distribuição gaussiana, que a pontuação do pente não tem.
+  - O percentil 97,5 aceita, por construção, 2,5 % de alarme falso por pontuação.
+  - A pontuação fora do bloco mede o que acontece com uma normal que o detector não viu. Pontuar os próprios dados de ajuste subestima o alarme falso.
+- **O alarme falso acumula.** No D1 há dois limiares (BPFO e BPFI), e todos os detectores entram por OU com a LDA. O alarme falso de cada parte se soma, e os ~2 % por pontuação **não controlam o total**. Por isso a elegibilidade (seção 6) mede a especificidade do **detector combinado**, e não de cada pontuação.
+- **Mahalanobis (D2, D3):** ajustado em ~38 segmentos para 26 a 30 dimensões. Os segmentos de um mesmo bloco são vizinhos no tempo e correlacionados, então o número efetivo de amostras é menor que 38. A covariância amostral fica mal condicionada. Usar covariância com encolhimento (Ledoit–Wolf), com a intensidade estimada pelo próprio método, sem escolher olhando o teste. O resultado do D2 e do D3 deve ser lido com essa ressalva.
+- **Pente (D1):** um limiar para a pontuação de BPFO e outro para a de BPFI. O detector dispara se qualquer uma passar.
+
+## 3. Rotação do eixo
+
+**Os detectores que usam o pente na placa (D1, D3) recebem a rotação nominal como parâmetro de configuração**, como um tacômetro ou o ajuste do inversor. A rotação estimada no segmento é reportada à parte.
+
+- **Por quê:** no HUSTmotor, a rotação de cada arquivo é conhecida (5, 10, 20 e 30 Hz). Num monitoramento real, a rotação nominal da máquina é um dado de instalação. A estimativa no segmento com 3,1 Hz de resolução erra nas gravações de pista externa (~48,8 Hz), um problema de resolução e não do detector.
+- **Ressalva:** já sabemos que a rotação nominal favorece o resultado no B. Por isso, os dois modos são reportados lado a lado, e o relatório diz que o sistema depende da rotação conhecida.
+- **Quem depende da rotação, e onde:**
+  - D1 e D3: no treino, na placa e no Protocolo C;
+  - D4: **só no treino**, para posicionar a série sintética. Na placa e no Protocolo C, ele é a LDA e não usa rotação;
+  - D2: não usa rotação.
+
+## 4. Taxa máxima de alarme falso (o X %)
+
+**X = 5 % por segmento de 1 s**, medido no Protocolo C (seção 5).
+
+- **Em termos práticos:** 5 % por segmento é **um alarme falso a cada ~20 s**. Com a regra de decisão "2 de 3 segmentos consecutivos", barata no firmware (um contador), cai para ~0,7 % por decisão, **um alarme a cada 2 a 3 minutos**. Esse número supõe segmentos independentes, o que não vale (segmentos vizinhos são correlacionados), e por isso é otimista. O relatório deve dizer nesses termos.
+- A decisão usa o número por segmento. A regra de 2 de 3 é reportada como secundária.
+- No Protocolo B, a especificidade continua com o piso de 0,95 de antes.
+
+## 5. Protocolo C: duas leituras, porque a transferência entre máquinas é o risco principal
+
+**Esta seção muda o critério do card do HUSTmotor**, que previa o limiar calibrado no Jung, sem recalibrar. O card tem de ser atualizado junto.
+
+O limiar sem recalibrar testa se o detector **transfere de uma máquina para outra**, o que é muito exigente. O MFCC de um motor diferente, outro microfone, outra sala e outra rotação vai cair longe da "normal" do Jung. **É provável que o D2 e o D3 disparem em quase tudo no HUST**, e isso não diria nada sobre a utilidade deles numa máquina instalada. O pente é mais robusto a essa troca, porque a pontuação é uma razão entre o pico e o fundo local. Mesmo assim, ele precisa da **geometria do rolamento do HUSTmotor** para as razões de BPFO e BPFI. A verificação faz parte do card "HUSTmotor: preparar os dados". Se a geometria não estiver documentada, o D1 e o D3 não se aplicam ao C.
+
+Proposta: reportar duas leituras, decididas agora.
+
+- **C1, transferência (o critério original do card):** detectores e limiares do Jung aplicados ao HUST, sem recalibrar. Critério: alarme falso ≤ X.
+- **C2, comissionamento:** a "normal" é aprendida no próprio HUST, como faria um sistema instalado.
+  - **Divisão, fixada agora:** para cada rotação, as gravações normais são cortadas em segmentos de 1 s. Os **primeiros 50 %** (no tempo) calibram o detector, com a regra da seção 2 aplicada aos blocos dessa metade. Os **últimos 50 %**, depois de uma faixa de descarte de 1 segmento, medem o alarme falso. Se houver mais de um arquivo normal por rotação, os primeiros arquivos calibram e os demais medem.
+  - Os nomes dos arquivos de cada lado são anotados assim que o dataset for baixado, **antes de olhar qualquer gravação de falha**.
+  - Critério: alarme falso ≤ X. A detecção das falhas do HUST na mesma rotação é reportada.
+- **"Deixar uma velocidade de fora"** (Fase 3, até 09/11): calibrar em três rotações e medir na quarta. É uma leitura intermediária entre o C1 e o C2.
+
+**A escolha usa o C2.** O C1 é reportado como limite de transferência. Um detector que só passa no C2 é aceitável, desde que o relatório diga que exige calibração na máquina.
+
+## 6. Regra de escolha
+
+1. **Elegíveis:** os candidatos que, no Protocolo B, mantêm a **especificidade do detector combinado** em ≥ 0,95 e passam no controle da seção 7. O **D3** só segue se detectar a `bpfo_0.3mm` mais de 0,02 acima do D2. Se não, o pente não acrescenta nada ao MFCC, e o D3 é descartado pelo custo (~40 KB a mais para fazer o mesmo que o D2 com ~3 KB). A especificidade aqui é a da normal fora do bloco, como na seção 2. As outras três falhas ficam ≥ 0,95 quase automaticamente, porque o OU só acrescenta detecções. Elas são conferidas, mas a restrição real é a especificidade. No D4, que troca a LDA, as outras três falhas são, sim, uma restrição real.
+2. **Sensibilidade:** acurácia balanceada da `bpfo_0.3mm` no B, reportada seja qual for. Para ser adotado, um candidato precisa de ≥ 0,80 nela.
+3. **Especificidade externa:** alarme falso ≤ X no C2.
+4. **Desempate:** dentro de 0,02 na `bpfo_0.3mm`, fica o mais barato em RAM e operações. A ordem de custo no firmware é D4 < D2 < D1b < D1 < D3. O D4 tem o custo extra de refazer os artefatos (seção 8).
+5. **Nenhum passa:** a cadeia segue com MFCC e LDA, e o resultado negativo é registrado e reportado.
+
+A rodada de sensibilidade no B pode ser feita já, antes do HUST. A **adoção** só acontece depois do C2.
+
+## 7. Controles
+
+A permutação de rótulos só faz sentido para quem aprende com rótulos. Por isso, o controle muda conforme o candidato:
+
+- **D4 (supervisionado):** permutação por bloco, como no 1º parcial. A acurácia balanceada tem de ficar perto de 0,5 ou abaixo.
+- **D1 e D3 (pente): pente fixo em frequências sorteadas, controle relativo.** Repetir a rodada com 20 pentes em frequências que não são de rolamento:
+  - razões entre 2 e 7 × a rotação, fora de ±6 % de BPFO, de BPFI e das frações simples delas (p/q, com p e q até 3), e a mais de 0,15 de um múltiplo inteiro do eixo;
+  - **sem a busca de ±3 %**: o f₀ fica fixo.
+
+  **Passa se o pente de rolamento detectar a `bpfo_0.3mm` (detector sozinho, sem a LDA) pelo menos 0,5 acima da média dos pentes sorteados.**
+
+  *Por que mudou depois do auto-teste sintético:* a versão 2 pedia que a detecção com o pente sorteado ficasse "perto da taxa de alarme falso". No sinal sintético, em que o detector funciona por construção, essa regra o reprovava. Com linhas de falha fortes, mesmo um pente em frequência errada esbarra em algumas delas por acaso, e a média sobe. A busca de ±3 % e as frações simples da BPFO (um pente em 2/3 dela acerta um dente em cada três harmônicos) pioravam isso. No sintético, o detector correto dá 1,00 com o pente de rolamento e 0,44 (FFT de 4.096) e 0,15 (D1b) com os sorteados, e passa na regra relativa. O controle continua respondendo à pergunta da Clara: o detector pega a falha **muito mais** nas frequências de rolamento que em outras?
+- **D2 (Mahalanobis no MFCC):** não há controle por rótulo. Por construção, ele mede "diferente da normal", que é exatamente o atalho que os controles do 1º parcial não descartaram. O controle dele é o Protocolo C, e a leitura do B deve dizer isso.
+
+## 8. Memória: o gargalo (a alinhar com a Frente 1)
+
+O STM32F411 tem 128 KB de RAM. **Os números desta seção dependem de como o firmware for organizado, e isso é da Frente 1 (Clara).**
+
+- O recorte de ~100 KB para 1 s a 51,2 kHz (contrato numérico) supõe decimar o segmento inteiro de uma vez. Com a **decimação em streaming**, em blocos, sobra RAM, e a restrição do pente muda.
+- O reaproveitamento do buffer do áudio pelo pente, depois do MFCC, também depende da organização do firmware.
+- Para a escolha (seção 6), vale a ordem de custo dos candidatos. A pergunta "o D1 de 40 KB cabe?" fica para depois de alinhar com a Frente 1, com os números do `.map` e do DWT.
+
+## 9. Impacto nos artefatos do porte
+
+As referências por estágio e as tolerâncias do A4 (`08_export_stage_references.py`, `exp253`) e os cabeçalhos do firmware dependem do modelo. O efeito de adotar cada candidato é diferente:
+
+| Candidato | O que muda | O que tem de ser refeito |
+|---|---|---|
+| D4 | os pesos da LDA (modelo novo, outro `id`) | o `05`, o `06` (`lda_modelo.h`), o `07` (`lda_vetores_teste.h`) e o `08` (o `escore.f64` e o `modelo.txt` de cada segmento); as tolerâncias do MFCC continuam valendo, porque o MFCC não muda |
+| D2 | um cabeçalho novo com a média, a inversa da covariância e o limiar | um gerador novo (no estilo do `06`) e a referência do escore de Mahalanobis; a LDA e as referências do MFCC não mudam |
+| D1, D1b, D3 | uma cadeia nova (FFT dedicada, pente) | referências e tolerâncias próprias para os estágios do pente, no `08` e no harness, além do gerador dos limiares |
+
+## 10. Onde cada parte fica
+
+- **A decisão:** no Notion, no Registro de Decisões. Este arquivo guarda a especificação.
+- **Rodadas no B, no C1 e no C2, e o gerador dos parâmetros:** no repositório do Python (`diagnostico-acustico-motores`), com o script de exploração, o registry e os testes.
+- **Se um detector for adotado:** o cabeçalho com os parâmetros, gerado pelo Python, vai para o repositório do Python. O código C do detector e a integração ficam no repositório do firmware (`lab3-firmware-stm32`), com a Clara.
+
+## Pronto quando
+
+A página tem a Situação "Definida", com os valores acima (ou os que a equipe trocar) aprovados por comentário, e o card do HUSTmotor está atualizado com a seção 5. Só depois disso a rodada de sensibilidade no Protocolo B começa.
