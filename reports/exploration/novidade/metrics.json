@@ -1,0 +1,1040 @@
+{
+  "parametros": {
+    "eixo_nominal_hz": 50.17,
+    "espectros": [
+      "B_fft4096_3blocos",
+      "D1b_fft2048_6400hz_3blocos"
+    ],
+    "d4_harmonicos": [
+      10,
+      25
+    ],
+    "d4_db": [
+      10.0,
+      40.0
+    ],
+    "d4_fundo_hz": [
+      3.0,
+      10.0
+    ],
+    "d4_sementes": 5,
+    "n_controles": 20,
+    "ctrl_razoes": [
+      2.0,
+      7.0
+    ],
+    "ctrl_longe_bpf": 0.06,
+    "ctrl_longe_inteiro": 0.15,
+    "ctrl_margem": 0.5,
+    "d3_margem_sobre_d2": 0.02,
+    "perm_max": 0.55,
+    "espec_min": 0.95,
+    "outras_min": 0.95,
+    "bpfo03_min": 0.8,
+    "splits": "772c8e1eb1",
+    "features_commit": "e57d980"
+  },
+  "candidatos": {
+    "D2_mahalanobis_mfcc": {
+      "detector": "D2",
+      "espectro": null,
+      "rotacao": null,
+      "custo_stm32": {
+        "ram_kb": 0.0,
+        "flash_kb": 1.578125,
+        "ciclos": 403.0,
+        "ms_por_segundo": 0.004030000000000001
+      },
+      "resumo": {
+        "protocolo": "B",
+        "leitura": "resultado principal — meta: acurácia balanceada média ≥ 85%",
+        "n_folds": 24,
+        "acuracia_balanceada_media": 1.0,
+        "sensibilidade_media": 1.0,
+        "especificidade_media": 1.0,
+        "pior_falha": "bpfi_0.3mm",
+        "pior_falha_acuracia_balanceada": 1.0,
+        "pior_fold": "B_bpfi_0.3mm_bloco0",
+        "pior_fold_acuracia_balanceada": 1.0,
+        "meta_atingida": true,
+        "por_falha": {
+          "bpfi_0.3mm": {
+            "sensibilidade": 1.0,
+            "especificidade": 1.0,
+            "acuracia_balanceada": 1.0,
+            "n_folds": 6
+          },
+          "bpfi_1.0mm": {
+            "sensibilidade": 1.0,
+            "especificidade": 1.0,
+            "acuracia_balanceada": 1.0,
+            "n_folds": 6
+          },
+          "bpfo_0.3mm": {
+            "sensibilidade": 1.0,
+            "especificidade": 1.0,
+            "acuracia_balanceada": 1.0,
+            "n_folds": 6
+          },
+          "bpfo_1.0mm": {
+            "sensibilidade": 1.0,
+            "especificidade": 1.0,
+            "acuracia_balanceada": 1.0,
+            "n_folds": 6
+          }
+        }
+      },
+      "alarme_detector_normal": 0.0,
+      "deteccao_detector_alvo": 1.0,
+      "controle": null,
+      "avaliacao": {
+        "especificidade >= 0,95": true,
+        "outras falhas >= 0,95": true,
+        "controle": null,
+        "supera o D2": null,
+        "outras_falhas_min": 1.0,
+        "bpfo_0.3mm": 1.0,
+        "elegivel": true,
+        "situacao": "candidato à adoção (falta o Protocolo C)"
+      }
+    },
+    "D1_pente_B_nominal": {
+      "detector": "D1",
+      "espectro": "B_fft4096_3blocos",
+      "rotacao": "nominal",
+      "custo_stm32": {
+        "ram_kb": 40.00390625,
+        "flash_kb": 39.0,
+        "ciclos": 1142400.0,
+        "ms_por_segundo": 11.424
+      },
+      "resumo": {
+        "protocolo": "B",
+        "leitura": "resultado principal — meta: acurácia balanceada média ≥ 85%",
+        "n_folds": 24,
+        "acuracia_balanceada_media": 0.9824074074074075,
+        "sensibilidade_media": 1.0,
+        "especificidade_media": 0.9648148148148149,
+        "pior_falha": "bpfi_0.3mm",
+        "pior_falha_acuracia_balanceada": 0.9824074074074075,
+        "pior_fold": "B_bpfi_0.3mm_bloco5",
+        "pior_fold_acuracia_balanceada": 0.9444444444444444,
+        "meta_atingida": true,
+        "por_falha": {
+          "bpfi_0.3mm": {
+            "sensibilidade": 1.0,
+            "especificidade": 0.9648148148148149,
+            "acuracia_balanceada": 0.9824074074074075,
+            "n_folds": 6
+          },
+          "bpfi_1.0mm": {
+            "sensibilidade": 1.0,
+            "especificidade": 0.9648148148148149,
+            "acuracia_balanceada": 0.9824074074074075,
+            "n_folds": 6
+          },
+          "bpfo_0.3mm": {
+            "sensibilidade": 1.0,
+            "especificidade": 0.9648148148148149,
+            "acuracia_balanceada": 0.9824074074074075,
+            "n_folds": 6
+          },
+          "bpfo_1.0mm": {
+            "sensibilidade": 1.0,
+            "especificidade": 0.9648148148148149,
+            "acuracia_balanceada": 0.9824074074074075,
+            "n_folds": 6
+          }
+        }
+      },
+      "alarme_detector_normal": 0.03389830508474576,
+      "deteccao_detector_alvo": 1.0,
+      "controle": {
+        "tipo": "pente fixo em frequências sorteadas (relativo)",
+        "valor": 0.5550847457627117,
+        "max": 1.0,
+        "deteccao_real": 1.0,
+        "deteccao_pente_rolamento_fixo": 0.0423728813559322,
+        "razoes": [
+          [
+            4.364225350747153,
+            4.551977617302708
+          ],
+          [
+            6.643427884532468,
+            4.268465924054235
+          ],
+          [
+            4.2778875381315995,
+            3.296638400103338
+          ],
+          [
+            6.295368003208373,
+            4.350283630106122
+          ],
+          [
+            6.606646905017107,
+            4.261407059084309
+          ],
+          [
+            4.269100130331837,
+            4.5250385831634174
+          ],
+          [
+            4.815812740505475,
+            5.803555115433502
+          ],
+          [
+            2.151963214213111,
+            5.809543461533718
+          ],
+          [
+            6.422137826951238,
+            6.632431905268075
+          ],
+          [
+            5.805241398093839,
+            3.245438533073045
+          ],
+          [
+            6.230191128229615,
+            2.5278635584978755
+          ],
+          [
+            2.199161287366854,
+            6.300207240768704
+          ],
+          [
+            6.340686211804626,
+            4.28519843655031
+          ],
+          [
+            4.197710675605682,
+            6.219792950107648
+          ],
+          [
+            4.34509733752969,
+            4.502268069035846
+          ],
+          [
+            4.644501286262655,
+            2.2089656011186145
+          ],
+          [
+            6.625445091876232,
+            4.758607135881767
+          ],
+          [
+            6.281706628714572,
+            4.609313666966868
+          ],
+          [
+            6.565244468816073,
+            2.2166694358120935
+          ],
+          [
+            4.18524604945519,
+            2.2303817064735147
+          ]
+        ],
+        "passa": false
+      },
+      "avaliacao": {
+        "especificidade >= 0,95": true,
+        "outras falhas >= 0,95": true,
+        "controle": false,
+        "supera o D2": null,
+        "outras_falhas_min": 0.9824074074074075,
+        "bpfo_0.3mm": 0.9824074074074075,
+        "elegivel": false,
+        "situacao": "não elegível"
+      }
+    },
+    "D3_mahalanobis_mfcc_pente_B_nominal": {
+      "detector": "D3",
+      "espectro": "B_fft4096_3blocos",
+      "rotacao": "nominal",
+      "custo_stm32": {
+        "ram_kb": 40.00390625,
+        "flash_kb": 41.0546875,
+        "ciclos": 1142925.0,
+        "ms_por_segundo": 11.42925
+      },
+      "resumo": {
+        "protocolo": "B",
+        "leitura": "resultado principal — meta: acurácia balanceada média ≥ 85%",
+        "n_folds": 24,
+        "acuracia_balanceada_media": 1.0,
+        "sensibilidade_media": 1.0,
+        "especificidade_media": 1.0,
+        "pior_falha": "bpfi_0.3mm",
+        "pior_falha_acuracia_balanceada": 1.0,
+        "pior_fold": "B_bpfi_0.3mm_bloco0",
+        "pior_fold_acuracia_balanceada": 1.0,
+        "meta_atingida": true,
+        "por_falha": {
+          "bpfi_0.3mm": {
+            "sensibilidade": 1.0,
+            "especificidade": 1.0,
+            "acuracia_balanceada": 1.0,
+            "n_folds": 6
+          },
+          "bpfi_1.0mm": {
+            "sensibilidade": 1.0,
+            "especificidade": 1.0,
+            "acuracia_balanceada": 1.0,
+            "n_folds": 6
+          },
+          "bpfo_0.3mm": {
+            "sensibilidade": 1.0,
+            "especificidade": 1.0,
+            "acuracia_balanceada": 1.0,
+            "n_folds": 6
+          },
+          "bpfo_1.0mm": {
+            "sensibilidade": 1.0,
+            "especificidade": 1.0,
+            "acuracia_balanceada": 1.0,
+            "n_folds": 6
+          }
+        }
+      },
+      "alarme_detector_normal": 0.0,
+      "deteccao_detector_alvo": 1.0,
+      "controle": {
+        "tipo": "pente fixo em frequências sorteadas (relativo)",
+        "valor": 1.0,
+        "max": 1.0,
+        "deteccao_real": 1.0,
+        "deteccao_pente_rolamento_fixo": 1.0,
+        "razoes": [
+          [
+            4.364225350747153,
+            4.551977617302708
+          ],
+          [
+            6.643427884532468,
+            4.268465924054235
+          ],
+          [
+            4.2778875381315995,
+            3.296638400103338
+          ],
+          [
+            6.295368003208373,
+            4.350283630106122
+          ],
+          [
+            6.606646905017107,
+            4.261407059084309
+          ],
+          [
+            4.269100130331837,
+            4.5250385831634174
+          ],
+          [
+            4.815812740505475,
+            5.803555115433502
+          ],
+          [
+            2.151963214213111,
+            5.809543461533718
+          ],
+          [
+            6.422137826951238,
+            6.632431905268075
+          ],
+          [
+            5.805241398093839,
+            3.245438533073045
+          ],
+          [
+            6.230191128229615,
+            2.5278635584978755
+          ],
+          [
+            2.199161287366854,
+            6.300207240768704
+          ],
+          [
+            6.340686211804626,
+            4.28519843655031
+          ],
+          [
+            4.197710675605682,
+            6.219792950107648
+          ],
+          [
+            4.34509733752969,
+            4.502268069035846
+          ],
+          [
+            4.644501286262655,
+            2.2089656011186145
+          ],
+          [
+            6.625445091876232,
+            4.758607135881767
+          ],
+          [
+            6.281706628714572,
+            4.609313666966868
+          ],
+          [
+            6.565244468816073,
+            2.2166694358120935
+          ],
+          [
+            4.18524604945519,
+            2.2303817064735147
+          ]
+        ],
+        "passa": false,
+        "deteccao_d2": 1.0
+      },
+      "avaliacao": {
+        "especificidade >= 0,95": true,
+        "outras falhas >= 0,95": true,
+        "controle": false,
+        "supera o D2": false,
+        "outras_falhas_min": 1.0,
+        "bpfo_0.3mm": 1.0,
+        "elegivel": false,
+        "situacao": "descartado: não supera o D2"
+      }
+    },
+    "D1_pente_B_estimado": {
+      "detector": "D1",
+      "espectro": "B_fft4096_3blocos",
+      "rotacao": "estimado",
+      "custo_stm32": {
+        "ram_kb": 40.00390625,
+        "flash_kb": 39.0,
+        "ciclos": 1142400.0,
+        "ms_por_segundo": 11.424
+      },
+      "resumo": {
+        "protocolo": "B",
+        "leitura": "resultado principal — meta: acurácia balanceada média ≥ 85%",
+        "n_folds": 24,
+        "acuracia_balanceada_media": 0.9093220338983051,
+        "sensibilidade_media": 0.8686440677966102,
+        "especificidade_media": 0.9499999999999998,
+        "pior_falha": "bpfo_0.3mm",
+        "pior_falha_acuracia_balanceada": 0.7122881355932202,
+        "pior_fold": "B_bpfo_0.3mm_bloco0",
+        "pior_fold_acuracia_balanceada": 0.6288135593220339,
+        "meta_atingida": true,
+        "por_falha": {
+          "bpfi_0.3mm": {
+            "sensibilidade": 1.0,
+            "especificidade": 0.9499999999999998,
+            "acuracia_balanceada": 0.975,
+            "n_folds": 6
+          },
+          "bpfi_1.0mm": {
+            "sensibilidade": 1.0,
+            "especificidade": 0.9499999999999998,
+            "acuracia_balanceada": 0.975,
+            "n_folds": 6
+          },
+          "bpfo_0.3mm": {
+            "sensibilidade": 0.4745762711864407,
+            "especificidade": 0.9499999999999998,
+            "acuracia_balanceada": 0.7122881355932202,
+            "n_folds": 6
+          },
+          "bpfo_1.0mm": {
+            "sensibilidade": 1.0,
+            "especificidade": 0.9499999999999998,
+            "acuracia_balanceada": 0.975,
+            "n_folds": 6
+          }
+        }
+      },
+      "alarme_detector_normal": 0.05084745762711865,
+      "deteccao_detector_alvo": 0.4745762711864407,
+      "controle": null,
+      "avaliacao": {
+        "especificidade >= 0,95": false,
+        "outras falhas >= 0,95": true,
+        "controle": null,
+        "supera o D2": null,
+        "outras_falhas_min": 0.975,
+        "bpfo_0.3mm": 0.7122881355932202,
+        "elegivel": false,
+        "situacao": "só reporte (rotação estimada)"
+      }
+    },
+    "D3_mahalanobis_mfcc_pente_B_estimado": {
+      "detector": "D3",
+      "espectro": "B_fft4096_3blocos",
+      "rotacao": "estimado",
+      "custo_stm32": {
+        "ram_kb": 40.00390625,
+        "flash_kb": 41.0546875,
+        "ciclos": 1142925.0,
+        "ms_por_segundo": 11.42925
+      },
+      "resumo": {
+        "protocolo": "B",
+        "leitura": "resultado principal — meta: acurácia balanceada média ≥ 85%",
+        "n_folds": 24,
+        "acuracia_balanceada_media": 1.0,
+        "sensibilidade_media": 1.0,
+        "especificidade_media": 1.0,
+        "pior_falha": "bpfi_0.3mm",
+        "pior_falha_acuracia_balanceada": 1.0,
+        "pior_fold": "B_bpfi_0.3mm_bloco0",
+        "pior_fold_acuracia_balanceada": 1.0,
+        "meta_atingida": true,
+        "por_falha": {
+          "bpfi_0.3mm": {
+            "sensibilidade": 1.0,
+            "especificidade": 1.0,
+            "acuracia_balanceada": 1.0,
+            "n_folds": 6
+          },
+          "bpfi_1.0mm": {
+            "sensibilidade": 1.0,
+            "especificidade": 1.0,
+            "acuracia_balanceada": 1.0,
+            "n_folds": 6
+          },
+          "bpfo_0.3mm": {
+            "sensibilidade": 1.0,
+            "especificidade": 1.0,
+            "acuracia_balanceada": 1.0,
+            "n_folds": 6
+          },
+          "bpfo_1.0mm": {
+            "sensibilidade": 1.0,
+            "especificidade": 1.0,
+            "acuracia_balanceada": 1.0,
+            "n_folds": 6
+          }
+        }
+      },
+      "alarme_detector_normal": 0.0,
+      "deteccao_detector_alvo": 1.0,
+      "controle": null,
+      "avaliacao": {
+        "especificidade >= 0,95": true,
+        "outras falhas >= 0,95": true,
+        "controle": null,
+        "supera o D2": false,
+        "outras_falhas_min": 1.0,
+        "bpfo_0.3mm": 1.0,
+        "elegivel": false,
+        "situacao": "só reporte (rotação estimada)"
+      }
+    },
+    "D1_pente_D1b_nominal": {
+      "detector": "D1",
+      "espectro": "D1b_fft2048_6400hz_3blocos",
+      "rotacao": "nominal",
+      "custo_stm32": {
+        "ram_kb": 20.00390625,
+        "flash_kb": 20.0,
+        "ciclos": 1483600.0,
+        "ms_por_segundo": 14.836
+      },
+      "resumo": {
+        "protocolo": "B",
+        "leitura": "resultado principal — meta: acurácia balanceada média ≥ 85%",
+        "n_folds": 24,
+        "acuracia_balanceada_media": 0.9833333333333334,
+        "sensibilidade_media": 1.0,
+        "especificidade_media": 0.9666666666666667,
+        "pior_falha": "bpfi_0.3mm",
+        "pior_falha_acuracia_balanceada": 0.9833333333333334,
+        "pior_fold": "B_bpfi_0.3mm_bloco0",
+        "pior_fold_acuracia_balanceada": 0.95,
+        "meta_atingida": true,
+        "por_falha": {
+          "bpfi_0.3mm": {
+            "sensibilidade": 1.0,
+            "especificidade": 0.9666666666666667,
+            "acuracia_balanceada": 0.9833333333333334,
+            "n_folds": 6
+          },
+          "bpfi_1.0mm": {
+            "sensibilidade": 1.0,
+            "especificidade": 0.9666666666666667,
+            "acuracia_balanceada": 0.9833333333333334,
+            "n_folds": 6
+          },
+          "bpfo_0.3mm": {
+            "sensibilidade": 1.0,
+            "especificidade": 0.9666666666666667,
+            "acuracia_balanceada": 0.9833333333333334,
+            "n_folds": 6
+          },
+          "bpfo_1.0mm": {
+            "sensibilidade": 1.0,
+            "especificidade": 0.9666666666666667,
+            "acuracia_balanceada": 0.9833333333333334,
+            "n_folds": 6
+          }
+        }
+      },
+      "alarme_detector_normal": 0.03389830508474576,
+      "deteccao_detector_alvo": 1.0,
+      "controle": {
+        "tipo": "pente fixo em frequências sorteadas (relativo)",
+        "valor": 0.6032485875706215,
+        "max": 1.0,
+        "deteccao_real": 1.0,
+        "deteccao_pente_rolamento_fixo": 0.5932203389830508,
+        "razoes": [
+          [
+            4.364225350747153,
+            4.551977617302708
+          ],
+          [
+            6.643427884532468,
+            4.268465924054235
+          ],
+          [
+            4.2778875381315995,
+            3.296638400103338
+          ],
+          [
+            6.295368003208373,
+            4.350283630106122
+          ],
+          [
+            6.606646905017107,
+            4.261407059084309
+          ],
+          [
+            4.269100130331837,
+            4.5250385831634174
+          ],
+          [
+            4.815812740505475,
+            5.803555115433502
+          ],
+          [
+            2.151963214213111,
+            5.809543461533718
+          ],
+          [
+            6.422137826951238,
+            6.632431905268075
+          ],
+          [
+            5.805241398093839,
+            3.245438533073045
+          ],
+          [
+            6.230191128229615,
+            2.5278635584978755
+          ],
+          [
+            2.199161287366854,
+            6.300207240768704
+          ],
+          [
+            6.340686211804626,
+            4.28519843655031
+          ],
+          [
+            4.197710675605682,
+            6.219792950107648
+          ],
+          [
+            4.34509733752969,
+            4.502268069035846
+          ],
+          [
+            4.644501286262655,
+            2.2089656011186145
+          ],
+          [
+            6.625445091876232,
+            4.758607135881767
+          ],
+          [
+            6.281706628714572,
+            4.609313666966868
+          ],
+          [
+            6.565244468816073,
+            2.2166694358120935
+          ],
+          [
+            4.18524604945519,
+            2.2303817064735147
+          ]
+        ],
+        "passa": false
+      },
+      "avaliacao": {
+        "especificidade >= 0,95": true,
+        "outras falhas >= 0,95": true,
+        "controle": false,
+        "supera o D2": null,
+        "outras_falhas_min": 0.9833333333333334,
+        "bpfo_0.3mm": 0.9833333333333334,
+        "elegivel": false,
+        "situacao": "não elegível"
+      }
+    },
+    "D3_mahalanobis_mfcc_pente_D1b_nominal": {
+      "detector": "D3",
+      "espectro": "D1b_fft2048_6400hz_3blocos",
+      "rotacao": "nominal",
+      "custo_stm32": {
+        "ram_kb": 20.00390625,
+        "flash_kb": 22.0546875,
+        "ciclos": 1484125.0,
+        "ms_por_segundo": 14.84125
+      },
+      "resumo": {
+        "protocolo": "B",
+        "leitura": "resultado principal — meta: acurácia balanceada média ≥ 85%",
+        "n_folds": 24,
+        "acuracia_balanceada_media": 1.0,
+        "sensibilidade_media": 1.0,
+        "especificidade_media": 1.0,
+        "pior_falha": "bpfi_0.3mm",
+        "pior_falha_acuracia_balanceada": 1.0,
+        "pior_fold": "B_bpfi_0.3mm_bloco0",
+        "pior_fold_acuracia_balanceada": 1.0,
+        "meta_atingida": true,
+        "por_falha": {
+          "bpfi_0.3mm": {
+            "sensibilidade": 1.0,
+            "especificidade": 1.0,
+            "acuracia_balanceada": 1.0,
+            "n_folds": 6
+          },
+          "bpfi_1.0mm": {
+            "sensibilidade": 1.0,
+            "especificidade": 1.0,
+            "acuracia_balanceada": 1.0,
+            "n_folds": 6
+          },
+          "bpfo_0.3mm": {
+            "sensibilidade": 1.0,
+            "especificidade": 1.0,
+            "acuracia_balanceada": 1.0,
+            "n_folds": 6
+          },
+          "bpfo_1.0mm": {
+            "sensibilidade": 1.0,
+            "especificidade": 1.0,
+            "acuracia_balanceada": 1.0,
+            "n_folds": 6
+          }
+        }
+      },
+      "alarme_detector_normal": 0.0,
+      "deteccao_detector_alvo": 1.0,
+      "controle": {
+        "tipo": "pente fixo em frequências sorteadas (relativo)",
+        "valor": 1.0,
+        "max": 1.0,
+        "deteccao_real": 1.0,
+        "deteccao_pente_rolamento_fixo": 1.0,
+        "razoes": [
+          [
+            4.364225350747153,
+            4.551977617302708
+          ],
+          [
+            6.643427884532468,
+            4.268465924054235
+          ],
+          [
+            4.2778875381315995,
+            3.296638400103338
+          ],
+          [
+            6.295368003208373,
+            4.350283630106122
+          ],
+          [
+            6.606646905017107,
+            4.261407059084309
+          ],
+          [
+            4.269100130331837,
+            4.5250385831634174
+          ],
+          [
+            4.815812740505475,
+            5.803555115433502
+          ],
+          [
+            2.151963214213111,
+            5.809543461533718
+          ],
+          [
+            6.422137826951238,
+            6.632431905268075
+          ],
+          [
+            5.805241398093839,
+            3.245438533073045
+          ],
+          [
+            6.230191128229615,
+            2.5278635584978755
+          ],
+          [
+            2.199161287366854,
+            6.300207240768704
+          ],
+          [
+            6.340686211804626,
+            4.28519843655031
+          ],
+          [
+            4.197710675605682,
+            6.219792950107648
+          ],
+          [
+            4.34509733752969,
+            4.502268069035846
+          ],
+          [
+            4.644501286262655,
+            2.2089656011186145
+          ],
+          [
+            6.625445091876232,
+            4.758607135881767
+          ],
+          [
+            6.281706628714572,
+            4.609313666966868
+          ],
+          [
+            6.565244468816073,
+            2.2166694358120935
+          ],
+          [
+            4.18524604945519,
+            2.2303817064735147
+          ]
+        ],
+        "passa": false,
+        "deteccao_d2": 1.0
+      },
+      "avaliacao": {
+        "especificidade >= 0,95": true,
+        "outras falhas >= 0,95": true,
+        "controle": false,
+        "supera o D2": false,
+        "outras_falhas_min": 1.0,
+        "bpfo_0.3mm": 1.0,
+        "elegivel": false,
+        "situacao": "descartado: não supera o D2"
+      }
+    },
+    "D1_pente_D1b_estimado": {
+      "detector": "D1",
+      "espectro": "D1b_fft2048_6400hz_3blocos",
+      "rotacao": "estimado",
+      "custo_stm32": {
+        "ram_kb": 20.00390625,
+        "flash_kb": 20.0,
+        "ciclos": 1483600.0,
+        "ms_por_segundo": 14.836
+      },
+      "resumo": {
+        "protocolo": "B",
+        "leitura": "resultado principal — meta: acurácia balanceada média ≥ 85%",
+        "n_folds": 24,
+        "acuracia_balanceada_media": 0.9135593220338983,
+        "sensibilidade_media": 0.8771186440677966,
+        "especificidade_media": 0.9500000000000001,
+        "pior_falha": "bpfo_0.3mm",
+        "pior_falha_acuracia_balanceada": 0.7292372881355932,
+        "pior_fold": "B_bpfo_0.3mm_bloco0",
+        "pior_fold_acuracia_balanceada": 0.6542372881355932,
+        "meta_atingida": true,
+        "por_falha": {
+          "bpfi_0.3mm": {
+            "sensibilidade": 1.0,
+            "especificidade": 0.9500000000000001,
+            "acuracia_balanceada": 0.975,
+            "n_folds": 6
+          },
+          "bpfi_1.0mm": {
+            "sensibilidade": 1.0,
+            "especificidade": 0.9500000000000001,
+            "acuracia_balanceada": 0.975,
+            "n_folds": 6
+          },
+          "bpfo_0.3mm": {
+            "sensibilidade": 0.5084745762711864,
+            "especificidade": 0.9500000000000001,
+            "acuracia_balanceada": 0.7292372881355932,
+            "n_folds": 6
+          },
+          "bpfo_1.0mm": {
+            "sensibilidade": 1.0,
+            "especificidade": 0.9500000000000001,
+            "acuracia_balanceada": 0.975,
+            "n_folds": 6
+          }
+        }
+      },
+      "alarme_detector_normal": 0.05084745762711865,
+      "deteccao_detector_alvo": 0.5084745762711864,
+      "controle": null,
+      "avaliacao": {
+        "especificidade >= 0,95": true,
+        "outras falhas >= 0,95": true,
+        "controle": null,
+        "supera o D2": null,
+        "outras_falhas_min": 0.975,
+        "bpfo_0.3mm": 0.7292372881355932,
+        "elegivel": false,
+        "situacao": "só reporte (rotação estimada)"
+      }
+    },
+    "D3_mahalanobis_mfcc_pente_D1b_estimado": {
+      "detector": "D3",
+      "espectro": "D1b_fft2048_6400hz_3blocos",
+      "rotacao": "estimado",
+      "custo_stm32": {
+        "ram_kb": 20.00390625,
+        "flash_kb": 22.0546875,
+        "ciclos": 1484125.0,
+        "ms_por_segundo": 14.84125
+      },
+      "resumo": {
+        "protocolo": "B",
+        "leitura": "resultado principal — meta: acurácia balanceada média ≥ 85%",
+        "n_folds": 24,
+        "acuracia_balanceada_media": 0.9907407407407408,
+        "sensibilidade_media": 1.0,
+        "especificidade_media": 0.9814814814814815,
+        "pior_falha": "bpfi_0.3mm",
+        "pior_falha_acuracia_balanceada": 0.9907407407407408,
+        "pior_fold": "B_bpfi_0.3mm_bloco5",
+        "pior_fold_acuracia_balanceada": 0.9444444444444444,
+        "meta_atingida": true,
+        "por_falha": {
+          "bpfi_0.3mm": {
+            "sensibilidade": 1.0,
+            "especificidade": 0.9814814814814815,
+            "acuracia_balanceada": 0.9907407407407408,
+            "n_folds": 6
+          },
+          "bpfi_1.0mm": {
+            "sensibilidade": 1.0,
+            "especificidade": 0.9814814814814815,
+            "acuracia_balanceada": 0.9907407407407408,
+            "n_folds": 6
+          },
+          "bpfo_0.3mm": {
+            "sensibilidade": 1.0,
+            "especificidade": 0.9814814814814815,
+            "acuracia_balanceada": 0.9907407407407408,
+            "n_folds": 6
+          },
+          "bpfo_1.0mm": {
+            "sensibilidade": 1.0,
+            "especificidade": 0.9814814814814815,
+            "acuracia_balanceada": 0.9907407407407408,
+            "n_folds": 6
+          }
+        }
+      },
+      "alarme_detector_normal": 0.01694915254237288,
+      "deteccao_detector_alvo": 1.0,
+      "controle": null,
+      "avaliacao": {
+        "especificidade >= 0,95": true,
+        "outras falhas >= 0,95": true,
+        "controle": null,
+        "supera o D2": false,
+        "outras_falhas_min": 0.9907407407407408,
+        "bpfo_0.3mm": 0.9907407407407408,
+        "elegivel": false,
+        "situacao": "só reporte (rotação estimada)"
+      }
+    },
+    "D4_lda_falha_sintetica": {
+      "detector": "D4",
+      "espectro": null,
+      "rotacao": "nominal (só no treino)",
+      "custo_stm32": {
+        "ram_kb": 0.0,
+        "flash_kb": 0.0,
+        "ciclos": 0.0,
+        "ms_por_segundo": 0.0
+      },
+      "bpfo_0.3mm_por_semente": [
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "resumo": {
+        "protocolo": "B",
+        "leitura": "resultado principal — meta: acurácia balanceada média ≥ 85%",
+        "n_folds": 24,
+        "acuracia_balanceada_media": 0.932909604519774,
+        "sensibilidade_media": 0.865819209039548,
+        "especificidade_media": 1.0,
+        "pior_falha": "bpfi_0.3mm",
+        "pior_falha_acuracia_balanceada": 0.731638418079096,
+        "pior_fold": "B_bpfi_0.3mm_bloco3",
+        "pior_fold_acuracia_balanceada": 0.5169491525423728,
+        "meta_atingida": true,
+        "por_falha": {
+          "bpfi_0.3mm": {
+            "sensibilidade": 0.46327683615819204,
+            "especificidade": 1.0,
+            "acuracia_balanceada": 0.731638418079096,
+            "n_folds": 6
+          },
+          "bpfi_1.0mm": {
+            "sensibilidade": 1.0,
+            "especificidade": 1.0,
+            "acuracia_balanceada": 1.0,
+            "n_folds": 6
+          },
+          "bpfo_0.3mm": {
+            "sensibilidade": 1.0,
+            "especificidade": 1.0,
+            "acuracia_balanceada": 1.0,
+            "n_folds": 6
+          },
+          "bpfo_1.0mm": {
+            "sensibilidade": 1.0,
+            "especificidade": 1.0,
+            "acuracia_balanceada": 1.0,
+            "n_folds": 6
+          }
+        }
+      },
+      "alarme_detector_normal": 0.0,
+      "deteccao_detector_alvo": 0.0,
+      "controle": {
+        "tipo": "permutação por bloco",
+        "valor": 0.5348471829880729,
+        "max": 0.6590199309478971,
+        "limite": 0.55,
+        "passa": true
+      },
+      "avaliacao": {
+        "especificidade >= 0,95": true,
+        "outras falhas >= 0,95": false,
+        "controle": true,
+        "supera o D2": null,
+        "outras_falhas_min": 0.731638418079096,
+        "bpfo_0.3mm": 1.0,
+        "elegivel": false,
+        "situacao": "não elegível"
+      }
+    }
+  }
+}
