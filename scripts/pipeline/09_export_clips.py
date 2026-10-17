@@ -20,19 +20,19 @@ partir do som, e não mais das características prontas do `07`:
   O segmento do recorte é o primeiro do clipe da `normal`, então a placa pode
   comparar o que decimou com o clipe a 12,8 kHz.
 
-**Escore do recorte.** Há duas referências, porque a placa pode seguir dois
-caminhos depois de decimar:
+**Escore do recorte.** A entrada do MFCC é `int16`, então a placa requantiza a
+saída do decimador antes do MFCC (`docs/contrato_numerico.md`, seção
+"Decimação", item 4): `lrintf(y · 32767.0f)`, saturado em [−32768, 32767]
+**antes** do cast (sem saturar, um pico acima de ±1 dá a volta no `int16`).
 
-- `RECORTE_ESCORE_REF`: MFCC sobre a saída **em float** da decimação em Python,
-  sem requantizar. É a referência do recorte (a decimação na placa também sai
-  em float).
-- `RECORTE_ESCORE_REF_INT16`: com a saída requantizada para `int16`
-  (`round(y·32767)`, como o `02`). É o escore do `escores_referencia.csv`
-  desse segmento, e vale se a placa requantizar antes do MFCC, como o
-  `docs/contrato_numerico.md` (seção "Decimação", item 4) descreve.
+- `RECORTE_ESCORE_REF_INT16` é **a referência da placa**: o escore do segmento
+  requantizado como o `02` (`round(y·32767)` em float64, saturado), que é o do
+  `escores_referencia.csv`.
+- `RECORTE_ESCORE_REF` é só diagnóstico do caminho em float: o MFCC da saída da
+  decimação sem requantizar.
 
-As duas diferem em ~10⁻⁵ relativo, perto da tolerância encadeada do escore no
-A4: compare com a referência do caminho que a placa usar.
+As duas diferem em ~7·10⁻⁶ relativo, e a tolerância encadeada do escore no A4 é
+10⁻⁵: comparar com a referência errada quase esgota a margem.
 
 **Na placa, a decimação é em float32.** Em float64 (Python), o recorte decimado
 e requantizado é bit a bit o segmento do `02`; em float32 não precisa ser: a
@@ -52,7 +52,10 @@ eles são definidos no único `.c` que fizer `#define CLIPES_DEMO_DADOS` antes d
 cópia dos ~350 KB de áudio, e dois `.c` já passariam dos 512 KB da flash da
 F411. O recorte não cabe inteiro em float na RAM (51.348 × 4 B = 200 KB, contra
 128 KB): a placa decima em blocos, convertendo `int16` → float um bloco por vez
-(blocos de 512 amostras dão 128 saídas, um passo de quadro).
+(blocos de 512 amostras dão 128 saídas, um passo de quadro). Como 51.348 =
+100 × 512 + 148, depois dos blocos cheios vem uma última chamada com 148
+amostras (`RECORTE_ULTIMO_BLOCO`, múltiplo do fator); um laço só com blocos
+cheios perderia as 37 últimas saídas sem dar erro. O `.h` traz o laço.
 
 **Orçamento** (C1): a flash da F411 tem 512 KB; o README do firmware reserva
 64 KB para o resto do firmware e deixa ~434 KB para áudio, ~13 s a 12,8 kHz
@@ -113,6 +116,7 @@ _spec.loader.exec_module(H)
 NOME_H = "clipes_demo.h"
 OUT_VERSIONADO = Path("reports/c_reference") / NOME_H
 FASE = 0                      # arm_fir_decimate_f32 (docs/contrato_numerico.md, "Decimação")
+BLOCO = 512                   # amostras por chamada do decimador na placa: 128 saídas, um passo de quadro
 ORCAMENTO_KB = 434            # README do firmware, "Orçamento da flash para o áudio"
 
 
@@ -202,6 +206,20 @@ def decimar_cmsis_f32(pcm_recorte: np.ndarray, fir: np.ndarray, descartar: int,
         else:
             acc = acc + coef[k] * xp[inicio + k]
     return acc[descartar:]
+
+
+def blocos(n: int, bloco: int = BLOCO, fator: int = config.FATOR_DECIMACAO) -> tuple[int, int]:
+    """
+    Quantos blocos cheios de `bloco` amostras e o tamanho da última chamada do
+    decimador para `n` amostras. Cada chamada do `arm_fir_decimate_f32` precisa de um
+    múltiplo do fator (e de no máximo o bloco do init).
+    """
+    if bloco % fator:
+        raise ValueError(f"o bloco ({bloco}) tem que ser múltiplo do fator ({fator})")
+    cheios, ultimo = divmod(n, bloco)
+    if ultimo % fator:
+        raise ValueError(f"a última chamada teria {ultimo} amostras, que não é múltiplo de {fator}")
+    return cheios, ultimo
 
 
 def requantizar_f32(y: np.ndarray) -> np.ndarray:
@@ -306,14 +324,21 @@ def gerar_header(clipes: list[Clipe], recorte: Recorte | None, origem: dict, p: 
         " * Escala da entrada: x = int16 / 32767 (docs/contrato_numerico.md).",
     ]
     if recorte:
+        cheios, ultimo = blocos(len(recorte.pcm))
         linhas += [
             " *",
             f" * Recorte a {config.FS_ORIGINAL} Hz: o segmento {recorte.segmento.id} ({recorte.segmento.rotulo}) com as",
             f" * margens do decimador causal de fase {FASE} (arm_fir_decimate_f32): {recorte.antes} amostras",
             f" * antes e {recorte.depois} depois; descartar as {recorte.descartar} primeiras saidas.",
-            " * RECORTE_ESCORE_REF: MFCC da saida em float da decimacao;",
-            " * RECORTE_ESCORE_REF_INT16: depois de requantizar com lrintf(y * 32767.0f) e",
-            " * saturar (o escore do CSV).",
+            " * - REFERENCIA DA PLACA: RECORTE_ESCORE_REF_INT16. A entrada do MFCC e int16,",
+            " *   entao a placa requantiza a saida do decimador antes do MFCC",
+            " *   (docs/contrato_numerico.md, \"Decimacao\", item 4): lrintf(y * 32767.0f),",
+            " *   SATURADO em [-32768, 32767] antes do cast para int16 (sem saturar, um",
+            " *   pico acima de +-1 da a volta). RECORTE_ESCORE_REF_INT16 e o escore do",
+            " *   segmento requantizado como o 02 (round em float64; o escore do CSV).",
+            " * - RECORTE_ESCORE_REF: so diagnostico do caminho em float (MFCC da saida",
+            " *   da decimacao sem requantizar). As duas diferem em ~7e-6 relativo, e a",
+            " *   tolerancia do escore e 1e-5: a referencia errada quase esgota a margem.",
             " * - Em float64 (Python), o recorte decimado e requantizado da bit a bit o",
             f" *   primeiro segmento do clipe '{recorte.segmento.rotulo}'. Em float32 (placa) nao precisa:",
             " *   amostras perto de um empate (x,5) podem arredondar para o outro lado.",
@@ -321,10 +346,32 @@ def gerar_header(clipes: list[Clipe], recorte: Recorte | None, origem: dict, p: 
             + ", ".join(f"{v} {k}" for k, v in recorte.difere_na_placa.items()) + ";",
             " *   compare com folga de 1 LSB e o escore com tolerancia, nao bit a bit.",
             f" * - RAM: o recorte inteiro em float ocuparia {recorte.pcm.size * 4} B (a F411 tem 128 KB).",
-            " *   Decime em blocos, convertendo int16 -> float um bloco por vez: com",
-            f" *   blockSize = 512 (multiplo de RECORTE_FATOR), o estado da CMSIS tem",
-            f" *   RECORTE_N_TAPS + 511 floats ({(len(recorte.taps) + 511) * 4} B) e cada bloco da 128 saidas,",
+            " *   Decime em blocos, convertendo int16 -> float um bloco por vez. Com",
+            f" *   RECORTE_BLOCO = {BLOCO} no init, o estado da CMSIS tem RECORTE_N_TAPS +",
+            f" *   RECORTE_BLOCO - 1 floats ({(len(recorte.taps) + BLOCO - 1) * 4} B), e cada bloco da"
+            f" {BLOCO // config.FATOR_DECIMACAO} saidas,",
             " *   um passo de quadro do MFCC.",
+            f" * - RECORTE_N_AMOSTRAS = {cheios} x {BLOCO} + {ultimo}: depois dos blocos cheios vem uma",
+            f" *   ultima chamada com RECORTE_ULTIMO_BLOCO = {ultimo} amostras (multiplo de",
+            " *   RECORTE_FATOR; a chamada aceita um bloco menor que o do init). Um laco so",
+            f" *   com blocos cheios perde as {ultimo // config.FATOR_DECIMACAO} ultimas saidas sem dar erro:",
+            " *",
+            " *     float x[RECORTE_BLOCO], y[RECORTE_BLOCO / RECORTE_FATOR];",
+            " *     float estado[RECORTE_N_TAPS + RECORTE_BLOCO - 1];",
+            " *     arm_fir_decimate_init_f32(&d, RECORTE_N_TAPS, RECORTE_FATOR,",
+            " *                               recorte_fir, estado, RECORTE_BLOCO);",
+            " *     for (int b = 0; b <= RECORTE_N_BLOCOS_CHEIOS; ++b) {",
+            " *         const int n = b < RECORTE_N_BLOCOS_CHEIOS ? RECORTE_BLOCO",
+            " *                                                   : RECORTE_ULTIMO_BLOCO;",
+            " *         for (int i = 0; i < n; ++i)",
+            f" *             x[i] = (float)recorte_{config.FS_ORIGINAL}[b * RECORTE_BLOCO + i] / 32767.0f;",
+            " *         arm_fir_decimate_f32(&d, x, y, n);     // n / RECORTE_FATOR saidas",
+            " *         // saidas de indice global < RECORTE_DESCARTAR (todas no 1o bloco):",
+            " *         // descartar; as outras, requantizar (saturando) e seguir para o MFCC",
+            " *     }",
+            " *",
+            f" *   No total, {len(recorte.pcm) // config.FATOR_DECIMACAO} saidas - RECORTE_DESCARTAR ="
+            " CLIPES_AMOSTRAS_POR_SEGMENTO.",
         ]
     linhas += [
         " */",
@@ -340,6 +387,7 @@ def gerar_header(clipes: list[Clipe], recorte: Recorte | None, origem: dict, p: 
         f"#define CLIPES_N_SEGMENTOS {total_seg}",
         f"#define CLIPES_MODELO_ID \"{p.get('id', '?')}\"",
         f"#define CLIPES_JSON_SHA256_12 \"{origem['sha256_json'][:12]}\"",
+        f"#define CLIPES_CSV_SHA256_12 \"{origem['sha256_csv'][:12]}\"   /* escores_referencia.csv */",
         f"#define CLIPES_BYTES_AUDIO {bytes_audio}",
         "",
         "typedef struct {",
@@ -376,8 +424,11 @@ def gerar_header(clipes: list[Clipe], recorte: Recorte | None, origem: dict, p: 
             f"#define RECORTE_FASE {FASE}",
             f"#define RECORTE_DESCARTAR {recorte.descartar}",
             f"#define RECORTE_N_TAPS {len(recorte.taps)}",
-            f"#define RECORTE_ESCORE_REF {_f32(recorte.escore_float)}",
-            f"#define RECORTE_ESCORE_REF_INT16 {_f32(recorte.escore_int16)}",
+            f"#define RECORTE_BLOCO {BLOCO}  /* amostras por chamada do decimador (blockSize do init) */",
+            f"#define RECORTE_N_BLOCOS_CHEIOS {cheios}",
+            f"#define RECORTE_ULTIMO_BLOCO {ultimo}  /* a ultima chamada: nao esquecer */",
+            f"#define RECORTE_ESCORE_REF {_f32(recorte.escore_float)}  /* so diagnostico (saida em float) */",
+            f"#define RECORTE_ESCORE_REF_INT16 {_f32(recorte.escore_int16)}  /* a referencia da placa */",
             "",
             "/* FIR da decimacao (dsp.taps_decimacao), em float32; simetrico bit a bit, entao",
             " * a ordem invertida que a CMSIS espera nao muda nada */",

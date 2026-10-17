@@ -73,7 +73,11 @@ def test_selecao_e_o_meio_de_cada_gravacao_e_contigua():
     buraco = _gravacao("c", 4, 0)
     buraco[3] = _Seg(3, "c", 4 * N + 1, 5 * N + 1)
     with pytest.raises(ValueError):
-        C.selecionar(buraco, 2)                        # segmentos não contíguos
+        C.selecionar(buraco, 2)                        # segmentos não contíguos (buraco)
+    sobreposto = _gravacao("d", 4, 0)
+    sobreposto[3] = _Seg(3, "d", 3 * N - 64, 4 * N - 64)
+    with pytest.raises(ValueError):
+        C.selecionar(sobreposto, 2)                    # nem sobrepostos
 
 
 def _header_sintetico(com_recorte: bool = True) -> tuple[str, list, object]:
@@ -191,6 +195,9 @@ def test_clipe_recalculado_em_python_da_o_escore_gravado():
     assert h["defs"]["CLIPES_JSON_SHA256_12"].strip('"') == \
         hashlib.sha256((MODELO_FINAL / "lda_final.json").read_bytes()).hexdigest()[:12], \
         "clipes_demo.h é de outro modelo: rode o 09 de novo"
+    assert h["defs"]["CLIPES_CSV_SHA256_12"].strip('"') == \
+        hashlib.sha256((MODELO_FINAL / "escores_referencia.csv").read_bytes()).hexdigest()[:12], \
+        "clipes_demo.h é de outros escores de referência: rode o 09 de novo"
     assert "TODOS OS SEGMENTOS ESTAO NO TREINO" in texto
     assert len(h["segmentos"]) == int(h["defs"]["CLIPES_N_SEGMENTOS"])
     for i, c in enumerate(h["clipes"]):
@@ -236,6 +243,71 @@ def test_recorte_decimado_como_na_placa_e_o_clipe_a_12k8():
     assert C.escore_lda(y, pesos, bias) == pytest.approx(ref_float, rel=1e-6)
     assert ref_int16 == pytest.approx(seg["escore"], rel=1e-7)
     assert ref_float != ref_int16                    # a requantização muda o escore
+
+
+def test_o_h_diz_qual_referencia_a_placa_usa_e_que_satura():
+    texto, _, _ = _header_sintetico()
+    assert "REFERENCIA DA PLACA: RECORTE_ESCORE_REF_INT16" in texto
+    assert "SATURADO em [-32768, 32767] antes do cast" in texto
+    d = C.ler_header(texto)["defs"]
+    assert "CLIPES_CSV_SHA256_12" in d
+    # o recorte sintético tem 1.000 amostras: 1 bloco cheio de 512 e uma última chamada de 488
+    assert (int(d["RECORTE_BLOCO"]), int(d["RECORTE_N_BLOCOS_CHEIOS"]), int(d["RECORTE_ULTIMO_BLOCO"])) \
+        == (512, 1, 488)
+    np.testing.assert_array_equal(C.requantizar_f32(np.array([1.5, -1.5, 0.5 / 32767])),
+                                  [32767, -32768, 0])        # satura; empate vai para o par
+
+
+def test_blocos_do_decimador():
+    assert C.blocos(51348) == (100, 148)
+    assert C.blocos(1024) == (2, 0)
+    with pytest.raises(ValueError):
+        C.blocos(51350)                                  # última chamada de 150: não é múltiplo de 4
+    with pytest.raises(ValueError):
+        C.blocos(1000, bloco=510)                        # bloco que não é múltiplo do fator
+
+
+def _decimar_em_blocos(pcm, fir, n_bloco, fator, so_blocos_cheios=False):
+    """O laço do comentário do .h, com o estado da CMSIS entre as chamadas (float32, sem FMA)."""
+    n_taps = len(fir)
+    coef = np.asarray(fir, np.float32)[::-1]
+    estado = np.zeros(n_taps - 1, np.float32)
+    cheios, ultimo = divmod(len(pcm), n_bloco)
+    tamanhos = [n_bloco] * cheios + ([] if so_blocos_cheios or not ultimo else [ultimo])
+    saidas, pos = [], 0
+    for n in tamanhos:
+        x = pcm[pos:pos + n].astype(np.float32) / np.float32(config.INT16_FULL)
+        pos += n
+        buf = np.concatenate([estado, x])
+        for j in range(n // fator):
+            janela = buf[j * fator:j * fator + n_taps]
+            acc = np.float32(0)
+            for k in range(n_taps):
+                acc = np.float32(acc + coef[k] * janela[k])
+            saidas.append(acc)
+        estado = buf[n:]                                 # as últimas n_taps - 1 amostras
+    return np.array(saidas, np.float32)
+
+
+@pytest.mark.skipif(not VERSIONADO.exists(), reason="clipes_demo.h ainda não gerado")
+def test_laco_em_blocos_do_h_da_todas_as_saidas():
+    """O laço do .h (blocos cheios + a última chamada) dá as mesmas saídas da decimação inteira."""
+    h = C.ler_header(VERSIONADO.read_text(encoding="ascii"))
+    if "recorte" not in h:
+        pytest.skip("clipes_demo.h sem o recorte")
+    d = {k: int(h["defs"][k]) for k in ("RECORTE_BLOCO", "RECORTE_N_BLOCOS_CHEIOS", "RECORTE_ULTIMO_BLOCO",
+                                        "RECORTE_N_AMOSTRAS", "RECORTE_FATOR", "RECORTE_DESCARTAR")}
+    assert d["RECORTE_N_BLOCOS_CHEIOS"] * d["RECORTE_BLOCO"] + d["RECORTE_ULTIMO_BLOCO"] == d["RECORTE_N_AMOSTRAS"]
+    assert d["RECORTE_BLOCO"] % d["RECORTE_FATOR"] == 0 and d["RECORTE_ULTIMO_BLOCO"] % d["RECORTE_FATOR"] == 0
+    # 147 taps x 12.837 saídas em laço Python: usa um trecho de 3 blocos e meio, que exercita o mesmo caminho
+    trecho = h["recorte"][:3 * d["RECORTE_BLOCO"] + d["RECORTE_ULTIMO_BLOCO"]]
+    em_blocos = _decimar_em_blocos(trecho, h["recorte_fir"], d["RECORTE_BLOCO"], d["RECORTE_FATOR"])
+    inteiro = C.decimar_cmsis_f32(trecho, h["recorte_fir"], 0, d["RECORTE_FATOR"], fma=False)
+    np.testing.assert_array_equal(em_blocos, inteiro)
+    so_cheios = _decimar_em_blocos(trecho, h["recorte_fir"], d["RECORTE_BLOCO"], d["RECORTE_FATOR"],
+                                   so_blocos_cheios=True)
+    assert len(inteiro) - len(so_cheios) == d["RECORTE_ULTIMO_BLOCO"] // d["RECORTE_FATOR"]   # as 37 perdidas
+    assert d["RECORTE_N_AMOSTRAS"] // d["RECORTE_FATOR"] - d["RECORTE_DESCARTAR"] == N
 
 
 @pytest.mark.skipif(not VERSIONADO.exists(), reason="clipes_demo.h ainda não gerado")
