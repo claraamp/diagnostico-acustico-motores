@@ -18,12 +18,12 @@ Detectar a `bpfo_0.3mm` no Protocolo B, a falha que a LDA não detecta (0,500), 
 
 | # | Candidato | O que aprende | Custo adicional no STM32 (estimado) |
 |---|---|---|---|
-| D1 | **Pente com limiar da normal** | pontuação do pente de BPFO e de BPFI nos segmentos normais | FFT de 4.096 pontos: ~39 KB de flash (tabelas da CMSIS) e ~40 KB de RAM; ~1,1 milhão de ciclos por segmento (~11 ms por segundo de áudio). **D1b:** ~20 KB de flash e ~20 KB de RAM, no mesmo tempo |
+| D1 | **Pente com limiar da normal** | pontuação do pente de BPFO e de BPFI nos segmentos normais | FFT de 4.096 pontos: ~39 KB de flash (tabelas da CMSIS) e ~40 KB de RAM; ~1,1 milhão de ciclos por segmento (~11 ms por segundo de áudio). **D1b:** ~20 KB de flash e ~20 KB de RAM, com ~30 % mais tempo (~1,5 milhão de ciclos, ~15 ms por segundo de áudio) |
 | D2 | **Mahalanobis no MFCC** (26 características) | média e covariância da normal | ~1,6 KB de flash (fator de Cholesky, triangular, mais média e escala), ~400 operações; sem RAM a mais |
 | D3 | **Mahalanobis no MFCC + pente** (30 características) | idem, com as 4 do pente | a FFT do D1, mais ~2 KB de flash |
 | D4 | **LDA retreinada com falha sintética de linhas estreitas** | a mesma LDA, treinada também com segmentos normais acrescidos de uma série harmônica sintética, rotulados como falha | **zero no firmware**: só os pesos do `.h` mudam; refaz os artefatos da seção 9 |
 
-**D1b, variante de memória do pente.** Decimar de 12,8 para 6,4 kHz e usar uma FFT de 2.048 pontos: resolução de 3,125 Hz, a mesma do candidato B do card do pente, com dentes até 2,8 kHz (cerca de 15 ordens de BPFO, das 21 identificadas na caracterização). Gasta metade da memória (RAM e flash), mas não economiza tempo: o filtro da decimação (75 coeficientes) custa o que a FFT menor economiza. **Como a placa decima:** de forma contínua e causal, com o `arm_fir_decimate_f32`, ao longo da gravação. O Python imita isso decimando a gravação inteira de uma vez e cortando o segmento depois, e não cada segmento separado, o que criaria um transitório no começo de cada um. O atraso do filtro causal só desloca o trecho em algumas dezenas de amostras, sem efeito no espectro de potência médio. O D1b entra porque a memória importa, não porque já tenha sido testado: não foi.
+**D1b, variante de memória do pente.** Decimar de 12,8 para 6,4 kHz e usar uma FFT de 2.048 pontos: resolução de 3,125 Hz, a mesma do candidato B do card do pente, com dentes até 2,8 kHz (cerca de 15 ordens de BPFO, das 21 identificadas na caracterização). Gasta metade da memória (RAM e flash), mas não economiza tempo: o filtro da decimação (75 coeficientes) custa mais do que a FFT menor economiza, e o total fica ~30 % acima do D1. **Como a placa decima:** de forma contínua e causal, com o `arm_fir_decimate_f32`, ao longo da gravação. O Python imita isso decimando a gravação inteira de uma vez e cortando o segmento depois, e não cada segmento separado, o que criaria um transitório no começo de cada um. O atraso do filtro causal só desloca o trecho em algumas dezenas de amostras, sem efeito no espectro de potência médio. O D1b entra porque a memória importa, não porque já tenha sido testado: não foi.
 
 **D4: por que pode funcionar, se o pente como entrada não funcionou.** As duas coisas falham por motivos diferentes. O pente como entrada não ajudou porque a LDA, treinada só com falhas de banda larga, não tinha motivo para usar as colunas novas. A `bpfo_0.3mm` aparece no MFCC: quatro bandas de Mel entre 685 e 1.220 Hz sobem de 6 a 14 dB, de forma consistente. O que falta é a LDA ter aprendido que essa direção também é falha. O D4 ensina isso ao acrescentar ao treino uma falha com a mesma *natureza* (linhas estreitas), sem usar os dados da `bpfo_0.3mm`. É uma aposta. Se o resultado for negativo, ele é registrado como tal. Como custa refazer os artefatos do `05` ao `08`, ele só é adotado se passar nos critérios da seção 6.
 
@@ -94,7 +94,7 @@ Proposta: reportar duas leituras, decididas agora.
 1. **Elegíveis:** os candidatos que, no Protocolo B, mantêm a **especificidade do detector combinado** em ≥ 0,95 e passam no controle da seção 7. O **D3** só segue se detectar a `bpfo_0.3mm` mais de 0,02 acima do D2. Se não, o pente não acrescenta nada ao MFCC, e o D3 é descartado pelo custo (~40 KB a mais para fazer o mesmo que o D2 com ~3 KB). A especificidade aqui é a da normal fora do bloco, como na seção 2. As outras três falhas ficam ≥ 0,95 quase automaticamente, porque o OU só acrescenta detecções. Elas são conferidas, mas a restrição real é a especificidade. No D4, que troca a LDA, as outras três falhas são, sim, uma restrição real.
 2. **Sensibilidade:** acurácia balanceada da `bpfo_0.3mm` no B, reportada seja qual for. Para ser adotado, um candidato precisa de ≥ 0,80 nela.
 3. **Especificidade externa:** alarme falso ≤ X no C2.
-4. **Desempate:** dentro de 0,02 na `bpfo_0.3mm`, fica o mais barato em RAM e operações. A ordem de custo no firmware, pela flash, é D4 < D2 < D1b < D1 < D3. O D4 tem o custo extra de refazer os artefatos (seção 8).
+4. **Desempate:** dentro de 0,02 na `bpfo_0.3mm`, fica o mais barato em memória (flash, depois RAM). A ordem de custo no firmware é D4 < D2 < D1b < D1 < D3. O D4 tem o custo extra de refazer os artefatos (seção 9).
 5. **Nenhum passa:** a cadeia segue com MFCC e LDA, e o resultado negativo é registrado e reportado.
 
 A rodada de sensibilidade no B pode ser feita já, antes do HUST. A **adoção** só acontece depois do C2.
@@ -123,7 +123,7 @@ A permutação de rótulos só faz sentido para quem aprende com rótulos. Por i
 
 - **RAM:** o firmware usa hoje ~7 KB (28 KB com o teste da Clara), de 128 KB. Os ~40 KB do D1 cabem.
 - **Flash:** o firmware ocupa ~61 KB e os clipes, ~350 KB, de 512 KB. Sobram ~100 KB. As tabelas da FFT da CMSIS ficam na flash: **~39 KB para 4.096 pontos e ~20 KB para 2.048**. O D1 sozinho levaria cerca de 40 % do que sobra; o D1b, cerca de 20 %. O D2 (~1,6 KB) e o D4 (zero) praticamente não pesam.
-- **Tempo:** a estimativa foi calibrada pela FFT de 512 medida na placa (35,7 mil ciclos, ~3× a fórmula teórica). O D1 fica em ~1,1 milhão de ciclos por segmento, ~11 ms por segundo de áudio (~1 % do tempo real), e o D1b gasta o mesmo. Nenhum candidato é problema de tempo real.
+- **Tempo:** a estimativa foi calibrada pela FFT de 512 medida na placa (35,7 mil ciclos, ~3× a fórmula teórica). O D1 fica em ~1,1 milhão de ciclos por segmento, ~11 ms por segundo de áudio (~1 % do tempo real), e o D1b gasta ~30 % mais (~15 ms por segundo, ~1,5 % do tempo real), por causa do FIR de decimação. Nenhum candidato é problema de tempo real.
 - **Decimação e reaproveitamento de buffer:** dependem de como a Frente 1 organizar o firmware (decimação em streaming, por exemplo). A conta final sai do `.map` e do DWT.
 
 ## 9. Impacto nos artefatos do porte
@@ -132,7 +132,7 @@ As referências por estágio e as tolerâncias do A4 (`08_export_stage_reference
 
 | Candidato | O que muda | O que tem de ser refeito |
 |---|---|---|
-| D4 | os pesos da LDA (modelo novo, outro `id`) | o `05`, o `06` (`lda_modelo.h`), o `07` (`lda_vetores_teste.h`), o `08` (o `escore.f64` e o `modelo.txt` de cada segmento) e o `09` (os escores do `clipes_demo.h`), além dos cabeçalhos do firmware que conferem o modelo, como o `blocos13_entrada.h`; as tolerâncias do MFCC continuam valendo, porque o MFCC não muda |
+| D4 | os pesos da LDA (modelo novo, outro `id`) | o `05`, o `06` (`lda_modelo.h`), o `07` (`lda_vetores_teste.h`), o `08` (o `escore.f64` e o `modelo.txt` de cada segmento) e o `09` (os escores do `clipes_demo.h`), além dos arquivos do firmware que conferem o modelo, como o `clipes_demo.h` copiado para o firmware, que o receptor dos blocos 1 a 3 confere pelo modelo; as tolerâncias do MFCC continuam valendo, porque o MFCC não muda |
 | D2 | um cabeçalho novo com a média, a escala, o fator de Cholesky e o limiar | um gerador novo (no estilo do `06`) e vetores de teste do escore de Mahalanobis com tolerância (no estilo do `07`); a LDA e as referências do MFCC não mudam |
 | D1, D1b, D3 | uma cadeia nova (FFT dedicada, pente) | referências e tolerâncias próprias para os estágios do pente, no `08` e no harness, além do gerador dos limiares |
 
