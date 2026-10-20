@@ -135,7 +135,14 @@
         4,
         5
       ],
-      "regra": "critério v4, seção 5, por posição do bloco; fixada em 20/10, depois de o BF ter sido visto para a geometria"
+      "blocos_medida_falha": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "regra": "critério v4, seção 5, por posição do bloco, só na normal (a falha não calibra e mede com os 5 blocos); fixada em 20/10, depois de o BF ter sido visto para a geometria"
     },
     "rolamento": {
       "modelo": "6203 (inferido)",

@@ -6,7 +6,9 @@ Garantias: o leitor confere canais, blocos e o tempo que volta a zero em cada
 bloco; cada bloco vira exatamente um segmento de 1 s, decimado sozinho (o
 segmento k só tem o conteúdo do bloco k); a decimação preserva o que está abaixo
 do corte e rejeita o que dobraria para dentro da banda; o .bin só se corta em
-segmentos inteiros; a divisão do C2 cobre os 5 blocos; e as razões do 6203 são
+segmentos inteiros; a divisão do C2 cobre os 5 blocos e a falha mede com todos;
+uma falha acima do pico da normal para, em vez de dar a volta no int16; e as
+razões do 6203 são
 as da fórmula.
 """
 
@@ -112,3 +114,14 @@ def test_corte_em_segmentos_independentes_e_divisao_do_c2():
     # a divisão cobre os 5 blocos, sem repetir nenhum
     blocos = H.BLOCOS_CALIBRACAO + H.BLOCOS_DESCARTE + H.BLOCOS_MEDIDA
     assert sorted(blocos) == list(range(1, N_BLOCOS + 1))
+    assert H.BLOCOS_MEDIDA_FALHA == tuple(range(1, N_BLOCOS + 1))     # a falha não calibra
+
+
+def test_falha_acima_do_pico_da_normal_para_em_vez_de_dar_a_volta():
+    # a escala vem só da normal: um bloco de falha 5 % acima do pico dela passaria
+    # do int16 e, sem a guarda, viraria -31.819
+    escala = 0.98 * config.INT16_FULL / 0.05
+    normal = _tons([300] * N_BLOCOS).reshape(N_BLOCOS, N_BLOCO)
+    H.preparar({"h": normal}, config.FS_TRABALHO, escala)              # no pico: passa
+    with pytest.raises(ValueError, match="passam do int16"):
+        H.preparar({"bf": 1.05 * normal}, config.FS_TRABALHO, escala)

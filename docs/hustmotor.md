@@ -12,7 +12,7 @@ Card "HUSTmotor — preparar os dados (licença, download, decimação e geometr
 | Geometria | Rolamento **6203** (8 esferas), **inferido**: BPFO = 3,053 × e BPFI = 4,947 × a rotação. Os autores não publicam a geometria; no `BF`, o BPFO aparece a até ~1 % e o BPFI 2 a 3 % abaixo. |
 | Rotação | A nominal de cada arquivo (5, 10, 20 e 30 Hz), como pede o critério v4. A medida na vibração é 1,2 a 3,3 % menor (escorregamento). |
 | Segmentos | **5 por classe e velocidade**, 20 por classe, e não ~25: cada arquivo são 5 aquisições separadas de 1,28 s. |
-| Divisão do C2 | Em cada arquivo, os blocos 1 e 2 calibram, o 3 é descartado e o 4 e o 5 medem (seção "Divisão do C2"). **O C2 só consegue reprovar um detector**: com 8 segmentos medidos, zero alarmes ainda é compatível com até 31 % de alarme falso. |
+| Divisão do C2 | Em cada arquivo da normal, os blocos 1 e 2 calibram, o 3 é descartado e o 4 e o 5 medem; a falha mede com os 5 blocos (seção "Divisão do C2"). **O C2 só consegue reprovar um detector**: com 8 segmentos medidos, zero alarmes ainda é compatível com até 31 % de alarme falso. |
 | Risco a 5 Hz | **O pente é inviável a 5 e a 10 Hz** com a resolução de 3,125 Hz. Afeta só o D1, que já não é elegível; o D2 não usa o pente. |
 
 ## Fonte e licença
@@ -86,13 +86,16 @@ O pente só pode rodar a 20 e a 30 Hz. Isso afeta só o D1, que já saiu não el
 
 A seção 5 do critério v4 pede para anotar a divisão entre calibração e medida do C2 "assim que o dataset for baixado, antes de olhar qualquer gravação de falha". **Aqui o `BF` foi visto antes da divisão ser escrita**: o envelope e a rotação da seção anterior, porque o card exigia a geometria. A divisão é mecânica, pela posição do bloco, e não depende do conteúdo de nenhum bloco, então o dano é pequeno, mas fica registrado.
 
-A regra do critério (metade calibra, 1 de descarte, metade mede), aplicada aos 5 blocos de cada arquivo, também fixada no `10` (`BLOCOS_CALIBRACAO`, `BLOCOS_DESCARTE`, `BLOCOS_MEDIDA`) e no manifest (`divisao_c2`):
+A regra do critério (metade calibra, 1 de descarte, metade mede) vale só para a normal, que é o que calibra. Aplicada aos 5 blocos de cada arquivo `H`, e fixada no `10` (`BLOCOS_CALIBRACAO`, `BLOCOS_DESCARTE`, `BLOCOS_MEDIDA`, `BLOCOS_MEDIDA_FALHA`) e no manifest (`divisao_c2`):
 
-| Blocos | Papel | Segmentos (por rotação / nas 4) |
-|---|---|---|
-| 1 e 2 | calibração (só `H`) | 2 / 8 |
-| 3 | descarte | 1 / 4 |
-| 4 e 5 | medida (`H` e `BF`) | 2 / 8 por classe |
+| Classe | Blocos | Papel | Segmentos (por rotação / nas 4) |
+|---|---|---|---|
+| `H` | 1 e 2 | calibração | 2 / 8 |
+| `H` | 3 | descarte | 1 / 4 |
+| `H` | 4 e 5 | medida do alarme falso | 2 / 8 |
+| `BF` | 1 a 5 | medida da detecção | 5 / 20 |
+
+A falha não calibra nada, então não perde blocos: os 5 medem a detecção.
 
 Os blocos são aquisições separadas, então o descarte do bloco 3 não é necessário contra vazamento no tempo, como no Jung. Ele fica para seguir a regra do critério ao pé da letra.
 

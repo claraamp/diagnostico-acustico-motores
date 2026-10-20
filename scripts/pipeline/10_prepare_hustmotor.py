@@ -74,12 +74,14 @@ RAZAO_BPFO = N_ESFERAS / 2 * (1 - D_ESFERA / D_PRIMITIVO)     # 3,0531
 RAZAO_BPFI = N_ESFERAS / 2 * (1 + D_ESFERA / D_PRIMITIVO)     # 4,9469
 
 # Divisão do C2 (critério v4, seção 5: metade calibra, 1 de descarte, metade mede),
-# aplicada bloco a bloco em cada arquivo e fixada antes de rodar qualquer detector.
-# É pela posição do bloco, sem olhar o conteúdo. Juntar as 4 rotações na normal
-# de calibração é proposta, que depende do Registro de Decisões.
+# aplicada bloco a bloco em cada arquivo da normal e fixada antes de rodar qualquer
+# detector. É pela posição do bloco, sem olhar o conteúdo. Só a normal se divide,
+# porque só ela calibra: a falha não calibra nada e mede com os 5 blocos. Juntar as
+# 4 rotações na normal de calibração é proposta, que depende do Registro de Decisões.
 BLOCOS_CALIBRACAO = (1, 2)
 BLOCOS_DESCARTE = (3,)
 BLOCOS_MEDIDA = (4, 5)
+BLOCOS_MEDIDA_FALHA = (1, 2, 3, 4, 5)
 
 
 def nome_arquivo(cls: str, v: int) -> str:
@@ -164,7 +166,13 @@ def preparar(blocos: dict[str, np.ndarray], fs_out: float, escala: float):
     margem = -(-atraso // spec.down)
     saida = {}
     for rot, b in blocos.items():
-        pcm = np.round(b * escala).astype(config.PCM_DTYPE)          # como o 01
+        # como o 01, mas a escala vem só da normal: uma falha mais forte que ela
+        # passaria do int16, e o astype daria a volta (um pico vira negativo, sem
+        # aviso). Para aqui, em vez de saturar calado: pede uma decisão.
+        n_sat = int(np.count_nonzero(np.abs(np.round(b * escala)) > config.INT16_FULL))
+        if n_sat:
+            raise ValueError(f"{rot}: {n_sat} amostras passam do int16 com a escala da normal")
+        pcm = pcm_io.para_pcm(b * escala / config.INT16_FULL)
         segs = []
         for bloco in pcm:
             y = resample_clip(bloco.astype(np.float64) / config.INT16_FULL, FS_HUST, fs_out, spec)
@@ -227,7 +235,9 @@ def main(argv=None) -> int:
         "divisao_c2": {"blocos_calibracao": list(BLOCOS_CALIBRACAO),
                        "blocos_descarte": list(BLOCOS_DESCARTE),
                        "blocos_medida": list(BLOCOS_MEDIDA),
-                       "regra": "critério v4, seção 5, por posição do bloco; fixada em 20/10, "
+                       "blocos_medida_falha": list(BLOCOS_MEDIDA_FALHA),
+                       "regra": "critério v4, seção 5, por posição do bloco, só na normal (a "
+                                "falha não calibra e mede com os 5 blocos); fixada em 20/10, "
                                 "depois de o BF ter sido visto para a geometria"},
         "rolamento": {"modelo": "6203 (inferido)", "n_esferas": N_ESFERAS, "d_esfera_mm": D_ESFERA,
                       "d_primitivo_mm": D_PRIMITIVO, "razao_bpfo": round(RAZAO_BPFO, 4),
