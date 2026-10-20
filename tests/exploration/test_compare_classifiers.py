@@ -3,6 +3,7 @@
 import importlib.util
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 pytest.importorskip("torch")   # o módulo importa o torch (requirements.txt, índice CPU)
@@ -39,3 +40,17 @@ def test_dispersao_entre_sementes_alarga_a_tolerancia():
     medias = {"lda": 0.800, "cnn1d": 0.840}
     assert _escolher(medias) == "cnn1d"
     assert _escolher(medias, desvios={"lda": 0.0, "cnn1d": 0.05}) == "lda"
+
+def test_svm_linear_custa_o_mesmo_que_a_lda():
+    assert cc.custo("svm_lin") == cc.custo("lda")
+
+
+def test_svm_linear_separa_e_compensa_o_desbalanceamento():
+    # 60 falhas para 10 normais, como o treino do B (~177 para ~48): com pesos
+    # balanceados, a normal deslocada não é engolida pela classe maior
+    rng = np.random.default_rng(0)
+    X_tr = np.vstack([rng.normal(0, 1, (10, 26)), rng.normal(0, 1, (60, 26)) + 3])
+    y_tr = np.array([0] * 10 + [1] * 60)
+    X_te = np.vstack([rng.normal(0, 1, (20, 26)), rng.normal(0, 1, (20, 26)) + 3])
+    pred = cc.treinar_svm_lin(X_tr, y_tr, X_te, 2)
+    assert (pred[:20] == 0).all() and (pred[20:] == 1).all()

@@ -4,7 +4,7 @@
 compare_classifiers.py — estudo da escolha do classificador (Classificador 3/6, parte 1)
 =========================================================================================
 
-Compara LDA (referência), MLP raso e duas CNNs pequenas usando SÓ validação
+Compara LDA (referência), MLP raso, duas CNNs pequenas e o SVM linear usando SÓ validação
 interna ao treino de cada fold do Protocolo B. O teste do B (a gravação de falha
 deixada de fora) nunca é lido para treinar, escolher ou reportar: este script não
 calcula nenhuma métrica sobre ele.
@@ -24,6 +24,10 @@ lda     referência — média e desvio dos 13 MFCC (26 features), priors unifor
 mlp     26 → 16 → n_classes, ReLU, pesos de classe na perda
 cnn1d   MFCC 13 × 98 quadros; convolução no tempo (13 coeficientes = canais)
 cnn2d   log-Mel 20 × 98 quadros; convolução 2D tempo × frequência
+svm_lin SVM linear nas mesmas 26 features, C = 1, pesos de classe balanceados,
+        padronização ajustada só no treino. Fronteira reta como a da LDA, mas posta
+        pelas amostras mais próximas (as falhas mais fracas), não pelas médias.
+        Na placa custa o mesmo que a LDA: um produto escalar (o lda_escore())
 
 Custo no STM32F411CEU6 (parâmetros, MACs, pico de ativação) é calculado a partir
 da arquitetura e impresso junto; não depende dos dados.
@@ -53,14 +57,19 @@ Em cada escolha aninhada, `escolher()`:
    dispersão entre sementes somada dos dois for maior que a margem, a tolerância
    passa a ser essa dispersão: diferença menor que o ruído não é diferença;
 3. fica o candidato mais barato (menos MACs, depois menos parâmetros); em custo
-   igual, o de melhor pior falha interna.
+   igual, a LDA (a referência) e, depois, o de melhor pior falha interna.
 O resultado não depende da ordem de `--modelos`.
+
+Com `--especificidade-minima` (card da detecção de novidade: 0,95), um modelo só
+é candidato se a especificidade interna média dele, nos folds da falha, for pelo
+menos esse valor. Sem a opção, nada muda em relação ao exp223.
 
 Uso
 ---
     python scripts/exploration/compare_classifiers.py --responsavel Clara      # dados reais, registra
     python scripts/exploration/compare_classifiers.py --sintetico              # auto-teste, sem registro
     python scripts/exploration/compare_classifiers.py --blocos-externos 1 --sem-registro   # rápido: 4 folds externos
+    python scripts/exploration/compare_classifiers.py --modelos lda,svm_lin --especificidade-minima 0.95
 """
 
 from __future__ import annotations
@@ -79,6 +88,7 @@ from torch import nn
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
+from sklearn.svm import SVC
 
 import config
 import dsp
@@ -210,6 +220,16 @@ def treinar_lda(X_tr, y_tr, X_te, n_classes):
     return mdl.fit(X_tr, y_tr).predict(X_te)
 
 
+SVM_C = 1.0
+
+
+def treinar_svm_lin(X_tr, y_tr, X_te, n_classes):
+    """SVM linear, C = 1 e pesos de classe balanceados, fixados no card (sem busca)."""
+    mdl = make_pipeline(StandardScaler(),
+                        SVC(kernel="linear", C=SVM_C, class_weight="balanced"))
+    return mdl.fit(X_tr, y_tr).predict(X_te)
+
+
 # --------------------------------------------------------------------------- #
 # Custo embarcado (independe dos dados)
 # --------------------------------------------------------------------------- #
@@ -219,6 +239,10 @@ def custo(nome: str, n_classes: int = 2) -> dict:
     ReLU e Flatten contam como in-place. Sem fusão conv+pool: é o pico pessimista.
     """
     T, C, M = 98, config.MFCC_N_COEFS, config.MFCC_N_MELS
+    if nome == "svm_lin":
+        # na placa é o mesmo que a LDA: a padronização entra nos pesos, e a decisão
+        # é o sinal de um produto escalar mais o bias
+        return custo("lda", n_classes)
     if nome == "lda":
         return {"parametros": 2 * C * n_classes + n_classes + 4 * C, "macs": 2 * C * n_classes,
                 "pico_ativacao": 2 * C + n_classes, "entrada": 2 * C, "acumula_quadros": False}
@@ -252,6 +276,8 @@ def main() -> int:
     ap.add_argument("--modelos", default="lda,mlp,cnn1d,cnn2d")
     ap.add_argument("--margem", type=float, default=0.02,
                     help="tolerância em relação ao melhor; dentro dela, fica o mais barato")
+    ap.add_argument("--especificidade-minima", type=float, default=None,
+                    help="guarda: só é candidato quem tem especificidade interna média ≥ este valor")
     ap.add_argument("--sementes", type=int, default=3)
     ap.add_argument("--epocas", type=int, default=120)
     ap.add_argument("--sintetico", action="store_true")
@@ -296,7 +322,8 @@ def main() -> int:
     classes = sorted({s.binario for s in segmentos})
     y = np.array([classes.index(s.binario) for s in segmentos])
     n_classes = len(classes)
-    entrada = {"lda": resumo, "mlp": resumo, "cnn1d": mf, "cnn2d": lm}
+    entrada = {"lda": resumo, "svm_lin": resumo, "mlp": resumo, "cnn1d": mf, "cnn2d": lm}
+    deterministicos = {"lda": treinar_lda, "svm_lin": treinar_svm_lin}
     modelos = args.modelos.split(",")
 
     res = {m: [] for m in modelos}   # uma linha por (fold externo, fold interno, semente)
@@ -307,10 +334,10 @@ def main() -> int:
         for tr, te, falha_int in internos:
             for m in modelos:
                 X = entrada[m]
-                sementes = [0] if m == "lda" else range(args.sementes)
+                sementes = [0] if m in deterministicos else range(args.sementes)
                 for sem in sementes:
-                    if m == "lda":
-                        pred = treinar_lda(X[tr], y[tr], X[te], n_classes)
+                    if m in deterministicos:
+                        pred = deterministicos[m](X[tr], y[tr], X[te], n_classes)
                     else:
                         pred = treinar_nn(m, X[tr], y[tr], X[te], n_classes,
                                           config.SEMENTE + sem, args.epocas)
@@ -363,8 +390,11 @@ def main() -> int:
     externas = sorted({r["externo"].rsplit("_bloco", 1)[0] for r in res[modelos[0]]})
     custos = {m: custo(m, n_classes) for m in modelos}
     vencedor, detalhe = {}, {}
+    referencia = "lda" if "lda" in modelos else None
     print(f"\nescolha aninhada (acc. bal. interna média, só folds externos de cada falha; "
-          f"margem {args.margem}, dentro dela fica o mais barato):")
+          f"margem {args.margem}, dentro dela fica o mais barato"
+          + (f"; só com especificidade interna ≥ {args.especificidade_minima}"
+             if args.especificidade_minima is not None else "") + "):")
     for e in externas:
         do_grupo = {m: [r for r in res[m] if r["externo"].rsplit("_bloco", 1)[0] == e]
                     for m in modelos}
@@ -379,14 +409,25 @@ def main() -> int:
                 por_f.setdefault(r["falha_interna"], []).append(r["acuracia_balanceada"])
             desvios[m] = float(np.std([np.mean(v) for v in por_sem.values()]))
             pior[m] = float(min(np.mean(v) for v in por_f.values()))
-        vencedor[e], cand = escolher(medias, custos, args.margem, desvios, pior)
+        especif = {m: float(np.mean([r["especificidade"] for r in do_grupo[m]])) for m in modelos}
+        barrados = ([m for m in modelos if especif[m] < args.especificidade_minima]
+                    if args.especificidade_minima is not None else [])
+        if len(barrados) == len(modelos):
+            barrados = []       # ninguém passa a guarda: ela não decide, e o registro mostra
+        aptos = [m for m in modelos if m not in barrados]
+        vencedor[e], cand = escolher({m: medias[m] for m in aptos}, custos, args.margem,
+                                     desvios, pior, referencia=referencia)
         empate = [m for m in cand if m != vencedor[e]]
         detalhe[e] = {"medias": medias, "desvio_sementes": desvios, "pior_falha": pior,
+                      "especificidade": especif, "barrados_especificidade": barrados,
                       "candidatos": cand, "escolhido": vencedor[e]}
         print(f"  {e:<18} " + "  ".join(f"{m} {v:.3f}" for m, v in medias.items())
               + f"  → {vencedor[e]}"
-              + (f" (dentro da margem: {', '.join(empate)}; fica o mais barato)" if empate else ""))
+              + (f" (dentro da margem: {', '.join(empate)}; fica o mais barato ou, em custo "
+                 f"igual, a referência)" if empate else "")
+              + (f" (barrados pela especificidade: {', '.join(barrados)})" if barrados else ""))
     resumo_final["margem"] = args.margem
+    resumo_final["especificidade_minima"] = args.especificidade_minima
     resumo_final["escolha_aninhada"] = vencedor
     resumo_final["escolha_aninhada_detalhe"] = detalhe
     resumo_final["escolha_unica_equivale"] = len(set(vencedor.values())) == 1
@@ -409,6 +450,9 @@ def main() -> int:
         "parametros": experimentos.kv({
             "validacao": "interna_B", "tarefa": "binario" if n_classes == 2 else "multiclasse",
             "modelos": "/".join(modelos), "margem": args.margem, "folds_externos": len(folds_b),
+            **({"especificidade_minima": args.especificidade_minima}
+               if args.especificidade_minima is not None else {}),
+            **({"svm_C": SVM_C, "svm_pesos": "balanceados"} if "svm_lin" in modelos else {}),
             "blocos_externos": args.blocos_externos if args.blocos_externos is not None else "todos",
             "sementes": args.sementes, "epocas": args.epocas, "lr": 3e-3, "wd": 1e-3, "batch": 32,
             "mlp_oculto": 16, "cnn1d_filtros": 16, "cnn2d_filtros": "8/16", "hiperparametros": "fixos",
@@ -420,6 +464,7 @@ def main() -> int:
         "metricas": experimentos.kv({
             **{f"acc_bal_int_{m}": f"{mm[m]['acuracia_balanceada_media']:.4f}" for m in modelos},
             **{f"desvio_sementes_{m}": f"{mm[m]['desvio_entre_sementes']:.4f}" for m in modelos},
+            **{f"especif_int_{m}": f"{mm[m]['especificidade_media']:.4f}" for m in modelos},
             **{f"escolhido_{e.removeprefix('B_')}": v for e, v in vencedor.items()},
             **{f"candidatos_{e.removeprefix('B_')}": "/".join(detalhe[e]["candidatos"])
                for e in externas},
