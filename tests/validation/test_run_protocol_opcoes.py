@@ -30,3 +30,10 @@ def test_opcoes_incompativeis_param_logo(opcoes, mensagem):
     r = _rodar(*opcoes)
     assert r.returncode == 2
     assert mensagem in r.stderr
+
+
+def test_svm_linear_e_aceito_e_usa_os_parametros_do_card():
+    from validation.run_protocol import novo_modelo
+    svm = novo_modelo("svm_lin", 2)[-1]
+    assert (svm.kernel, svm.C, svm.class_weight) == ("linear", 1.0, "balanced")
+    assert "svm_lin" in _rodar("--help").stdout

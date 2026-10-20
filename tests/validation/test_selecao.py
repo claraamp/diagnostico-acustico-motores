@@ -13,7 +13,7 @@ import pytest
 import config
 import pcm_io
 from validation import particao
-from validation.selecao import escolher, folds_internos
+from validation.selecao import barrados_por_especificidade, escolher, folds_internos
 
 N_AMOSTRAS = 767_982
 CUSTOS = {"barato": {"macs": 26, "parametros": 27}, "caro": {"macs": 30, "parametros": 31}}
@@ -58,3 +58,25 @@ def test_dispersao_entre_sementes_alarga_a_tolerancia():
     medias = {"barato": 0.800, "caro": 0.840}
     assert escolher(medias, CUSTOS, 0.02)[0] == "caro"
     assert escolher(medias, CUSTOS, 0.02, desvios={"barato": 0.0, "caro": 0.05})[0] == "barato"
+
+
+def test_em_custo_igual_fica_a_referencia():
+    # o SVM linear custa o mesmo que a LDA: dentro da margem, fica a LDA, mesmo
+    # que o SVM tenha a melhor pior falha (que só desempata entre não referências)
+    custos = {"lda": CUSTOS["barato"], "svm_lin": CUSTOS["barato"]}
+    medias = {"lda": 0.900, "svm_lin": 0.915}
+    pior = {"lda": 0.70, "svm_lin": 0.90}
+    for ordem in (("lda", "svm_lin"), ("svm_lin", "lda")):
+        m = {k: medias[k] for k in ordem}
+        assert escolher(m, custos, 0.02, pior=pior, referencia="lda")[0] == "lda"
+    assert escolher(medias, custos, 0.02, pior=pior)[0] == "svm_lin"       # sem referência, como antes
+    # fora da margem, o rival de mesmo custo troca a referência
+    assert escolher({"lda": 0.900, "svm_lin": 0.950}, custos, 0.02, referencia="lda")[0] == "svm_lin"
+
+
+def test_guarda_de_especificidade():
+    especif = {"lda": 1.000, "svm_lin": 0.930, "mlp": 0.950}
+    assert barrados_por_especificidade(especif, 0.95) == ["svm_lin"]      # 0,95 exato passa
+    assert barrados_por_especificidade(especif, None) == []               # sem a opção, como antes
+    # todos abaixo: a guarda não decide sozinha, ninguém é barrado
+    assert barrados_por_especificidade({"lda": 0.90, "svm_lin": 0.93}, 0.95) == []
