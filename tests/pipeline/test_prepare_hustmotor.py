@@ -5,7 +5,8 @@ dígito). Não dependem de data/: escrevem um .txt sintético no formato do HUST
 Garantias: o leitor confere canais, blocos e o tempo que volta a zero em cada
 bloco; cada bloco vira exatamente um segmento de 1 s, decimado sozinho (o
 segmento k só tem o conteúdo do bloco k); a decimação preserva o que está abaixo
-do corte e rejeita o que dobraria para dentro da banda; e as razões do 6203 são
+do corte e rejeita o que dobraria para dentro da banda; o .bin só se corta em
+segmentos inteiros; a divisão do C2 cobre os 5 blocos; e as razões do 6203 são
 as da fórmula.
 """
 
@@ -99,3 +100,15 @@ def test_razoes_do_6203():
     assert H.RAZAO_BPFO == pytest.approx(3.0531, abs=1e-4)
     assert H.RAZAO_BPFI == pytest.approx(4.9469, abs=1e-4)
     assert H.RAZAO_BPFO + H.RAZAO_BPFI == pytest.approx(H.N_ESFERAS)
+
+
+def test_corte_em_segmentos_independentes_e_divisao_do_c2():
+    n = config.amostras_por_segmento(config.FS_TRABALHO)
+    x = np.arange(N_BLOCOS * n, dtype=float)
+    segs = H.cortar_segmentos(x, n, N_BLOCOS)
+    assert segs.shape == (N_BLOCOS, n) and segs[1, 0] == n
+    with pytest.raises(ValueError, match="não são"):
+        H.cortar_segmentos(x[:-1], n, N_BLOCOS)
+    # a divisão cobre os 5 blocos, sem repetir nenhum
+    blocos = H.BLOCOS_CALIBRACAO + H.BLOCOS_DESCARTE + H.BLOCOS_MEDIDA
+    assert sorted(blocos) == list(range(1, N_BLOCOS + 1))

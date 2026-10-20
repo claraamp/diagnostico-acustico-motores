@@ -110,7 +110,7 @@
     "unidade_original": "V na saída do microfone AWA14004 (sensibilidade não publicada)",
     "fs_original_hz": 25600,
     "escala_int16": 247888.7508712519,
-    "pico_global_original": 0.12954061,
+    "pico_normal_original": 0.12954061,
     "decimacao": {
       "numtaps": 75,
       "cutoff_hz": 5760.0,
@@ -122,6 +122,21 @@
       "down": 2
     },
     "segmentos": "5 blocos não contíguos de 1,28 s por arquivo; 1 segmento de 1 s do meio de cada bloco, decimado sozinho; os segmentos do .bin são independentes",
+    "corte": "cortar o .bin em segmentos de 1 s, sem sobreposição (cortar_segmentos); não filtrar nem decimar o .bin inteiro, que cruzaria as emendas",
+    "divisao_c2": {
+      "blocos_calibracao": [
+        1,
+        2
+      ],
+      "blocos_descarte": [
+        3
+      ],
+      "blocos_medida": [
+        4,
+        5
+      ],
+      "regra": "critério v4, seção 5, por posição do bloco; fixada em 20/10, depois de o BF ter sido visto para a geometria"
+    },
     "rolamento": {
       "modelo": "6203 (inferido)",
       "n_esferas": 8,

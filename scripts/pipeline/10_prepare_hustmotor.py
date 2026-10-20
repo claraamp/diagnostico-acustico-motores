@@ -67,11 +67,19 @@ CANAL_SOM = 3
 
 # Rolamento 6203 (8 esferas, 6,747 mm, diâmetro primitivo 28,5 mm), contato 0°.
 # A descrição do dataset não traz a geometria: o 6203 é o rolamento do motor
-# Marathon D393 da bancada SpectraQuest, e as linhas do BF batem com ele a ~2 %
-# (docs/hustmotor.md). Inferido, não confirmado pelos autores.
+# Marathon D393 da bancada SpectraQuest, e as linhas do BF batem com ele (BPFO a
+# até ~1 %, BPFI 2 a 3 % abaixo; docs/hustmotor.md). Inferido, não confirmado pelos autores.
 N_ESFERAS, D_ESFERA, D_PRIMITIVO = 8, 6.747, 28.5
 RAZAO_BPFO = N_ESFERAS / 2 * (1 - D_ESFERA / D_PRIMITIVO)     # 3,0531
 RAZAO_BPFI = N_ESFERAS / 2 * (1 + D_ESFERA / D_PRIMITIVO)     # 4,9469
+
+# Divisão do C2 (critério v4, seção 5: metade calibra, 1 de descarte, metade mede),
+# aplicada bloco a bloco em cada arquivo e fixada antes de rodar qualquer detector.
+# É pela posição do bloco, sem olhar o conteúdo. Juntar as 4 rotações na normal
+# de calibração é proposta, que depende do Registro de Decisões.
+BLOCOS_CALIBRACAO = (1, 2)
+BLOCOS_DESCARTE = (3,)
+BLOCOS_MEDIDA = (4, 5)
 
 
 def nome_arquivo(cls: str, v: int) -> str:
@@ -124,6 +132,17 @@ def ler_txt(caminho: Path) -> np.ndarray:
     return dados[:, 1 + CANAL_SOM].reshape(n_blocos, n_bloco)
 
 
+def cortar_segmentos(x: np.ndarray, n: int, n_segmentos: int) -> np.ndarray:
+    """
+    Os segmentos independentes de um .bin do HUST, (n_segmentos, n). Cada um vem de
+    uma aquisição separada: corte só assim, em 1 s, sem sobreposição, e nunca filtre
+    nem decime o .bin inteiro, porque o filtro cruzaria as emendas.
+    """
+    if x.size != n * n_segmentos:
+        raise ValueError(f"{x.size} amostras não são {n_segmentos} segmentos de {n}")
+    return x.reshape(n_segmentos, n)
+
+
 def segmento_do_meio(y: np.ndarray, n: int) -> np.ndarray:
     """O trecho de `n` amostras do meio de `y` (longe dos transitórios do filtro nas pontas)."""
     if y.size < n:
@@ -138,7 +157,11 @@ def preparar(blocos: dict[str, np.ndarray], fs_out: float, escala: float):
     if not spec.integer_factor:
         raise ValueError(f"{FS_HUST} → {fs_out} Hz não é fator inteiro")
     n_seg = config.amostras_por_segmento(fs_out)
-    margem = (spec.numtaps - 1) // 2 // spec.down        # saídas afetadas pelo início do filtro
+    # Depois do resample_clip, só o início tem transitório (o fim é truncado):
+    # ceil(atraso / fator) saídas. Corta-se o mesmo nas duas pontas só para o trecho
+    # do meio ficar centrado no bloco.
+    atraso = (spec.numtaps - 1) // 2
+    margem = -(-atraso // spec.down)
     saida = {}
     for rot, b in blocos.items():
         pcm = np.round(b * escala).astype(config.PCM_DTYPE)          # como o 01
@@ -173,10 +196,12 @@ def main(argv=None) -> int:
         print(f"[load] {p.name}: {blocos[rotulo(c, v)].shape[0]} blocos de "
               f"{blocos[rotulo(c, v)].shape[1] / FS_HUST:.2f} s")
 
-    pico = max(float(np.abs(b).max()) for b in blocos.values())
+    # escala como no 01, mas só com a normal: os dados de falha não definem o ganho
+    pico = max(float(np.abs(b).max()) for (c, v) in arquivos if CLASSES_HUST[c] == "normal"
+               for b in [blocos[rotulo(c, v)]])
     escala = 0.98 * config.INT16_FULL / pico
     sinais, spec = preparar(blocos, args.fs, escala)
-    print(f"[escala] pico global {pico:.6f} V → fator {escala:.1f} (como no 01)")
+    print(f"[escala] pico da normal {pico:.6f} V → fator {escala:.1f} (como no 01)")
     print(f"[filtro] {FS_HUST / 1000:.1f} → {args.fs / 1000:.1f} kHz, fator /{spec.down}, "
           f"{spec.numtaps} taps, corte {spec.cutoff_hz:.0f} Hz, atenuação {spec.stopband_atten_db:.1f} dB")
 
@@ -193,10 +218,17 @@ def main(argv=None) -> int:
         "unidade_original": "V na saída do microfone AWA14004 (sensibilidade não publicada)",
         "fs_original_hz": FS_HUST,
         "escala_int16": escala,
-        "pico_global_original": pico,
+        "pico_normal_original": pico,
         "decimacao": asdict(spec),
         "segmentos": "5 blocos não contíguos de 1,28 s por arquivo; 1 segmento de 1 s do meio "
                      "de cada bloco, decimado sozinho; os segmentos do .bin são independentes",
+        "corte": "cortar o .bin em segmentos de 1 s, sem sobreposição (cortar_segmentos); "
+                 "não filtrar nem decimar o .bin inteiro, que cruzaria as emendas",
+        "divisao_c2": {"blocos_calibracao": list(BLOCOS_CALIBRACAO),
+                       "blocos_descarte": list(BLOCOS_DESCARTE),
+                       "blocos_medida": list(BLOCOS_MEDIDA),
+                       "regra": "critério v4, seção 5, por posição do bloco; fixada em 20/10, "
+                                "depois de o BF ter sido visto para a geometria"},
         "rolamento": {"modelo": "6203 (inferido)", "n_esferas": N_ESFERAS, "d_esfera_mm": D_ESFERA,
                       "d_primitivo_mm": D_PRIMITIVO, "razao_bpfo": round(RAZAO_BPFO, 4),
                       "razao_bpfi": round(RAZAO_BPFI, 4)},
