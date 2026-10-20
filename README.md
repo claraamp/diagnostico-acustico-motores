@@ -72,6 +72,10 @@ O `inspect_deteccao_novidade.py` roda, no Protocolo B, os candidatos do `docs/cr
 
 **SVM linear no lugar da LDA (`exp264`, `exp265`): não resolve a `bpfo_0.3mm`, e a LDA fica.** O card também pedia um SVM linear (C = 1, pesos de classe balanceados, sem busca), que custa na placa o mesmo que a LDA. Na validação interna ao treino do B (`compare_classifiers.py --modelos lda,svm_lin --especificidade-minima 0.95`), ele tem 0,920 contra 0,875 da LDA, com especificidade 1,000 nos dois; o ganho vem só de quando a `bpfo_0.3mm` é a falha interna deixada de fora (0,701 contra 0,500), e o SVM perde um pouco na `bpfi_0.3mm` (0,978 contra 1,000). A escolha aninhada não é única: fica o SVM nas falhas externas `bpfi_1.0mm` e `bpfo_1.0mm` e a LDA nas outras duas, porque, em custo igual, o SVM só troca a LDA se ganhar por mais que a margem de 0,02. No B externo (`run_protocol.py --modelo svm_lin`), reportado seja qual for, a `bpfo_0.3mm` fica em 0,506 (sensibilidade 0,011), contra 0,500 da LDA, e a `bpfi_0.3mm` cai de 1,000 para 0,990; a média é 0,874, contra 0,875 da LDA (`exp015`). Com a escolha aninhada, o B externo é o mesmo da LDA, porque o SVM só é escolhido onde os dois acertam tudo. O ganho interno não se repete no B externo. O Mahalanobis do card é o D2 acima, rodado com a regra do critério v4.
 
+### HUSTmotor: dados do Protocolo C
+
+O `10_prepare_hustmotor.py` põe o som do HUSTmotor multimodal (Zhao et al., 2025) no formato do pipeline, só as classes saudável e falha de rolamento, nas 4 velocidades (5, 10, 20 e 30 Hz), decimado de 25,6 para 12,8 kHz com a mesma regra de filtro do Jung. **Cada arquivo são 5 aquisições separadas de 1,28 s**, e não 6,4 s contínuos: cada bloco é decimado sozinho e dá um segmento de 1 s, então são 5 segmentos por classe e velocidade (20 por classe). O repositório não declara licença (a descrição pede a citação do artigo), e os dados não são versionados. O rolamento é o 6203, inferido (BPFO 3,053 × e BPFI 4,947 × a rotação nominal), e o pente é inviável a 5 e a 10 Hz. Detalhes, download e o que isso muda no Protocolo C em `docs/hustmotor.md`.
+
 ## Dataset
 
 Jung, W.; Kim, S.-H.; Yun, S.-H.; Bae, J.; Park, Y.-H. (2023), *Data in Brief* 48, 109049. Subconjunto acústico (microfone), 5 classes — `0Nm_Normal`, `0Nm_BPFI_03`, `0Nm_BPFI_10`, `0Nm_BPFO_03`, `0Nm_BPFO_10` — 60 s cada, 51,2 kHz, formato `.mat`.
@@ -96,15 +100,17 @@ diagnostico-acustico-motores/
 │
 ├── data/
 │   ├── raw/                  # .mat originais (baixados manualmente, não versionados)
-│   │   └── vibracao/         # .mat de vibração 0 Nm (só para confirmação; mesmos nomes dos de áudio)
+│   │   ├── vibracao/         # .mat de vibração 0 Nm (só para confirmação; mesmos nomes dos de áudio)
+│   │   └── hustmotor/        # .txt do HUSTmotor, H e BF nas 4 velocidades (Protocolo C; docs/hustmotor.md)
 │   └── processed/
 │       ├── pcm_raw/          # saída do 01 — .bin não versionados, manifest.json versionado
 │       ├── pcm_decimated/    # saída do 02, um subdiretório por taxa (ex.: 12800/)
 │       ├── splits/
 │       │   ├── splits.json   # saída do 03 — partição dos protocolos A e B, VERSIONADA
 │       │   └── splits_25600.json   # a mesma partição a 25,6 kHz (03 --fs 25600), para comparar taxas
-│       └── features/         # saída do 04 — mfcc_features.npz + manifest_features.json, NÃO versionados
-│                             # (outra taxa: features/<fs>/)
+│       ├── features/         # saída do 04 — mfcc_features.npz + manifest_features.json, NÃO versionados
+│       │                     # (outra taxa: features/<fs>/)
+│       └── hustmotor/pcm_decimated/12800/   # saída do 10 — .bin não versionados, manifest.json versionado
 │
 ├── scripts/
 │   ├── config.py             # parâmetros compartilhados entre etapas
@@ -143,7 +149,8 @@ diagnostico-acustico-motores/
 │   │   ├── 06_export_lda_header.py        # .h da LDA final (float32), conferido contra os escores de referência
 │   │   ├── 07_export_lda_test_vectors.py  # .h com features e escores de referência para o marco na placa
 │   │   ├── 08_export_stage_references.py  # referências por estágio (float64) e tolerâncias do A4 para o harness em C
-│   │   └── 09_export_clips.py             # clipes int16 para a flash da placa (12,8 kHz e um recorte a 51,2 kHz) → .h
+│   │   ├── 09_export_clips.py             # clipes int16 para a flash da placa (12,8 kHz e um recorte a 51,2 kHz) → .h
+│   │   └── 10_prepare_hustmotor.py        # HUSTmotor (Protocolo C): som de H e BF, 4 velocidades, decimado → data/processed/hustmotor/
 │   └── validation/           # protocolo de validação do classificador
 │       ├── particao.py                    # segmentos, folds A e B, verificação
 │       ├── metricas.py                    # sensibilidade, especificidade, acurácia balanceada
@@ -170,7 +177,8 @@ diagnostico-acustico-motores/
 │   │   ├── test_export_lda_header.py      # o .h é paramétrico em N_FEATURES, traz o float32 do JSON e, compilado, reproduz o escore
 │   │   ├── test_export_lda_test_vectors.py # os vetores de teste ficam dentro da tolerância, a seleção não olha o escore, recusa .h de outro modelo
 │   │   ├── test_export_stage_references.py # o formato volta igual do arquivo; as referências versionadas são as do dsp atual
-│   │   └── test_export_clips.py           # o clipe recalculado do .h dá o escore gravado; o recorte decimado é o clipe a 12,8 kHz
+│   │   ├── test_export_clips.py           # o clipe recalculado do .h dá o escore gravado; o recorte decimado é o clipe a 12,8 kHz
+│   │   └── test_prepare_hustmotor.py      # blocos do HUST lidos e decimados um a um, um segmento de 1 s por bloco
 │   ├── exploration/
 │   │   ├── test_deteccao_novidade.py      # D1b, amplitude da série sintética, D4 só com normais de treino, controle e regra de escolha
 │   │   ├── test_comb_features.py          # candidatos A/B/C do card (A inviável); acha a série fora da razão cinemática; decisão pela validação interna
@@ -206,6 +214,7 @@ diagnostico-acustico-motores/
 │
 └── docs/                     # proposta, documentação técnica complementar
     ├── contrato_numerico.md  # o que o C tem que reproduzir da extração de características (Fase 2)
+    ├── hustmotor.md          # HUSTmotor para o Protocolo C: licença, download, blocos, geometria e rotação
     └── criterio_deteccao_novidade.md  # candidatos, limiar e regra de escolha da detecção de novidade (bpfo_0.3mm)
 ```
 
@@ -233,6 +242,7 @@ python scripts/pipeline/06_export_lda_header.py --responsavel <nome>  # .h da LD
 python scripts/pipeline/07_export_lda_test_vectors.py                 # vetores de teste → reports/modelo_final/lda_vetores_teste.h
 python scripts/pipeline/08_export_stage_references.py                 # referências por estágio → reports/c_reference/estagios/
 python scripts/pipeline/09_export_clips.py                            # clipes para a flash → reports/c_reference/clipes_demo.h
+python scripts/pipeline/10_prepare_hustmotor.py                       # HUSTmotor (data/raw/hustmotor/) → data/processed/hustmotor/
 ```
 
 O `05` treina a LDA uma única vez, com os 295 segmentos e sem aumento, e grava em `reports/modelo_final/lda_final.json` os parâmetros nas duas formas equivalentes de `models/lda.py`: a padronizada (média, escala, coeficientes e intercepto) e a dobrada, `escore = pesos · x + bias`, que é a que o firmware usa. A convenção é **escore ≥ 0 → falha**: o empate exato segue o sklearn, que o classifica como falha (campo `escore_zero` do JSON). As 26 features seguem a ordem do `04` (as 13 médias, depois os 13 desvios, populacionais). Antes de gravar, o script confere que o JSON reproduz o sklearn em todos os segmentos. O `escores_referencia.csv` traz o escore de cada segmento para conferir a implementação em C. Esses segmentos são os do próprio treino: **o `05` não mede desempenho**, que continua sendo o do Protocolo B (`exp015`). O modelo final classifica corretamente os 295 segmentos, inclusive os da `bpfo_0.3mm`, porque todos estão no treino; **uma demonstração com trechos dessas gravações reproduz o treino, não o Protocolo B**, e não deve ser apresentada como desempenho. O tamanho do escore (±1.300 a ±1.600 nesses segmentos) também não é medida de confiança: a margem vem de o treino conter as cinco gravações, e não diz nada sobre uma gravação nova. **O firmware usa só o sinal do escore.** O JSON é o contrato com o firmware: além dos pesos, ele descreve a cadeia que produz as 26 features nos pontos em que um porte em C costuma divergir sem erro (bloco `entrada`): a origem do sinal a 12,8 kHz (FIR Kaiser de 147 taps, corte em 5.760 Hz, decimação por 4, com o atraso de grupo descartado), escala da entrada (`int16 / 32767`, e não `/ 32768` como a conversão Q15 da CMSIS), janela de Hann simétrica (`np.hanning`), FFT de 512 pontos com espectro de potência, banco de Mel HTK de 20 Hz a fs/2 com os bins já calculados, log natural com `+1e-10`, DCT-II ortonormal e desvio populacional. Um teste refaz o MFCC só a partir dessa descrição e compara com o `dsp.mfcc`. Ao comparar o C com o `escores_referencia.csv`, use tolerância relativa (~1e-3) no escore, porque o MFCC em `float32` difere um pouco do Python; a previsão tem que ser idêntica. Ele exige as features de referência (sem `--norm-clipe`); se o `04` foi rodado com outra opção, rode-o de novo sem opções antes.
