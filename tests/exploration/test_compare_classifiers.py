@@ -5,6 +5,9 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+from sklearn.pipeline import make_pipeline
+from sklearn.preprocessing import StandardScaler
+from sklearn.svm import SVC
 
 pytest.importorskip("torch")   # o módulo importa o torch (requirements.txt, índice CPU)
 
@@ -58,5 +61,13 @@ def test_svm_linear_compensa_o_desbalanceamento():
     X_te = np.vstack([rng.normal(0, 1, (500, 2)), rng.normal(0, 1, (500, 2)) + [2, 0]])
     pred = cc.treinar_svm_lin(X_tr, y_tr, X_te, 2)
     assert (pred[:500] == 0).mean() > 0.7 and (pred[500:] == 1).mean() > 0.7
-    sem_pesos = cc.make_pipeline(cc.StandardScaler(), cc.SVC(kernel="linear", C=cc.SVM_C))
+    sem_pesos = make_pipeline(StandardScaler(), SVC(kernel="linear", C=cc.SVM_C))
     assert (sem_pesos.fit(X_tr, y_tr).predict(X_te)[:500] == 0).mean() < 0.5
+
+
+def test_svm_linear_e_o_mesmo_do_run_protocol():
+    # fonte única dos parâmetros: o estudo e o Protocolo B treinam o mesmo SVM
+    from validation import run_protocol
+    svm = cc.novo_modelo("svm_lin", 2)[-1]
+    assert cc.novo_modelo is run_protocol.novo_modelo
+    assert (svm.kernel, svm.C, svm.class_weight) == ("linear", run_protocol.SVM_C, run_protocol.SVM_PESOS)

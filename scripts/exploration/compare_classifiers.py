@@ -88,13 +88,13 @@ from torch import nn
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
-from sklearn.svm import SVC
 
 import config
 import dsp
 import experimentos
 import pcm_io
 from validation import metricas, particao
+from validation.run_protocol import SVM_C, SVM_PESOS, novo_modelo
 from validation.selecao import barrados_por_especificidade, escolher, folds_internos
 
 import os
@@ -220,14 +220,9 @@ def treinar_lda(X_tr, y_tr, X_te, n_classes):
     return mdl.fit(X_tr, y_tr).predict(X_te)
 
 
-SVM_C = 1.0
-
-
 def treinar_svm_lin(X_tr, y_tr, X_te, n_classes):
-    """SVM linear, C = 1 e pesos de classe balanceados, fixados no card (sem busca)."""
-    mdl = make_pipeline(StandardScaler(),
-                        SVC(kernel="linear", C=SVM_C, class_weight="balanced"))
-    return mdl.fit(X_tr, y_tr).predict(X_te)
+    """SVM linear do run_protocol.novo_modelo (C e pesos fixos lá, sem busca)."""
+    return novo_modelo("svm_lin", n_classes).fit(X_tr, y_tr).predict(X_te)
 
 
 # --------------------------------------------------------------------------- #
@@ -452,7 +447,8 @@ def main() -> int:
             "modelos": "/".join(modelos), "margem": args.margem, "folds_externos": len(folds_b),
             **({"especificidade_minima": args.especificidade_minima}
                if args.especificidade_minima is not None else {}),
-            **({"svm_C": SVM_C, "svm_pesos": "balanceados"} if "svm_lin" in modelos else {}),
+            **({"svm_C": SVM_C, "svm_pesos": "balanceados" if SVM_PESOS == "balanced" else SVM_PESOS}
+               if "svm_lin" in modelos else {}),
             "blocos_externos": args.blocos_externos if args.blocos_externos is not None else "todos",
             "sementes": args.sementes, "epocas": args.epocas, "lr": 3e-3, "wd": 1e-3, "batch": 32,
             "mlp_oculto": 16, "cnn1d_filtros": 16, "cnn2d_filtros": "8/16", "hiperparametros": "fixos",
