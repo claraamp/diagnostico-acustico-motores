@@ -11,6 +11,8 @@ sem mudança, para não depender do torch que aquele script importa.
 - `escolher`: o melhor pela acurácia balanceada interna média; dentro da margem
   (ou da dispersão entre sementes, se maior), fica o mais barato; em custo igual,
   o modelo de referência, se houver.
+- `barrados_por_especificidade`: a guarda que tira da escolha quem tem
+  especificidade interna abaixo do mínimo.
 
 Este módulo não é executável: é importado.
 """
@@ -65,3 +67,15 @@ def escolher(medias: dict, custos: dict, margem: float,
     cand.sort(key=lambda m: (custos[m]["macs"], custos[m]["parametros"], m != referencia,
                              -pior.get(m, 0.0), m))
     return cand[0], cand
+
+
+def barrados_por_especificidade(especificidade: dict, minimo: float | None) -> list[str]:
+    """
+    Os modelos que a guarda tira da escolha: especificidade interna média abaixo de
+    `minimo`. Sem mínimo, ninguém. Se todos ficam abaixo, também ninguém: a guarda
+    não decide sozinha, e o registro mostra a especificidade de cada um.
+    """
+    if minimo is None:
+        return []
+    barrados = [m for m in especificidade if especificidade[m] < minimo]
+    return [] if len(barrados) == len(especificidade) else barrados

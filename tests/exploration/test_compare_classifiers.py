@@ -41,16 +41,22 @@ def test_dispersao_entre_sementes_alarga_a_tolerancia():
     assert _escolher(medias) == "cnn1d"
     assert _escolher(medias, desvios={"lda": 0.0, "cnn1d": 0.05}) == "lda"
 
-def test_svm_linear_custa_o_mesmo_que_a_lda():
+
+def test_svm_linear_custa_o_mesmo_que_a_lda_so_no_binario():
     assert cc.custo("svm_lin") == cc.custo("lda")
+    with pytest.raises(ValueError, match="binário"):
+        cc.custo("svm_lin", n_classes=3)
 
 
-def test_svm_linear_separa_e_compensa_o_desbalanceamento():
-    # 60 falhas para 10 normais, como o treino do B (~177 para ~48): com pesos
-    # balanceados, a normal deslocada não é engolida pela classe maior
+def test_svm_linear_compensa_o_desbalanceamento():
+    # classes sobrepostas e 10 falhas para cada normal: sem pesos, a fronteira vai
+    # para cima da normal; com os pesos balanceados, ela volta para o meio. (Com as
+    # classes separáveis, os pesos não mudam nada, e o teste não protegeria nada.)
     rng = np.random.default_rng(0)
-    X_tr = np.vstack([rng.normal(0, 1, (10, 26)), rng.normal(0, 1, (60, 26)) + 3])
-    y_tr = np.array([0] * 10 + [1] * 60)
-    X_te = np.vstack([rng.normal(0, 1, (20, 26)), rng.normal(0, 1, (20, 26)) + 3])
+    X_tr = np.vstack([rng.normal(0, 1, (40, 2)), rng.normal(0, 1, (400, 2)) + [2, 0]])
+    y_tr = np.array([0] * 40 + [1] * 400)
+    X_te = np.vstack([rng.normal(0, 1, (500, 2)), rng.normal(0, 1, (500, 2)) + [2, 0]])
     pred = cc.treinar_svm_lin(X_tr, y_tr, X_te, 2)
-    assert (pred[:20] == 0).all() and (pred[20:] == 1).all()
+    assert (pred[:500] == 0).mean() > 0.7 and (pred[500:] == 1).mean() > 0.7
+    sem_pesos = cc.make_pipeline(cc.StandardScaler(), cc.SVC(kernel="linear", C=cc.SVM_C))
+    assert (sem_pesos.fit(X_tr, y_tr).predict(X_te)[:500] == 0).mean() < 0.5

@@ -95,7 +95,7 @@ import dsp
 import experimentos
 import pcm_io
 from validation import metricas, particao
-from validation.selecao import escolher, folds_internos
+from validation.selecao import barrados_por_especificidade, escolher, folds_internos
 
 import os
 torch.set_num_threads(max(1, min(4, os.cpu_count() or 1)))
@@ -240,8 +240,11 @@ def custo(nome: str, n_classes: int = 2) -> dict:
     """
     T, C, M = 98, config.MFCC_N_COEFS, config.MFCC_N_MELS
     if nome == "svm_lin":
-        # na placa é o mesmo que a LDA: a padronização entra nos pesos, e a decisão
-        # é o sinal de um produto escalar mais o bias
+        # no binário, na placa é o mesmo que a LDA: a padronização entra nos pesos, e a
+        # decisão é o sinal de um produto escalar mais o bias. Com mais classes, o SVC
+        # faz um contra um, n(n-1)/2 produtos escalares, e a conta seria outra.
+        if n_classes != 2:
+            raise ValueError("custo do svm_lin só no binário (o SVC multiclasse é um contra um)")
         return custo("lda", n_classes)
     if nome == "lda":
         return {"parametros": 2 * C * n_classes + n_classes + 4 * C, "macs": 2 * C * n_classes,
@@ -410,10 +413,7 @@ def main() -> int:
             desvios[m] = float(np.std([np.mean(v) for v in por_sem.values()]))
             pior[m] = float(min(np.mean(v) for v in por_f.values()))
         especif = {m: float(np.mean([r["especificidade"] for r in do_grupo[m]])) for m in modelos}
-        barrados = ([m for m in modelos if especif[m] < args.especificidade_minima]
-                    if args.especificidade_minima is not None else [])
-        if len(barrados) == len(modelos):
-            barrados = []       # ninguém passa a guarda: ela não decide, e o registro mostra
+        barrados = barrados_por_especificidade(especif, args.especificidade_minima)
         aptos = [m for m in modelos if m not in barrados]
         vencedor[e], cand = escolher({m: medias[m] for m in aptos}, custos, args.margem,
                                      desvios, pior, referencia=referencia)
