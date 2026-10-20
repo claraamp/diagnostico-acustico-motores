@@ -71,6 +71,7 @@ Uso
     python scripts/validation/run_protocol.py --protocolo B --permutar --semente 1
     python scripts/validation/run_protocol.py --protocolo B --segundos-treino 5
     python scripts/validation/run_protocol.py --protocolo B --fs 25600
+    python scripts/validation/run_protocol.py --protocolo B --modelo svm_lin
     python scripts/validation/run_protocol.py --protocolo B --sem-registro   # teste
 """
 
@@ -89,6 +90,7 @@ import numpy as np
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
+from sklearn.svm import SVC
 
 import config
 import experimentos
@@ -172,6 +174,12 @@ def subamostrar_treino(treino: list[int], y: np.ndarray, gravacao: np.ndarray,
 # --------------------------------------------------------------------------- #
 # Modelo
 # --------------------------------------------------------------------------- #
+# SVM linear do card da detecção de novidade: C = 1 e pesos de classe balanceados,
+# fixos, sem busca. Fonte única: o compare_classifiers.py usa estes mesmos.
+SVM_C = 1.0
+SVM_PESOS = "balanced"
+
+
 def novo_modelo(nome: str, n_classes: int):
     if nome == "lda":
         # priors uniformes: a LDA não aceita pesos de classe, e o treino do B
@@ -181,6 +189,9 @@ def novo_modelo(nome: str, n_classes: int):
             StandardScaler(),
             LinearDiscriminantAnalysis(priors=np.full(n_classes, 1.0 / n_classes)),
         )
+    if nome == "svm_lin":
+        return make_pipeline(StandardScaler(),
+                             SVC(kernel="linear", C=SVM_C, class_weight=SVM_PESOS))
     raise ValueError(f"modelo desconhecido: {nome}")
 
 
@@ -323,7 +334,7 @@ def main() -> int:
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--protocolo", choices=["A", "B"], required=True)
     ap.add_argument("--tarefa", choices=["binario", "multiclasse"], default="binario")
-    ap.add_argument("--modelo", choices=["lda"], default="lda")
+    ap.add_argument("--modelo", choices=["lda", "svm_lin"], default="lda")
     ap.add_argument("--sem-c0", action="store_true", help="ablação do ganho")
     ap.add_argument("--permutar", action="store_true", help="controle de permutação por bloco")
     ap.add_argument("--aumento", action="store_true",

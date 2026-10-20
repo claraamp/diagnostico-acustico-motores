@@ -70,6 +70,8 @@ O `inspect_deteccao_novidade.py` roda, no Protocolo B, os candidatos do `docs/cr
 - **D3, Mahalanobis no MFCC + pente: descartado.** Não supera o D2, que já detecta tudo.
 - **D4, LDA retreinada com falha sintética de linhas estreitas: não elegível.** Passa a detectar a `bpfo_0.3mm` (1,000 nas cinco sementes) e passa na permutação (0,535), mas a `bpfi_0.3mm` cai de 1,000 para 0,732, abaixo do piso de 0,95 para as outras falhas.
 
+**SVM linear no lugar da LDA (`exp264`, `exp265`): não resolve a `bpfo_0.3mm`, e a LDA fica.** O card também pedia um SVM linear (C = 1, pesos de classe balanceados, sem busca), que custa na placa o mesmo que a LDA. Na validação interna ao treino do B (`compare_classifiers.py --modelos lda,svm_lin --especificidade-minima 0.95`), ele tem 0,920 contra 0,875 da LDA, com especificidade 1,000 nos dois; o ganho vem só de quando a `bpfo_0.3mm` é a falha interna deixada de fora (0,701 contra 0,500), e o SVM perde um pouco na `bpfi_0.3mm` (0,978 contra 1,000). A escolha aninhada não é única: fica o SVM nas falhas externas `bpfi_1.0mm` e `bpfo_1.0mm` e a LDA nas outras duas, porque, em custo igual, o SVM só troca a LDA se ganhar por mais que a margem de 0,02. No B externo (`run_protocol.py --modelo svm_lin`), reportado seja qual for, a `bpfo_0.3mm` fica em 0,506 (sensibilidade 0,011), contra 0,500 da LDA, e a `bpfi_0.3mm` cai de 1,000 para 0,990; a média é 0,874, contra 0,875 da LDA (`exp015`). Com a escolha aninhada, o B externo é o mesmo da LDA, porque o SVM só é escolhido onde os dois acertam tudo. O ganho interno não se repete no B externo. O Mahalanobis do card é o D2 acima, rodado com a regra do critério v4.
+
 ### HUSTmotor: dados do Protocolo C
 
 O `10_prepare_hustmotor.py` põe o som do HUSTmotor multimodal (Zhao et al., 2025) no formato do pipeline, só as classes saudável e falha de rolamento, nas 4 velocidades (5, 10, 20 e 30 Hz), decimado de 25,6 para 12,8 kHz com a mesma regra de filtro do Jung. **Cada arquivo são 5 aquisições separadas de 1,28 s**, e não 6,4 s contínuos: cada bloco é decimado sozinho e dá um segmento de 1 s, então são 5 segmentos por classe e velocidade (20 por classe). O repositório não declara licença (a descrição pede a citação do artigo), e os dados não são versionados. O rolamento é o 6203, inferido (BPFO 3,053 × e BPFI 4,947 × a rotação nominal), e o pente é inviável a 5 e a 10 Hz. Detalhes, download e o que isso muda no Protocolo C em `docs/hustmotor.md`.
@@ -202,7 +204,7 @@ diagnostico-acustico-motores/
 │   ├── c_reference/          # reference_data.h: entrada int16 + MFCC esperado, para o porte em C;
 │   │                         #   estagios/: referências por estágio e tolerâncias do A4 (08), lidas pelo harness em C;
 │   │                         #   clipes_demo.h: clipes de áudio para a flash da placa (09)
-│   ├── classifier/           # estudo de escolha do classificador (compare_classifiers.json)
+│   ├── classifier/           # estudo de escolha do classificador (compare_classifiers.json; SVM linear: compare_classifiers_svm_lin.json)
 │   ├── decimation/           # métricas, figuras e relatório da escolha da taxa
 │   ├── exploration/          # figuras dos scripts exploratórios
 │   ├── modelo_final/         # lda_final.json (parâmetros para o firmware) e escores_referencia.csv, do 05; lda_modelo.h, do 06
@@ -306,6 +308,8 @@ python scripts/pipeline/04_extract_features.py       # volta ao padrão (sem nor
 python scripts/exploration/compare_classifiers.py --sintetico       # auto-teste, sem registro
 python scripts/exploration/compare_classifiers.py --responsavel <nome>
 python scripts/exploration/compare_classifiers.py --blocos-externos 1 --sem-registro   # conferência rápida
+python scripts/exploration/compare_classifiers.py --modelos lda,svm_lin --especificidade-minima 0.95 \
+    --saida reports/classifier/compare_classifiers_svm_lin.json --responsavel <nome>   # SVM linear (exp264)
 
 # referência para o porte em C (Fase 2)
 python scripts/pipeline/04_extract_features.py --ref-c
