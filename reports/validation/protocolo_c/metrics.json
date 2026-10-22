@@ -41,7 +41,7 @@
     "decisao": "pelo combinado (OU a LDA); o detector sozinho é só reporte",
     "limitacoes_c2": [
       "limiar = máximo de poucas pontuações: alarme esperado ~1/(n+1) só pelo tamanho da calibração (ver alarme_esperado_pela_calibracao); a seção 2 conta com ~47 pontuações",
-      "D2: 7 segmentos para 26 dimensões em cada ajuste fora do bloco; Ledoit–Wolf com encolhimento alto (ver encolhimento_ledoit_wolf)",
+      "D2: 7 segmentos para 26 dimensões em cada ajuste fora do bloco; Ledoit–Wolf com encolhimento em encolhimento_ledoit_wolf",
       "calibração e medida saem do mesmo arquivo de cada rotação: aquisições separadas, mas não independentes; o alarme falso medido fica otimista"
     ]
   },

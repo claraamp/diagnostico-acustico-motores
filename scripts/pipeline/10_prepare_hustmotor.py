@@ -76,8 +76,9 @@ RAZAO_BPFI = N_ESFERAS / 2 * (1 + D_ESFERA / D_PRIMITIVO)     # 4,9469
 # Divisão do C2 (critério v4, seção 5: metade calibra, 1 de descarte, metade mede),
 # aplicada bloco a bloco em cada arquivo da normal e fixada antes de rodar qualquer
 # detector. É pela posição do bloco, sem olhar o conteúdo. Só a normal se divide,
-# porque só ela calibra: a falha não calibra nada e mede com os 5 blocos. Juntar as
-# 4 rotações na normal de calibração é proposta, que depende do Registro de Decisões.
+# porque só ela calibra: a falha não calibra nada e mede com os 5 blocos. A normal das
+# 4 rotações junta na calibração e o descarte do bloco 3 foram aprovados no Registro
+# de Decisões em 22/10.
 BLOCOS_CALIBRACAO = (1, 2)
 BLOCOS_DESCARTE = (3,)
 BLOCOS_MEDIDA = (4, 5)

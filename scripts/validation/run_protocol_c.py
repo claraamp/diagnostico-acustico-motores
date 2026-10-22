@@ -39,8 +39,9 @@ Limitações do C2 (gravadas no metrics.json)
       D2 e ~20 % por série no D1 (~36 % com BPFO OU BPFI), só pelo tamanho da
       calibração. A seção 2 do critério conta com ~47 pontuações (~2 %); aqui o limiar
       não tem esse significado.
-    - No D2, cada ajuste fora do bloco tem 7 segmentos para 26 dimensões: o Ledoit–Wolf
-      encolhe muito, e a distância fica perto de uma distância euclidiana padronizada.
+    - No D2, cada ajuste fora do bloco tem 7 segmentos para 26 dimensões; o encolhimento
+      do Ledoit–Wolf fica gravado no metrics.json (no HUST, 0,37 no ajuste final e 0,40
+      em média fora do bloco).
     - Calibração e medida saem do mesmo arquivo de cada rotação (mesma gravação,
       montagem, microfone e sala): as aquisições são separadas, mas não independentes,
       e o alarme falso medido fica otimista.
@@ -56,9 +57,13 @@ unilateral de 95 % (Clopper–Pearson). Com 8 segmentos e nenhum alarme, ele é 
 o C2 consegue reprovar um detector, mas não aprová-lo. Detecção: fração dos
 segmentos de falha, com o intervalo bilateral de 95 %.
 
-Decisão (`decidir`, contra X = 5 %): aprova se o limite superior de 95 % ficar em até X;
-reprova se o limite inferior de 95 % passar de X; senão, inconclusivo. Pelo critério,
-decide o combinado (o detector OU a LDA); o detector sozinho é reportado à parte.
+Decisão (`decidir`, contra X = 5 %): aprova se o limite superior unilateral de 95 % ficar
+em até X; reprova se o limite inferior unilateral de 95 % passar de X; senão, inconclusivo.
+Os dois limites unilaterais de 95 % equivalem a um intervalo bilateral de 90 %. Pelo
+critério, decide o combinado (o detector OU a LDA); o detector sozinho é reportado à parte.
+
+Decisões do Registro (22/10): normal do C2 junta (as quatro rotações), descarte do bloco 3
+e a regra da `decidir()` acima, que completa o "alarme falso ≤ X" do critério v4.
 
 Uso
 ---
@@ -204,7 +209,10 @@ def limite_inferior(k: int, n: int, conf: float = CONFIANCA) -> float:
 
 
 def decidir(k: int, n: int, x: float = X_ALARME, conf: float = CONFIANCA) -> str:
-    """Aprova se o limite superior ≤ x; reprova se o limite inferior > x; senão, inconclusivo."""
+    """
+    Aprova se o limite superior unilateral ≤ x; reprova se o limite inferior unilateral > x;
+    senão, inconclusivo. Os dois unilaterais de 95 % equivalem a um bilateral de 90 %.
+    """
     if n == 0:
         return "sem dados"
     if limite_superior(k, n, conf) <= x:
@@ -431,7 +439,7 @@ def main() -> int:
                       "limiar = máximo de poucas pontuações: alarme esperado ~1/(n+1) só pelo tamanho da "
                       "calibração (ver alarme_esperado_pela_calibracao); a seção 2 conta com ~47 pontuações",
                       "D2: 7 segmentos para 26 dimensões em cada ajuste fora do bloco; Ledoit–Wolf com "
-                      "encolhimento alto (ver encolhimento_ledoit_wolf)",
+                      "encolhimento em encolhimento_ledoit_wolf",
                       "calibração e medida saem do mesmo arquivo de cada rotação: aquisições separadas, mas não "
                       "independentes; o alarme falso medido fica otimista"]}
     (args.out_dir / "metrics.json").write_text(json.dumps(
