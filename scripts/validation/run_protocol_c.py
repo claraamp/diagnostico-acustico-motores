@@ -27,11 +27,23 @@ C2, comissionamento (é o que decide)
     normal dão o alarme falso; a falha mede a detecção com os blocos dela.
     D2  normal junta (as quatro rotações): por rotação seriam 2 segmentos para 26
         dimensões, e o ajuste fora do bloco teria 1. Limiar = maior pontuação fora do
-        bloco, cada segmento como o seu próprio bloco (as aquisições são independentes).
+        bloco, cada segmento como o seu próprio bloco (as aquisições são separadas).
     D1  só a 20 e a 30 Hz (a 5 e a 10 Hz a máscara do eixo cobre o espectro); normal junta
         das duas rotações; limiar = maior pontuação da calibração, por série.
     D4  não tem limiar para recalibrar: fica só no C1.
 O D3 saiu no Protocolo B (não supera o D2) e não roda aqui.
+
+Limitações do C2 (gravadas no metrics.json)
+    - O limiar é o máximo de poucas pontuações (8 no D2; 4 por série no D1). Um
+      segmento normal novo passa do máximo de n com probabilidade ~1/(n+1): ~11 % no
+      D2 e ~20 % por série no D1 (~36 % com BPFO OU BPFI), só pelo tamanho da
+      calibração. A seção 2 do critério conta com ~47 pontuações (~2 %); aqui o limiar
+      não tem esse significado.
+    - No D2, cada ajuste fora do bloco tem 7 segmentos para 26 dimensões: o Ledoit–Wolf
+      encolhe muito, e a distância fica perto de uma distância euclidiana padronizada.
+    - Calibração e medida saem do mesmo arquivo de cada rotação (mesma gravação,
+      montagem, microfone e sala): as aquisições são separadas, mas não independentes,
+      e o alarme falso medido fica otimista.
 
 Cada detector é reportado sozinho e OU a LDA final (o combinado, como ficaria no
 firmware). A rotação nominal decide; a estimada no segmento (pente do eixo entre 0,85 e
@@ -43,6 +55,10 @@ Alarme falso: k alarmes em n segmentos normais de medida, com o limite superior
 unilateral de 95 % (Clopper–Pearson). Com 8 segmentos e nenhum alarme, ele é 31 %:
 o C2 consegue reprovar um detector, mas não aprová-lo. Detecção: fração dos
 segmentos de falha, com o intervalo bilateral de 95 %.
+
+Decisão (`decidir`, contra X = 5 %): aprova se o limite superior de 95 % ficar em até X;
+reprova se o limite inferior de 95 % passar de X; senão, inconclusivo. Pelo critério,
+decide o combinado (o detector OU a LDA); o detector sozinho é reportado à parte.
 
 Uso
 ---
@@ -84,6 +100,7 @@ CAND = N.CAND_B                            # o espectro do D1 (FFT de 4.096 pont
 EIXO_JUNG_HZ = N.EIXO_NOMINAL_HZ           # 50,17 Hz
 EIXO_ESTIMADO_REL = (0.85, 1.02)           # faixa do pente do eixo, em vezes a rotação nominal
 CONFIANCA = 0.95
+X_ALARME = 0.05                            # alarme falso máximo por segmento (critério, seção 4)
 
 
 # ---------------------------------------------------------------------------
@@ -179,6 +196,24 @@ def limite_superior(k: int, n: int, conf: float = CONFIANCA) -> float:
     return 1.0 if k >= n else float(stats.beta.ppf(conf, k + 1, n - k))
 
 
+def limite_inferior(k: int, n: int, conf: float = CONFIANCA) -> float:
+    """Limite inferior unilateral (Clopper–Pearson) da taxa, com k eventos em n."""
+    if n == 0:
+        return float("nan")
+    return 0.0 if k == 0 else float(stats.beta.ppf(1 - conf, k, n - k + 1))
+
+
+def decidir(k: int, n: int, x: float = X_ALARME, conf: float = CONFIANCA) -> str:
+    """Aprova se o limite superior ≤ x; reprova se o limite inferior > x; senão, inconclusivo."""
+    if n == 0:
+        return "sem dados"
+    if limite_superior(k, n, conf) <= x:
+        return "aprova"
+    if limite_inferior(k, n, conf) > x:
+        return "reprova"
+    return "inconclusivo"
+
+
 def intervalo(k: int, n: int, conf: float = CONFIANCA) -> tuple[float, float]:
     """Intervalo bilateral (Clopper–Pearson) da taxa, com k eventos em n."""
     if n == 0:
@@ -200,6 +235,8 @@ def resumir(segs: list[SegHust], dispara: np.ndarray, medida_normal: np.ndarray,
     rot = np.array([s.rotacao for s in segs])
     alarme, det = contar(dispara, medida_normal), contar(dispara, medida_falha)
     alarme["limite_superior_95"] = limite_superior(alarme["k"], alarme["n"])
+    alarme["limite_inferior_95"] = limite_inferior(alarme["k"], alarme["n"])
+    alarme["decisao"] = decidir(alarme["k"], alarme["n"])
     det["intervalo_95"] = intervalo(det["k"], det["n"])
     por_rot = {}
     for v in sorted(set(rot[medida_normal | medida_falha].tolist())):
@@ -232,17 +269,30 @@ def dispara_pente(pont: np.ndarray, lim: np.ndarray) -> np.ndarray:
     return out
 
 
-def mahalanobis_c2(X: np.ndarray, calib: np.ndarray) -> tuple[np.ndarray, float]:
-    """D2 no C2: ajuste na calibração, limiar fora do bloco (cada segmento o seu bloco)."""
+def mahalanobis_c2(X: np.ndarray, calib: np.ndarray) -> tuple[np.ndarray, float, dict]:
+    """
+    D2 no C2: ajuste na calibração, limiar fora do bloco (cada segmento o seu bloco).
+    Devolve também o encolhimento do Ledoit–Wolf, no ajuste final e nos ajustes fora do bloco.
+    """
     idx = np.flatnonzero(calib)
     lim = N.limiar_fora_do_bloco(X, idx, np.arange(len(idx)))
-    return N.Mahalanobis().fit(X[idx]).pontuar(X) > lim, lim
+    final = N.Mahalanobis().fit(X[idx])
+    fora = [N.Mahalanobis().fit(X[np.delete(idx, i)]).lw.shrinkage_ for i in range(len(idx))]
+    encolhimento = {"final": float(final.lw.shrinkage_), "fora_do_bloco_media": float(np.mean(fora)),
+                    "n_ajuste_fora_do_bloco": len(idx) - 1, "dimensoes": X.shape[1]}
+    return final.pontuar(X) > lim, lim, encolhimento
+
+
+def alarme_esperado_pelo_maximo(n_calib: int, n_series: int = 1) -> float:
+    """Chance de um segmento normal novo passar do máximo de n_calib (~1/(n+1) por série)."""
+    p = 1 / (n_calib + 1)
+    return 1 - (1 - p) ** n_series
 
 
 # ---------------------------------------------------------------------------
 def _fmt(r: dict) -> str:
     a, d = r["alarme"], r["deteccao"]
-    return (f"alarme {a['k']:>2}/{a['n']:<2} (≤ {a['limite_superior_95']:.0%})   "
+    return (f"alarme {a['k']:>2}/{a['n']:<2} (≤ {a['limite_superior_95']:.0%}; {a['decisao']:<12})   "
             f"detecção {d['k']:>2}/{d['n']:<2} [{d['intervalo_95'][0]:.2f}, {d['intervalo_95'][1]:.2f}]")
 
 
@@ -338,6 +388,8 @@ def main() -> int:
     pont = {m: pontuacoes_pente(segs, razoes, m) for m in ("nominal", "estimado")}
     for m in ("nominal", "estimado"):
         res[f"C1_D1_{m}"] = {"leitura": "C1", "detector": "D1", "rotacao": m, "limiar": lim_d1_jung.tolist(),
+                             "nota": "limiar do Jung tirado com a rotação nominal do Jung (50,17 Hz) nos dois modos; "
+                                     "a rotação estimada vale só no HUST" if m == "estimado" else None,
                              "resultado": leitura(segs, dispara_pente(pont[m], lim_d1_jung), lda_falha, normal, falha)}
 
     sint = N.features_sinteticas(clipes, segmentos, config.SEMENTE)
@@ -349,12 +401,16 @@ def main() -> int:
                     "resultado": {"sozinho": resumir(segs, d4_c1, normal, falha)}}
 
     # C2: normal do próprio HUST
-    d2_c2, lim_d2 = mahalanobis_c2(X, calib)
+    d2_c2, lim_d2, encolhimento = mahalanobis_c2(X, calib)
     res["C2_D2"] = {"leitura": "C2", "detector": "D2", "rotacao": None, "limiar": lim_d2,
+                    "encolhimento_ledoit_wolf": encolhimento,
+                    "alarme_esperado_pela_calibracao": alarme_esperado_pelo_maximo(int(calib.sum())),
                     "resultado": leitura(segs, d2_c2, lda_falha, med_normal, med_falha)}
     for m in ("nominal", "estimado"):
         lim = limiar_pente(pont[m][calib])
+        n_cal_d1 = int((calib & ~np.isnan(pont[m]).any(axis=1)).sum())
         res[f"C2_D1_{m}"] = {"leitura": "C2", "detector": "D1", "rotacao": m, "limiar": lim.tolist(),
+                             "alarme_esperado_pela_calibracao": alarme_esperado_pelo_maximo(n_cal_d1, 2),
                              "resultado": leitura(segs, dispara_pente(pont[m], lim), lda_falha, med_normal, med_falha)}
 
     # ---- saída ----------------------------------------------------------------------
@@ -369,7 +425,15 @@ def main() -> int:
     parametros = {"modelo": modelo_id, "splits": hash_splits, "features_commit": feat_commit,
                   "razoes_hust": razoes, "divisao_c2": divisao, "normal_c2": "junta",
                   "espectro_d1": CAND.nome, "eixo_jung_hz": EIXO_JUNG_HZ, "eixo_estimado_rel": EIXO_ESTIMADO_REL,
-                  "confianca": CONFIANCA, "d4_semente": config.SEMENTE}
+                  "confianca": CONFIANCA, "x_alarme": X_ALARME, "d4_semente": config.SEMENTE,
+                  "decisao": "pelo combinado (OU a LDA); o detector sozinho é só reporte",
+                  "limitacoes_c2": [
+                      "limiar = máximo de poucas pontuações: alarme esperado ~1/(n+1) só pelo tamanho da "
+                      "calibração (ver alarme_esperado_pela_calibracao); a seção 2 conta com ~47 pontuações",
+                      "D2: 7 segmentos para 26 dimensões em cada ajuste fora do bloco; Ledoit–Wolf com "
+                      "encolhimento alto (ver encolhimento_ledoit_wolf)",
+                      "calibração e medida saem do mesmo arquivo de cada rotação: aquisições separadas, mas não "
+                      "independentes; o alarme falso medido fica otimista"]}
     (args.out_dir / "metrics.json").write_text(json.dumps(
         {"parametros": parametros, "leituras": res}, ensure_ascii=False, indent=2,
         default=lambda o: list(o) if isinstance(o, tuple) else float(o)) + "\n", encoding="utf-8", newline="\n")
@@ -378,13 +442,16 @@ def main() -> int:
         print("(registry não alterado)")
         return 0
 
+    blocos = lambda chave: ",".join(str(b) for b in divisao[chave])
+    divisao_txt = (f"calib={blocos('blocos_calibracao')};descarte={blocos('blocos_descarte')};"
+                   f"medida={blocos('blocos_medida')};falha={blocos('blocos_medida_falha')}")
     linhas, base = [], experimentos.next_exp_number(args.registry)
     for nome, r in res.items():
         met = {}
         for modo, rr in r["resultado"].items():
             a, d = rr["alarme"], rr["deteccao"]
             met.update({f"alarme_{modo}": f"{a['k']}/{a['n']}", f"alarme_sup95_{modo}": f"{a['limite_superior_95']:.4f}",
-                        f"deteccao_{modo}": f"{d['k']}/{d['n']}"})
+                        f"decisao_{modo}": a["decisao"], f"deteccao_{modo}": f"{d['k']}/{d['n']}"})
         linhas.append({
             "id": f"exp{base + len(linhas):03d}",
             "data": date.today().isoformat(),
@@ -394,14 +461,15 @@ def main() -> int:
             "parametros": experimentos.kv({
                 "protocolo": "C", "leitura": r["leitura"], "detector": r["detector"], "rotacao": r["rotacao"],
                 "normal_c2": "junta" if r["leitura"] == "C2" else None, "modelo": modelo_id,
-                "divisao_c2": "calib=1,2;descarte=3;medida=4,5;falha=1-5" if r["leitura"] == "C2" else None,
+                "divisao_c2": divisao_txt if r["leitura"] == "C2" else None,
                 "espectro": CAND.nome if r["detector"] == "D1" else None,
                 "splits": hash_splits, "features_commit": feat_commit, "fs_hz": config.FS_TRABALHO}),
             "dataset": f"hustmotor_som_H_BF_{config.FS_TRABALHO}Hz",
             "metricas": experimentos.kv(met),
             "responsavel": args.responsavel,
-            "notas": (f"Protocolo C, {r['leitura']}: alarme falso com limite superior de 95 % (Clopper–Pearson); "
-                      "C2 só consegue reprovar" + (f"; {args.notas}" if args.notas else "")),
+            "notas": (f"Protocolo C, {r['leitura']}: alarme falso com limite superior de 95 % (Clopper–Pearson)"
+                      + ("; C2 só consegue reprovar, e decide o combinado (OU a LDA)" if r["leitura"] == "C2" else "")
+                      + (f"; {args.notas}" if args.notas else "")),
         })
     experimentos.append_registry(args.registry, linhas)
     print(f"registrado: {linhas[0]['id']}–{linhas[-1]['id']}")

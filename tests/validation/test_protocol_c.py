@@ -2,13 +2,16 @@
 Testes do run_protocol_c.py, sem data/.
 
 Garantias: o limite superior do alarme falso é o do card (zero alarmes em 8 dá 31 %, em
-20 dá 14 %); o pente só roda onde a máscara do eixo deixa dentes (20 e 30 Hz); o D2 do C2
-tira o limiar fora do bloco, só da calibração, e marca um ponto longe; e os segmentos
+20 dá 14 %), com casos intermediários conferidos, e a decisão contra X segue os dois
+limites; o pente só roda onde a máscara do eixo deixa dentes (20 e 30 Hz); o D2 do C2
+tira o limiar fora do bloco, só da calibração, igual a uma conta independente com o
+Ledoit–Wolf do sklearn, e marca um ponto longe; e os segmentos
 em que o pente não foi avaliado ficam fora da conta.
 """
 
 import numpy as np
 import pytest
+from sklearn.covariance import LedoitWolf
 
 from validation import run_protocol_c as C
 
@@ -20,6 +23,25 @@ def test_limite_superior_do_alarme_falso():
     assert C.limite_superior(8, 8) == 1.0
     lo, hi = C.intervalo(10, 10)
     assert hi == 1.0 and lo == pytest.approx(0.025 ** (1 / 10))
+    # casos intermediários (0 < k < n), onde a beta pode errar
+    assert C.limite_superior(1, 4) == pytest.approx(0.751, abs=1e-3)
+    assert C.limite_superior(3, 4) == pytest.approx(0.987, abs=1e-3)
+    assert C.intervalo(3, 4) == pytest.approx((0.194, 0.994), abs=1e-3)
+
+
+def test_decisao_contra_x():
+    assert C.decidir(0, 8) == "inconclusivo"        # limite superior de 31 %
+    assert C.decidir(0, 59) == "aprova"             # 1 - 0,05^(1/59) < 5 %
+    assert C.decidir(0, 58) == "inconclusivo"
+    assert C.decidir(3, 4) == "reprova"             # limite inferior de 25 %
+    assert C.decidir(8, 8) == "reprova"
+    assert C.decidir(1, 100) == "aprova"            # limite superior de 4,7 %
+    assert C.decidir(2, 40) == "inconclusivo"       # 5 % medido: limites de 0,9 % e 15 %
+
+
+def test_alarme_esperado_pelo_maximo():
+    assert C.alarme_esperado_pelo_maximo(8) == pytest.approx(1 / 9)
+    assert C.alarme_esperado_pelo_maximo(4, 2) == pytest.approx(1 - 0.8 ** 2)
 
 
 def test_pente_so_onde_a_mascara_deixa_dentes():
@@ -32,11 +54,19 @@ def test_d2_do_c2_calibra_so_na_calibracao_e_marca_o_ponto_longe():
     calib = np.zeros(12, dtype=bool)
     calib[:8] = True
     X[11] += 20                                     # um segmento de medida muito longe da normal
-    dispara, lim = C.mahalanobis_c2(X, calib)
+    dispara, lim, encolhimento = C.mahalanobis_c2(X, calib)
     assert dispara[11] and lim > 0
-    # o limiar é o maior das pontuações fora do bloco, cada segmento de calibração o seu bloco
-    loo = [C.N.Mahalanobis().fit(np.delete(X[:8], i, axis=0)).pontuar(X[i:i + 1])[0] for i in range(8)]
-    assert lim == pytest.approx(max(loo))
+    # conta independente: padroniza e ajusta o Ledoit–Wolf do sklearn direto, deixando
+    # cada segmento de calibração de fora, e a distância ao quadrado é a forma quadrática
+    loo = []
+    for i in range(8):
+        A = np.delete(X[:8], i, axis=0)
+        mu, sd = A.mean(axis=0), A.std(axis=0)
+        lw = LedoitWolf().fit((A - mu) / sd)
+        z = (X[i] - mu) / sd
+        loo.append(z @ np.linalg.inv(lw.covariance_) @ z)
+    assert lim == pytest.approx(max(loo), rel=1e-9)
+    assert 0 < encolhimento["final"] < 1 and encolhimento["n_ajuste_fora_do_bloco"] == 7
     # mexer num segmento que não é de calibração não muda o limiar
     X2 = X.copy()
     X2[9] += 50
