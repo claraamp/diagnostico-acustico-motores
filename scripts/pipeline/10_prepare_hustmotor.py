@@ -134,15 +134,7 @@ def ler_txt(caminho: Path) -> np.ndarray:
     return dados[:, 1 + CANAL_SOM].reshape(n_blocos, n_bloco)
 
 
-def cortar_segmentos(x: np.ndarray, n: int, n_segmentos: int) -> np.ndarray:
-    """
-    Os segmentos independentes de um .bin do HUST, (n_segmentos, n). Cada um vem de
-    uma aquisição separada: corte só assim, em 1 s, sem sobreposição, e nunca filtre
-    nem decime o .bin inteiro, porque o filtro cruzaria as emendas.
-    """
-    if x.size != n * n_segmentos:
-        raise ValueError(f"{x.size} amostras não são {n_segmentos} segmentos de {n}")
-    return x.reshape(n_segmentos, n)
+cortar_segmentos = pcm_io.cortar_segmentos   # mora no pcm_io, para o Protocolo C importar
 
 
 def segmento_do_meio(y: np.ndarray, n: int) -> np.ndarray:
