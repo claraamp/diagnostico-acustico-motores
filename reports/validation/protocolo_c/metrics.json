@@ -36,7 +36,14 @@
       1.02
     ],
     "confianca": 0.95,
-    "d4_semente": 20260925
+    "x_alarme": 0.05,
+    "d4_semente": 20260925,
+    "decisao": "pelo combinado (OU a LDA); o detector sozinho é só reporte",
+    "limitacoes_c2": [
+      "limiar = máximo de poucas pontuações: alarme esperado ~1/(n+1) só pelo tamanho da calibração (ver alarme_esperado_pela_calibracao); a seção 2 conta com ~47 pontuações",
+      "D2: 7 segmentos para 26 dimensões em cada ajuste fora do bloco; Ledoit–Wolf com encolhimento alto (ver encolhimento_ledoit_wolf)",
+      "calibração e medida saem do mesmo arquivo de cada rotação: aquisições separadas, mas não independentes; o alarme falso medido fica otimista"
+    ]
   },
   "leituras": {
     "LDA_sem_retreino": {
@@ -49,7 +56,9 @@
             "k": 20,
             "n": 20,
             "taxa": 1.0,
-            "limite_superior_95": 1.0
+            "limite_superior_95": 1.0,
+            "limite_inferior_95": 0.8608916593317348,
+            "decisao": "reprova"
           },
           "deteccao": {
             "k": 20,
@@ -128,7 +137,9 @@
             "k": 20,
             "n": 20,
             "taxa": 1.0,
-            "limite_superior_95": 1.0
+            "limite_superior_95": 1.0,
+            "limite_inferior_95": 0.8608916593317348,
+            "decisao": "reprova"
           },
           "deteccao": {
             "k": 20,
@@ -199,7 +210,9 @@
             "k": 20,
             "n": 20,
             "taxa": 1.0,
-            "limite_superior_95": 1.0
+            "limite_superior_95": 1.0,
+            "limite_inferior_95": 0.8608916593317348,
+            "decisao": "reprova"
           },
           "deteccao": {
             "k": 20,
@@ -275,13 +288,16 @@
         6.843993266694766,
         5.2326108603562655
       ],
+      "nota": null,
       "resultado": {
         "sozinho": {
           "alarme": {
             "k": 0,
             "n": 10,
             "taxa": 0.0,
-            "limite_superior_95": 0.2588655508930522
+            "limite_superior_95": 0.2588655508930522,
+            "limite_inferior_95": 0.0,
+            "decisao": "inconclusivo"
           },
           "deteccao": {
             "k": 5,
@@ -326,7 +342,9 @@
             "k": 10,
             "n": 10,
             "taxa": 1.0,
-            "limite_superior_95": 1.0
+            "limite_superior_95": 1.0,
+            "limite_inferior_95": 0.7411344491069478,
+            "decisao": "reprova"
           },
           "deteccao": {
             "k": 10,
@@ -376,13 +394,16 @@
         6.843993266694766,
         5.2326108603562655
       ],
+      "nota": "limiar do Jung tirado com a rotação nominal do Jung (50,17 Hz) nos dois modos; a rotação estimada vale só no HUST",
       "resultado": {
         "sozinho": {
           "alarme": {
             "k": 0,
             "n": 10,
             "taxa": 0.0,
-            "limite_superior_95": 0.2588655508930522
+            "limite_superior_95": 0.2588655508930522,
+            "limite_inferior_95": 0.0,
+            "decisao": "inconclusivo"
           },
           "deteccao": {
             "k": 4,
@@ -427,7 +448,9 @@
             "k": 10,
             "n": 10,
             "taxa": 1.0,
-            "limite_superior_95": 1.0
+            "limite_superior_95": 1.0,
+            "limite_inferior_95": 0.7411344491069478,
+            "decisao": "reprova"
           },
           "deteccao": {
             "k": 10,
@@ -479,7 +502,9 @@
             "k": 20,
             "n": 20,
             "taxa": 1.0,
-            "limite_superior_95": 1.0
+            "limite_superior_95": 1.0,
+            "limite_inferior_95": 0.8608916593317348,
+            "decisao": "reprova"
           },
           "deteccao": {
             "k": 20,
@@ -552,13 +577,22 @@
       "detector": "D2",
       "rotacao": null,
       "limiar": 141.18332024989152,
+      "encolhimento_ledoit_wolf": {
+        "final": 0.36666739323920367,
+        "fora_do_bloco_media": 0.4044241321570531,
+        "n_ajuste_fora_do_bloco": 7,
+        "dimensoes": 26
+      },
+      "alarme_esperado_pela_calibracao": 0.11111111111111116,
       "resultado": {
         "sozinho": {
           "alarme": {
             "k": 0,
             "n": 8,
             "taxa": 0.0,
-            "limite_superior_95": 0.3123439780663678
+            "limite_superior_95": 0.3123439780663678,
+            "limite_inferior_95": 0.0,
+            "decisao": "inconclusivo"
           },
           "deteccao": {
             "k": 15,
@@ -629,7 +663,9 @@
             "k": 8,
             "n": 8,
             "taxa": 1.0,
-            "limite_superior_95": 1.0
+            "limite_superior_95": 1.0,
+            "limite_inferior_95": 0.6876560219336322,
+            "decisao": "reprova"
           },
           "deteccao": {
             "k": 20,
@@ -705,13 +741,16 @@
         3.3256104863893423,
         3.9921410539045383
       ],
+      "alarme_esperado_pela_calibracao": 0.3599999999999999,
       "resultado": {
         "sozinho": {
           "alarme": {
             "k": 3,
             "n": 4,
             "taxa": 0.75,
-            "limite_superior_95": 0.9872585449014338
+            "limite_superior_95": 0.9872585449014338,
+            "limite_inferior_95": 0.24860462573018188,
+            "decisao": "reprova"
           },
           "deteccao": {
             "k": 10,
@@ -756,7 +795,9 @@
             "k": 4,
             "n": 4,
             "taxa": 1.0,
-            "limite_superior_95": 1.0
+            "limite_superior_95": 1.0,
+            "limite_inferior_95": 0.472870804501588,
+            "decisao": "reprova"
           },
           "deteccao": {
             "k": 10,
@@ -806,13 +847,16 @@
         3.4916857246512025,
         3.755627989512089
       ],
+      "alarme_esperado_pela_calibracao": 0.3599999999999999,
       "resultado": {
         "sozinho": {
           "alarme": {
             "k": 2,
             "n": 4,
             "taxa": 0.5,
-            "limite_superior_95": 0.9023885371135856
+            "limite_superior_95": 0.9023885371135856,
+            "limite_inferior_95": 0.0976114628864144,
+            "decisao": "reprova"
           },
           "deteccao": {
             "k": 10,
@@ -857,7 +901,9 @@
             "k": 4,
             "n": 4,
             "taxa": 1.0,
-            "limite_superior_95": 1.0
+            "limite_superior_95": 1.0,
+            "limite_inferior_95": 0.472870804501588,
+            "decisao": "reprova"
           },
           "deteccao": {
             "k": 10,
