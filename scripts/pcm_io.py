@@ -288,6 +288,18 @@ def gravar_clipes(
     return caminho_manifest
 
 
+def cortar_segmentos(x: np.ndarray, n: int, n_segmentos: int) -> np.ndarray:
+    """
+    Os segmentos independentes de um .bin do HUSTmotor, (n_segmentos, n). Cada um vem
+    de uma aquisição separada (docs/hustmotor.md): corte só assim, em 1 s, sem
+    sobreposição, e nunca filtre nem decime o .bin inteiro, porque o filtro cruzaria
+    as emendas.
+    """
+    if x.size != n * n_segmentos:
+        raise ValueError(f"{x.size} amostras não são {n_segmentos} segmentos de {n}")
+    return x.reshape(n_segmentos, n)
+
+
 def para_pcm(x: np.ndarray) -> np.ndarray:
     """Converte float em [-1, 1] de volta para int16, com saturação."""
     return np.clip(np.round(x * config.INT16_FULL), -32768, 32767).astype(config.PCM_DTYPE)

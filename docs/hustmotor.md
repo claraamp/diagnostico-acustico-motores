@@ -34,7 +34,7 @@ Cada `.txt` tem um cabeçalho e 163.840 linhas com 5 colunas: tempo, vibração 
 
 Consequência: cada bloco é decimado sozinho (o filtro não atravessa a emenda) e dá **um** segmento de 1 s, o do meio do bloco, longe dos transitórios do filtro. Segmentos sobrepostos no mesmo bloco seriam quase cópias e inflariam a contagem.
 
-**Como ler o `.bin`:** os 5 segmentos estão em sequência, mas são independentes. Corte em segmentos de 1 s, sem sobreposição (`cortar_segmentos()` do `10`), e nunca filtre nem decime o `.bin` inteiro: o filtro cruzaria as emendas. Isso vale, por exemplo, para o D1b, que no Jung decima a gravação inteira; no HUST, ele tem de decimar segmento a segmento.
+**Como ler o `.bin`:** os 5 segmentos estão em sequência, mas vêm de aquisições separadas. Corte em segmentos de 1 s, sem sobreposição (`cortar_segmentos()` do `10`), e nunca filtre nem decime o `.bin` inteiro: o filtro cruzaria as emendas. Isso vale, por exemplo, para o D1b, que no Jung decima a gravação inteira; no HUST, ele tem de decimar segmento a segmento.
 
 | Classe | 5 Hz | 10 Hz | 20 Hz | 30 Hz | Total |
 |---|---:|---:|---:|---:|---:|
@@ -97,9 +97,11 @@ A regra do critério (metade calibra, 1 de descarte, metade mede) vale só para 
 
 A falha não calibra nada, então não perde blocos: os 5 medem a detecção.
 
-Os blocos são aquisições separadas, então o descarte do bloco 3 não é necessário contra vazamento no tempo, como no Jung. Ele fica para seguir a regra do critério ao pé da letra.
+**Decisões do Registro (22/10).** Três pontos que o critério v4 não fixava foram aprovados pelo grupo, por comentário na página do Registro de Decisões:
 
-**Normal por rotação não funciona:** seriam 2 segmentos de calibração para 26 dimensões. A proposta, de Clara na revisão, é **juntar as 4 rotações na normal de calibração** (8 segmentos, com Ledoit-Wolf) e ler o resultado por rotação, com intervalo binomial, em vez de aprovado ou reprovado contra X. Como muda o protocolo, essa proposta precisa de uma página no Registro de Decisões antes de rodar o C2.
+1. **Normal junta.** Por rotação seriam 2 segmentos de calibração para 26 dimensões. A calibração junta as 4 rotações (8 segmentos, com Ledoit-Wolf), e o resultado é lido por rotação, com intervalo binomial.
+2. **Descarte do bloco 3.** Os blocos são aquisições separadas, então o descarte não é necessário contra vazamento no tempo, como no Jung; ele fica para seguir a regra do critério. Usar o bloco 3 daria 3 segmentos de medida por rotação, sem mudar o veredito.
+3. **Regra da decisão contra X = 5 %.** Aprova se o limite superior unilateral de 95 % do alarme falso ficar em até 5 %; reprova se o limite inferior unilateral de 95 % passar de 5 %; senão, inconclusivo. Equivale a um intervalo bilateral de 90 %. O critério v4 só dizia "alarme falso ≤ X". Pelo critério, decide o combinado (o detector OU a LDA).
 
 **O C2 só consegue reprovar.** Com zero alarmes, o limite superior de 95 % do alarme falso fica em 31 % com 8 segmentos medidos (1 − 0,05^(1/8)) e em 14 % com 20. Para mostrar alarme falso ≤ 5 %, seriam precisos 59 segmentos sem alarme, e o HUST não tem esse tanto de normal. O C2 pode mostrar que um detector dispara demais, mas não que ele dispara pouco o bastante. Isso tem de ir para o relatório.
 
