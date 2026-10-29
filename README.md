@@ -76,6 +76,23 @@ O `inspect_deteccao_novidade.py` roda, no Protocolo B, os candidatos do `docs/cr
 
 O `10_prepare_hustmotor.py` põe o som do HUSTmotor multimodal (Zhao et al., 2025) no formato do pipeline, só as classes saudável e falha de rolamento, nas 4 velocidades (5, 10, 20 e 30 Hz), decimado de 25,6 para 12,8 kHz com a mesma regra de filtro do Jung. **Cada arquivo são 5 aquisições separadas de 1,28 s**, e não 6,4 s contínuos: cada bloco é decimado sozinho e dá um segmento de 1 s, então são 5 segmentos por classe e velocidade (20 por classe). O repositório não declara licença (a descrição pede a citação do artigo), e os dados não são versionados. O rolamento é o 6203, inferido (BPFO 3,053 × e BPFI 4,947 × a rotação nominal), e o pente é inviável a 5 e a 10 Hz. Detalhes, download e o que isso muda no Protocolo C em `docs/hustmotor.md`.
 
+### Recalibração da LDA pela normal da máquina nova (`exp282`–`exp286`)
+
+**Não funciona: a LDA recalibrada não detecta nenhum segmento com falha do HUSTmotor (0/15 a 10, 20 e 30 Hz; 0/5 a 5 Hz).** O experimento segue a página "Recalibrar a LDA pela normal da máquina nova" do Registro de Decisões (29/10, Definida), com tudo fixado antes de rodar (`run_protocol_c.py --recalibracao`). A LDA final do Jung é aplicada sem mudar os pesos, depois de as características do HUST serem levadas ao referencial da normal do Jung só com gravações saudáveis: a média de cada rotação sai das aquisições 1 e 2 da normal (as do C2), e a referência é a média dos 59 segmentos normais do Jung (`reports/validation/protocolo_c/recalibracao/normal_jung.json`). A base é a normalização da média cepstral: um microfone, uma sala ou um ganho diferentes deslocam as 13 médias do MFCC e não mudam os 13 desvios.
+
+| Leitura | Papel | Alarme falso (normais de medida) | Detecção a 10–30 Hz | Detecção a 5 Hz |
+|---|---|---:|---:|---:|
+| LDA sem recalibrar (comparação) | — | 8/8, reprova | 15/15 | 5/5 |
+| Só as 13 médias (`exp282`) | decide | 0/8, inconclusivo | **0/15** | 0/5 |
+| Controle sem o c0 (`exp283`) | decide junto | 0/8, inconclusivo | 0/15 | 0/5 |
+| As 26 médias (`exp284`) | reporte | 0/8, inconclusivo | 0/15 | 0/5 |
+| Com o desvio, piso de 0,5 σ (`exp285`) | reporte | 0/8, inconclusivo | 0/15 | 0/5 |
+| D2 do C2 OU a LDA recalibrada (`exp286`) | combinado | 0/8, inconclusivo | 15/15 | 0/5 |
+
+O critério pedia pelo menos 12 dos 15 segmentos com falha a 10, 20 e 30 Hz na principal e no controle sem o c0. A recalibração acerta a parte do nível: os normais do HUST passam de 8/8 alarmes para 0/8. Mas a falha também é levada para o lado da normal, e nenhuma variante a detecta. A leitura combinada detecta exatamente o que o D2 detecta sozinho (`exp279`), porque a LDA recalibrada não dispara em nenhum segmento. A conferência no Protocolo B (cada fold recalibrado com a normal do próprio treino) dá 0,8750 com e sem a recalibração e nenhuma decisão diferente: o código não muda nada onde não há o que corrigir.
+
+**Por que não funciona (diagnóstico feito depois da rodada, fora do registro).** Na variante principal, a recalibração só soma uma constante ao escore de cada rotação: ela equivale a mudar o bias da LDA, que é como o firmware a aplicaria. Ela move o limiar, mas não muda a ordem dos segmentos ao longo do eixo da LDA. No HUST, essa ordem já estava invertida antes de recalibrar: mediana do escore de 3.694 nos normais de medida e de 1.784 na falha, quando no Jung a falha fica acima da normal (medianas de −1.466 na normal e +1.463 nas falhas). Depois da recalibração, a normal do HUST cai em −1.410, ao lado da normal do Jung, e a falha cai em −3.206, do lado oposto ao das falhas do Jung. Ao longo do eixo da LDA, a falha do HUST se afasta da normal na direção contrária à das falhas do Jung, em todas as rotações. Inverter o sinal depois de ver a falha seria treinar na falha, e não vale. **A diferença entre as máquinas não é só de nível e microfone: a direção que separa falha de normal no Jung não é a do HUST.** O que transfere entre as máquinas é a detecção de novidade calibrada só com a normal (o D2 do C2), e não o classificador.
+
 ## Dataset
 
 Jung, W.; Kim, S.-H.; Yun, S.-H.; Bae, J.; Park, Y.-H. (2023), *Data in Brief* 48, 109049. Subconjunto acústico (microfone), 5 classes — `0Nm_Normal`, `0Nm_BPFI_03`, `0Nm_BPFI_10`, `0Nm_BPFO_03`, `0Nm_BPFO_10` — 60 s cada, 51,2 kHz, formato `.mat`.
