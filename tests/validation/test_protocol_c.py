@@ -84,3 +84,158 @@ def test_pente_nao_avaliado_fica_fora_da_conta():
     assert (r["alarme"]["k"], r["alarme"]["n"]) == (1, 2)          # só 20 e 30 Hz contam
     assert (r["deteccao"]["k"], r["deteccao"]["n"]) == (2, 2)
     assert set(r["por_rotacao"]) == {20, 30}
+
+
+# ---------------------------------------------------------------------------
+# Recalibração da LDA pela normal da máquina nova (Registro, 29/10)
+# ---------------------------------------------------------------------------
+def _maquina(seed=0, n_rot=(5, 10, 20, 30), por_rot=5):
+    """Segmentos de uma 'máquina' com rotação, classe e bloco, no formato do C2."""
+    rng = np.random.default_rng(seed)
+    rot, cls, bl = [], [], []
+    for v in n_rot:
+        for c in ("H", "BF"):
+            for b in range(1, por_rot + 1):
+                rot.append(v), cls.append(c), bl.append(b)
+    rot, cls, bl = np.array(rot), np.array(cls), np.array(bl)
+    X = rng.standard_normal((len(rot), 26))
+    calib = (cls == "H") & np.isin(bl, [1, 2])
+    return X, rot, cls, bl, calib
+
+
+def _ref(seed=1):
+    rng = np.random.default_rng(seed)
+    return {"media": rng.standard_normal(26), "desvio": rng.uniform(0.5, 2.0, 26), "n": 59}
+
+
+def test_principal_desloca_so_as_13_medias_e_centra_a_calibracao():
+    X, rot, _, _, calib = _maquina()
+    ref = _ref()
+    Xr, info = C.recalibrar(X, rot, calib, ref, "medias13")
+    np.testing.assert_array_equal(Xr[:, 13:], X[:, 13:])          # os desvios ficam como medidos
+    for v in (5, 10, 20, 30):
+        c = calib & (rot == v)
+        np.testing.assert_allclose(Xr[c, :13].mean(axis=0), ref["media"][:13], atol=1e-12)
+        m = rot == v                                               # o mesmo deslocamento em toda a rotação
+        delta = (ref["media"] - X[c].mean(axis=0))[:13]
+        np.testing.assert_allclose(Xr[m, :13] - X[m, :13], np.broadcast_to(delta, (m.sum(), 13)), atol=1e-12)
+    assert info["n_calibracao"] == 8 and set(info["media_por_rotacao"]) == {5, 10, 20, 30}
+
+
+def test_filtro_fixo_por_rotacao_e_desfeito_pela_principal():
+    # a máquina de referência tem a normal de calibração centrada na referência (média zero);
+    # a máquina nova é a mesma com um "filtro fixo" diferente em cada rotação, que soma uma
+    # constante às 13 médias. A principal devolve as características originais.
+    X0, rot, _, _, calib = _maquina(seed=3)
+    for v in (5, 10, 20, 30):
+        X0[rot == v, :13] -= X0[calib & (rot == v), :13].mean(axis=0)
+    ref = {"media": np.zeros(26), "desvio": np.ones(26), "n": 59}
+    rng = np.random.default_rng(4)
+    offset = {v: np.r_[rng.normal(0, 5, 13), np.zeros(13)] for v in (5, 10, 20, 30)}
+    X = X0 + np.array([offset[v] for v in rot])
+    Xr, _ = C.recalibrar(X, rot, calib, ref, "medias13")
+    np.testing.assert_allclose(Xr, X0, atol=1e-10)
+
+
+def test_controle_sem_c0_neutraliza_a_media_e_o_desvio_do_c0():
+    X, rot, _, _, calib = _maquina()
+    ref = _ref()
+    Xr, _ = C.recalibrar(X, rot, calib, ref, "sem_c0")
+    Xp, _ = C.recalibrar(X, rot, calib, ref, "medias13")
+    assert np.all(Xr[:, 0] == ref["media"][0]) and np.all(Xr[:, 13] == ref["media"][13])
+    outras = [j for j in range(26) if j not in (0, 13)]
+    np.testing.assert_array_equal(Xr[:, outras], Xp[:, outras])
+
+
+def test_variante_de_26_e_variante_com_desvio():
+    X, rot, _, _, calib = _maquina()
+    ref = _ref()
+    X26, _ = C.recalibrar(X, rot, calib, ref, "medias26")
+    for v in (5, 10, 20, 30):
+        np.testing.assert_allclose(X26[calib & (rot == v)].mean(axis=0), ref["media"], atol=1e-12)
+    # desvio: n − rotações graus de liberdade e o piso de 0,5 · σ_Jung
+    X[calib, 7] = X[calib, 7] * 1e-6                                 # desvio quase zero numa característica
+    Xd, info = C.recalibrar(X, rot, calib, ref, "desvio")
+    assert info["graus_de_liberdade"] == 8 - 4 and info["caracteristicas_no_piso"] >= 1
+    c = calib & (rot == 10)
+    mu = X[c].mean(axis=0)
+    j = 7                                                            # no piso: divide por 0,5 · σ_Jung
+    np.testing.assert_allclose(Xd[rot == 10, j], ref["media"][j] + (X[rot == 10, j] - mu[j]) / 0.5)
+
+
+def test_recalibracao_recusa_rotacao_sem_calibracao_e_variante_sem_graus_de_liberdade():
+    X, rot, cls, bl, calib = _maquina()
+    sem_5hz = calib & (rot != 5)
+    with pytest.raises(ValueError, match="sem segmento de calibração"):
+        C.recalibrar(X, rot, sem_5hz, _ref(), "medias13")
+    um_por_rot = (cls == "H") & (bl == 1)
+    with pytest.raises(ValueError, match="graus de liberdade"):
+        C.recalibrar(X, rot, um_por_rot, _ref(), "desvio")
+    with pytest.raises(ValueError, match="variante"):
+        C.recalibrar(X, rot, calib, _ref(), "outra")
+
+
+def test_principal_entra_so_no_bias_no_firmware():
+    X, rot, _, _, calib = _maquina()
+    ref = _ref()
+    rng = np.random.default_rng(5)
+    p = {"dobrada": {"pesos": rng.standard_normal(26).tolist(), "bias": 0.3}}
+    Xr, info = C.recalibrar(X, rot, calib, ref, "medias13")
+    w = np.asarray(p["dobrada"]["pesos"])
+    for v, mu in info["media_por_rotacao"].items():
+        m = rot == v
+        np.testing.assert_allclose(Xr[m] @ w + 0.3, X[m] @ w + C.bias_medias13(p, ref, np.asarray(mu)), atol=1e-10)
+
+
+def _segs_c2():
+    segs = []
+    for v in (5, 10, 20, 30):
+        for c in ("H", "BF"):
+            for b in range(1, 6):
+                segs.append(C.SegHust("x", c, "normal" if c == "H" else "falha", v, b, np.zeros(1)))
+    cls = np.array([s.classe for s in segs])
+    bl = np.array([s.bloco for s in segs])
+    rot = np.array([s.rotacao for s in segs])
+    return segs, cls, bl, rot, (cls == "H") & np.isin(bl, [4, 5]), cls == "BF"
+
+
+def test_criterio_12_de_15_a_10_20_e_30_hz_com_5_hz_fora_da_conta():
+    segs, cls, bl, rot, mn, mf = _segs_c2()
+    d = mf & (rot != 5)                                              # tudo a 10–30 Hz, nada a 5 Hz
+    r = C.avaliar_recalibracao(segs, d, mn, mf)
+    assert (r["deteccao_criterio"]["k"], r["deteccao_criterio"]["n"], r["deteccao_criterio"]["minimo"]) == (15, 15, 12)
+    assert r["deteccao_criterio"]["passa"] and r["deteccao_fora_do_criterio"]["k"] == 0
+    d2 = d.copy()
+    d2[np.flatnonzero(mf & (rot == 30))[:4]] = False                 # 11 de 15: não passa
+    assert not C.avaliar_recalibracao(segs, d2, mn, mf)["deteccao_criterio"]["passa"]
+    d3 = d.copy()
+    d3[np.flatnonzero(mf & (rot == 30))[:3]] = False                 # 12 de 15: passa
+    assert C.avaliar_recalibracao(segs, d3, mn, mf)["deteccao_criterio"]["passa"]
+
+
+def test_classificacao_funciona_nivel_e_nao_funciona():
+    segs, cls, bl, rot, mn, mf = _segs_c2()
+    passa = C.avaliar_recalibracao(segs, mf.copy(), mn, mf)
+    nao_passa = C.avaliar_recalibracao(segs, np.zeros(len(segs), bool), mn, mf)
+    assert C.classificar_recalibracao(passa, passa) == "funciona"
+    assert C.classificar_recalibracao(passa, nao_passa) == "detecção pelo nível"
+    assert C.classificar_recalibracao(nao_passa, passa) == "não funciona"
+    # 2 alarmes em 8 ainda não reprovam (limite inferior de 4,6 %); 3 reprovam (11 %)
+    for k, esperado in ((2, "funciona"), (3, "não funciona")):
+        d = mf.copy()
+        d[np.flatnonzero(mn)[:k]] = True
+        r = C.avaliar_recalibracao(segs, d, mn, mf)
+        assert C.classificar_recalibracao(r, passa) == esperado
+
+
+def test_conferencia_no_protocolo_b_e_a_identidade():
+    from validation.particao import Fold
+    rng = np.random.default_rng(6)
+    y = np.array(["normal"] * 40 + ["falha"] * 40)
+    X = rng.standard_normal((80, 26)) + np.where(y == "falha", 1.5, 0.0)[:, None]
+    folds = [Fold("B", f"B_x_bloco{k}", treino=[i for i in range(80) if i % 4 != k],
+                  teste=[i for i in range(80) if i % 4 == k], descartados=[], info={"falha_de_fora": "x"})
+             for k in range(4)]
+    r = C.conferencia_protocolo_b(X, y, folds)
+    assert r["decisoes_diferentes"] == 0 and r["acc_bal_media_sem"] == r["acc_bal_media_com"]
+    assert r["maior_mudanca_nas_caracteristicas"] < 1e-12 and r["n_folds"] == 4

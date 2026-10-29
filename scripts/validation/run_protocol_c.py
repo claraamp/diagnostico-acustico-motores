@@ -65,10 +65,40 @@ critério, decide o combinado (o detector OU a LDA); o detector sozinho é repor
 Decisões do Registro (22/10): normal do C2 junta (as quatro rotações), descarte do bloco 3
 e a regra da `decidir()` acima, que completa o "alarme falso ≤ X" do critério v4.
 
+Recalibração da LDA pela normal da máquina nova (--recalibracao)
+----------------------------------------------------------------
+Página do Registro de Decisões "Recalibrar a LDA pela normal da máquina nova" (29/10,
+Definida). A LDA final do Jung é aplicada SEM MUDAR OS PESOS, depois de as características
+do HUST serem levadas ao referencial da normal do Jung, só com gravações saudáveis: a
+média de cada rotação vem das aquisições de calibração da normal (as mesmas do C2), e a
+referência são a média e o desvio dos 59 segmentos normais do Jung (os do treino do
+modelo final). A falha nunca entra na calibração. Base: a normalização da média
+cepstral. Um microfone, uma sala ou um ganho diferentes são um filtro fixo, que desloca
+as 13 médias do MFCC e não muda os 13 desvios.
+
+Variantes (fixadas antes de rodar):
+    medias13  PRINCIPAL, decide: x′ = x − μ_rotação + μ_Jung só nas 13 médias.
+    sem_c0    CONTROLE, decide junto: a principal com o c0 neutralizado (a média e o
+              desvio do c0 recebem o valor da normal do Jung em todos os segmentos).
+    medias26  reporte: a mesma conta nas 26 características.
+    desvio    reporte: x′ = μ_Jung + σ_Jung · (x − μ_rotação) / σ, com σ o desvio comum
+              às rotações (resíduos em torno da média de cada uma) e piso de 0,5 · σ_Jung.
+
+Critério (`classificar_recalibracao`): funciona se a principal e o controle detectarem
+cada um pelo menos 12 dos 15 segmentos com falha a 10, 20 e 30 Hz (0,80) e o alarme
+falso da principal não reprovar; "detecção pelo nível" se só a principal passar; não
+funciona nos outros casos. A 5 Hz fica fora da conta e é reportada à parte. A leitura
+combinada (D2 do C2 OU a LDA recalibrada) é calculada com as mesmas regras; o papel dela
+na decisão do D2 é o da página da adoção do D2. A conferência no Protocolo B recalibra
+cada fold com a normal do próprio treino (a transformação vira a identidade): mostra
+que o código está certo, não que o método funciona.
+
 Uso
 ---
     python scripts/validation/run_protocol_c.py --sintetico          # auto-teste, sem registro
     python scripts/validation/run_protocol_c.py --responsavel <nome>
+    python scripts/validation/run_protocol_c.py --recalibracao --sintetico
+    python scripts/validation/run_protocol_c.py --recalibracao --responsavel <nome>
 """
 
 from __future__ import annotations
@@ -90,7 +120,7 @@ import dsp
 import experimentos
 import pcm_io
 from models import lda as modelo_lda
-from validation import particao
+from validation import metricas, particao
 from validation.run_protocol import novo_modelo
 
 _RAIZ = Path(__file__).resolve().parents[2]
@@ -298,6 +328,258 @@ def alarme_esperado_pelo_maximo(n_calib: int, n_series: int = 1) -> float:
 
 
 # ---------------------------------------------------------------------------
+# Recalibração da LDA pela normal da máquina nova (--recalibracao)
+# ---------------------------------------------------------------------------
+N_COEFS = config.MFCC_N_COEFS                   # colunas 0..12 = médias; 13..25 = desvios
+COLUNAS_C0 = (0, N_COEFS)                       # a média e o desvio do c0
+VARIANTES_RECAL = {                             # variante → papel (Registro, 29/10)
+    "medias13": "decide",
+    "sem_c0": "decide_junto",
+    "medias26": "reporte",
+    "desvio": "reporte",
+}
+PISO_DESVIO = 0.5                               # na variante desvio: σ ≥ 0,5 · σ_Jung
+ROTACOES_CRITERIO = (10, 20, 30)                # a 5 Hz fica fora da conta, reportada à parte
+FRACAO_DETECCAO = 0.80                          # 12 de 15: o 0,80 da adoção de um detector
+
+
+def normal_referencia(X_jung: np.ndarray, y_jung: np.ndarray) -> dict:
+    """Média e desvio (ddof = 1) das 26 características nos segmentos normais do Jung."""
+    Xn = np.asarray(X_jung, dtype=float)[np.asarray(y_jung) == "normal"]
+    if len(Xn) < 2:
+        raise ValueError("a referência precisa de pelo menos 2 segmentos normais do Jung")
+    return {"media": Xn.mean(axis=0), "desvio": Xn.std(axis=0, ddof=1), "n": int(len(Xn))}
+
+
+def recalibrar(X: np.ndarray, rot: np.ndarray, calib: np.ndarray, ref: dict,
+               variante: str) -> tuple[np.ndarray, dict]:
+    """
+    As características levadas ao referencial da normal do Jung, rotação a rotação, só com
+    os segmentos de calibração (normais). Devolve X′ e o que a calibração estimou.
+
+    medias13  x′ = x − μ_rotação + μ_Jung nas 13 médias; os 13 desvios ficam como medidos.
+    sem_c0    medias13 e, depois, a média e o desvio do c0 iguais aos da normal do Jung.
+    medias26  a mesma conta da medias13 nas 26 características.
+    desvio    x′ = μ_Jung + σ_Jung · (x − μ_rotação) / σ, nas 26, com σ o desvio comum às
+              rotações (resíduos em torno da média de cada uma, n − rotações graus de
+              liberdade) e o piso de PISO_DESVIO · σ_Jung.
+    """
+    if variante not in VARIANTES_RECAL:
+        raise ValueError(f"variante desconhecida: {variante}")
+    X = np.asarray(X, dtype=float)
+    rot, calib = np.asarray(rot), np.asarray(calib, dtype=bool)
+    mu_ref, sd_ref = np.asarray(ref["media"], dtype=float), np.asarray(ref["desvio"], dtype=float)
+    cols = slice(0, N_COEFS) if variante in ("medias13", "sem_c0") else slice(None)
+    Xr, medias, residuos = X.copy(), {}, []
+    for v in sorted(set(rot.tolist())):
+        m, c = rot == v, calib & (rot == v)
+        if not c.any():
+            raise ValueError(f"rotação {v} sem segmento de calibração")
+        medias[v] = X[c].mean(axis=0)
+        residuos.append(X[c] - medias[v])
+        if variante != "desvio":
+            Xr[m, cols] = X[m, cols] - medias[v][cols] + mu_ref[cols]
+    info = {"n_calibracao": int(calib.sum()),
+            "media_por_rotacao": {int(v): mu.tolist() for v, mu in medias.items()}}
+    if variante == "desvio":
+        R = np.vstack(residuos)
+        gl = len(R) - len(medias)
+        if gl < 1:
+            raise ValueError("variante desvio sem graus de liberdade (1 segmento de calibração por rotação)")
+        sd_cal = np.sqrt((R ** 2).sum(axis=0) / gl)
+        piso = PISO_DESVIO * sd_ref
+        sd = np.maximum(sd_cal, piso)
+        for v, mu_v in medias.items():
+            m = rot == v
+            Xr[m] = mu_ref + sd_ref * (X[m] - mu_v) / sd
+        info.update({"graus_de_liberdade": int(gl), "desvio_calibracao": sd_cal.tolist(),
+                     "caracteristicas_no_piso": int((sd_cal < piso).sum())})
+    if variante == "sem_c0":
+        for j in COLUNAS_C0:
+            Xr[:, j] = mu_ref[j]
+    return Xr, info
+
+
+def bias_medias13(p_lda: dict, ref: dict, media_rotacao: np.ndarray) -> float:
+    """
+    No firmware, a variante principal entra só no bias: escore(x′) = pesos · x + bias′, com
+    bias′ = bias + Σ_{i < 13} pesos_i (μ_Jung,i − μ_rotação,i). Os pesos não mudam.
+    """
+    d = p_lda["dobrada"]
+    w = np.asarray(d["pesos"], dtype=float)
+    delta = np.asarray(ref["media"], dtype=float)[:N_COEFS] - np.asarray(media_rotacao, dtype=float)[:N_COEFS]
+    return float(d["bias"] + w[:N_COEFS] @ delta)
+
+
+def avaliar_recalibracao(segs: list[SegHust], dispara: np.ndarray, medida_normal: np.ndarray,
+                         medida_falha: np.ndarray) -> dict:
+    """O resumir() do C2 mais a detecção do critério (10, 20 e 30 Hz) e a de fora dele (5 Hz)."""
+    r = resumir(segs, dispara, medida_normal, medida_falha)
+    rot = np.array([s.rotacao for s in segs])
+    no_criterio = np.isin(rot, ROTACOES_CRITERIO)
+    det = contar(dispara, medida_falha & no_criterio)
+    det["minimo"] = int(np.ceil(FRACAO_DETECCAO * det["n"] - 1e-9))
+    det["passa"] = bool(det["n"] > 0 and det["k"] >= det["minimo"])
+    det["intervalo_95"] = intervalo(det["k"], det["n"])
+    r["deteccao_criterio"] = det
+    r["deteccao_fora_do_criterio"] = contar(dispara, medida_falha & ~no_criterio)
+    return r
+
+
+def classificar_recalibracao(principal: dict, controle: dict) -> str:
+    """
+    Funciona: a principal e o controle sem o c0 passam na detecção (10, 20 e 30 Hz) e o
+    alarme falso da principal não reprova. Detecção pelo nível: só a principal passa.
+    Não funciona: a principal não passa na detecção, ou o alarme falso reprova.
+    """
+    if principal["alarme"]["decisao"] == "reprova" or not principal["deteccao_criterio"]["passa"]:
+        return "não funciona"
+    if not controle["deteccao_criterio"]["passa"]:
+        return "detecção pelo nível"
+    return "funciona"
+
+
+def conferencia_protocolo_b(X_jung: np.ndarray, y_jung: np.ndarray, folds) -> dict:
+    """
+    Cada fold do B recalibrado (variante principal) com a normal do próprio treino, que é
+    também a referência: a transformação vira a identidade. Confere que o código não
+    muda nada onde não há o que corrigir, e não que o método funciona.
+    """
+    X_jung, y_jung = np.asarray(X_jung, dtype=float), np.asarray(y_jung)
+    sem, com, diferentes, maior = [], [], 0, 0.0
+    for f in folds:
+        tr, te = np.asarray(f.treino), np.asarray(f.teste)
+        mdl = novo_modelo("lda", 2).fit(X_jung[tr], y_jung[tr])
+        calib = np.zeros(len(X_jung), dtype=bool)
+        calib[tr[y_jung[tr] == "normal"]] = True
+        Xr, _ = recalibrar(X_jung, np.zeros(len(X_jung), dtype=int), calib,
+                           normal_referencia(X_jung[tr], y_jung[tr]), "medias13")
+        maior = max(maior, float(np.abs(Xr[te] - X_jung[te]).max()))
+        p0, p1 = mdl.predict(X_jung[te]), mdl.predict(Xr[te])
+        diferentes += int((p0 != p1).sum())
+        for lista, p in ((sem, p0), (com, p1)):
+            lista.append({"nome": f.nome, "info": f.info, **metricas.metricas_binarias(y_jung[te], p)})
+    return {"n_folds": len(folds),
+            "acc_bal_media_sem": metricas.resumo_protocolo_b(sem)["acuracia_balanceada_media"],
+            "acc_bal_media_com": metricas.resumo_protocolo_b(com)["acuracia_balanceada_media"],
+            "decisoes_diferentes": diferentes, "maior_mudanca_nas_caracteristicas": maior}
+
+
+def _fmt_recal(r: dict) -> str:
+    a, d, f = r["alarme"], r["deteccao_criterio"], r["deteccao_fora_do_criterio"]
+    return (f"alarme {a['k']}/{a['n']} ({a['decisao']}; sup95 {a['limite_superior_95']:.0%})   "
+            f"detecção 10–30 Hz {d['k']}/{d['n']} ({'passa' if d['passa'] else 'não passa'}, "
+            f"mínimo {d['minimo']})   5 Hz {f['k']}/{f['n']}")
+
+
+def rodar_recalibracao(args, segs: list[SegHust], X: np.ndarray, calib: np.ndarray,
+                       med_normal: np.ndarray, med_falha: np.ndarray, X_jung: np.ndarray,
+                       y_jung: np.ndarray, p_lda: dict, folds_b, divisao: dict, modelo_id: str,
+                       hash_splits: str, feat_commit: str) -> int:
+    """As leituras da recalibração, a combinada com o D2, a conferência no B e o registro."""
+    rot = np.array([s.rotacao for s in segs])
+    ref = normal_referencia(X_jung, y_jung)
+    res, dispara = {}, {}
+    for v, papel in VARIANTES_RECAL.items():
+        Xr, info = recalibrar(X, rot, calib, ref, v)
+        dispara[v] = modelo_lda.prever(p_lda, Xr) == "falha"
+        res[f"C2_LDA_recal_{v}"] = {
+            "leitura": "C2", "detector": "LDA_recal", "variante": v, "papel": papel, "calibracao": info,
+            "resultado": {"sozinho": avaliar_recalibracao(segs, dispara[v], med_normal, med_falha)}}
+    principal = res["C2_LDA_recal_medias13"]
+    principal["bias_por_rotacao"] = {
+        v: bias_medias13(p_lda, ref, np.asarray(mu)) for v, mu in principal["calibracao"]["media_por_rotacao"].items()}
+    resultado = classificar_recalibracao(principal["resultado"]["sozinho"],
+                                         res["C2_LDA_recal_sem_c0"]["resultado"]["sozinho"])
+    d2_c2, lim_d2, _ = mahalanobis_c2(X, calib)
+    res["C2_D2_ou_LDA_recal"] = {
+        "leitura": "C2", "detector": "D2_OU_LDA_recal", "variante": "medias13",
+        "papel": "combinado (papel na decisão: página da adoção do D2)", "limiar_d2": lim_d2,
+        "resultado": {"combinado": avaliar_recalibracao(segs, d2_c2 | dispara["medias13"], med_normal, med_falha)}}
+    comparacao = {"C2_LDA_sem_recalibrar": avaliar_recalibracao(
+        segs, modelo_lda.prever(p_lda, X) == "falha", med_normal, med_falha)}
+    conf_b = conferencia_protocolo_b(X_jung, y_jung, folds_b)
+
+    print("\nRecalibração da LDA pela normal da máquina nova (C2; a falha não entra na calibração)")
+    for nome, r in res.items():
+        for modo, rr in r["resultado"].items():
+            print(f"  {nome:<24} [{r['papel'].split(' ')[0]}] {_fmt_recal(rr)}")
+            print(f"  {'':<24} por rotação (alarme e detecção): {_por_rot(rr)}")
+    print(f"  {'LDA sem recalibrar':<24} [comparação] {_fmt_recal(comparacao['C2_LDA_sem_recalibrar'])}")
+    print(f"\nresultado (principal e controle sem o c0): {resultado.upper()}")
+    print(f"conferência no Protocolo B: acc. bal. {conf_b['acc_bal_media_sem']:.4f} sem e "
+          f"{conf_b['acc_bal_media_com']:.4f} com a recalibração; {conf_b['decisoes_diferentes']} decisões "
+          f"diferentes; maior mudança nas características {conf_b['maior_mudanca_nas_caracteristicas']:.1e}")
+
+    destino = args.out_dir / "recalibracao"
+    destino.mkdir(parents=True, exist_ok=True)
+    normal = {"origem": "segmentos normais do Jung (os do treino do modelo final)", "n": ref["n"],
+              "modelo": modelo_id, "splits": hash_splits, "features_commit": feat_commit, "ddof_desvio": 1,
+              "media": ref["media"].tolist(), "desvio": ref["desvio"].tolist()}
+    (destino / "normal_jung.json").write_text(json.dumps(normal, ensure_ascii=False, indent=2) + "\n",
+                                             encoding="utf-8", newline="\n")
+    parametros = {"modelo": modelo_id, "splits": hash_splits, "features_commit": feat_commit,
+                  "divisao_c2": divisao, "variantes": VARIANTES_RECAL, "piso_desvio": PISO_DESVIO,
+                  "rotacoes_criterio": ROTACOES_CRITERIO, "fracao_deteccao": FRACAO_DETECCAO,
+                  "confianca": CONFIANCA, "x_alarme": X_ALARME,
+                  "registro": "Recalibrar a LDA pela normal da máquina nova (29/10, Definida)",
+                  "criterio": "funciona: principal e controle sem o c0 com ≥ 12/15 a 10–30 Hz e alarme da "
+                              "principal sem reprovar; detecção pelo nível: só a principal passa; 5 Hz à parte"}
+    (destino / "metrics.json").write_text(json.dumps(
+        {"parametros": parametros, "normal_referencia": normal, "resultado": resultado,
+         "conferencia_protocolo_b": conf_b, "comparacao": comparacao, "leituras": res},
+        ensure_ascii=False, indent=2,
+        default=lambda o: list(o) if isinstance(o, tuple) else float(o)) + "\n", encoding="utf-8", newline="\n")
+    print(f"\nsaídas: {destino}/")
+    if args.sem_registro:
+        print("(registry não alterado)")
+        return 0
+
+    blocos = lambda chave: ",".join(str(b) for b in divisao[chave])
+    divisao_txt = (f"calib={blocos('blocos_calibracao')};descarte={blocos('blocos_descarte')};"
+                   f"medida={blocos('blocos_medida')};falha={blocos('blocos_medida_falha')}")
+    linhas, base = [], experimentos.next_exp_number(args.registry)
+    for nome, r in res.items():
+        met = {}
+        for modo, rr in r["resultado"].items():
+            a, d, f = rr["alarme"], rr["deteccao_criterio"], rr["deteccao_fora_do_criterio"]
+            met.update({f"alarme_{modo}": f"{a['k']}/{a['n']}", f"alarme_sup95_{modo}": f"{a['limite_superior_95']:.4f}",
+                        f"alarme_inf95_{modo}": f"{a['limite_inferior_95']:.4f}", f"decisao_{modo}": a["decisao"],
+                        f"deteccao_{modo}": f"{rr['deteccao']['k']}/{rr['deteccao']['n']}",
+                        f"deteccao_10a30hz_{modo}": f"{d['k']}/{d['n']}",
+                        f"passa_10a30hz_{modo}": "sim" if d["passa"] else "nao",
+                        f"deteccao_5hz_{modo}": f"{f['k']}/{f['n']}"})
+        if nome == "C2_LDA_recal_medias13":
+            met.update({"resultado": resultado, "conf_B_acc_bal_sem": f"{conf_b['acc_bal_media_sem']:.4f}",
+                        "conf_B_acc_bal_com": f"{conf_b['acc_bal_media_com']:.4f}",
+                        "conf_B_decisoes_diferentes": conf_b["decisoes_diferentes"]})
+        linhas.append({
+            "id": f"exp{base + len(linhas):03d}",
+            "data": date.today().isoformat(),
+            "etapa": "protocolo_c",
+            "script": "validation/run_protocol_c.py",
+            "git_commit": experimentos.git_short_hash(),
+            "parametros": experimentos.kv({
+                "protocolo": "C", "leitura": "C2", "detector": r["detector"], "variante": r["variante"],
+                "papel": r["papel"].split(" ")[0], "referencia": f"normal_jung_{ref['n']}", "normal_c2": "por_rotacao",
+                "piso_desvio": PISO_DESVIO if r["variante"] == "desvio" else None,
+                "criterio": "12/15_a_10-30Hz", "modelo": modelo_id, "divisao_c2": divisao_txt,
+                "splits": hash_splits, "features_commit": feat_commit, "fs_hz": config.FS_TRABALHO}),
+            "dataset": f"hustmotor_som_H_BF_{config.FS_TRABALHO}Hz",
+            "metricas": experimentos.kv(met),
+            "responsavel": args.responsavel,
+            "notas": ("Protocolo C, recalibração da LDA pela normal da máquina nova (Registro, 29/10): "
+                      + {"decide": "variante principal, decide", "decide_junto": "controle sem o c0, decide junto",
+                         "reporte": "reporte", "combinado": "D2 OU LDA recalibrada, papel na página da adoção do D2"}
+                      [r["papel"].split(" ")[0]]
+                      + (f"; {args.notas}" if args.notas else "")),
+        })
+    experimentos.append_registry(args.registry, linhas)
+    print(f"registrado: {linhas[0]['id']}–{linhas[-1]['id']}")
+    return 0
+
+
+# ---------------------------------------------------------------------------
 def _fmt(r: dict) -> str:
     a, d = r["alarme"], r["deteccao"]
     return (f"alarme {a['k']:>2}/{a['n']:<2} (≤ {a['limite_superior_95']:.0%}; {a['decisao']:<12})   "
@@ -322,6 +604,8 @@ def main() -> int:
     ap.add_argument("--sintetico", action="store_true", help="auto-teste (implica --sem-registro)")
     ap.add_argument("--responsavel", default="")
     ap.add_argument("--notas", default="")
+    ap.add_argument("--recalibracao", action="store_true",
+                    help="só a recalibração da LDA pela normal da máquina nova (Registro, 29/10)")
     args = ap.parse_args()
 
     # ---- Jung (C1, LDA) -------------------------------------------------------------
@@ -329,7 +613,8 @@ def main() -> int:
         args.sem_registro = True
         args.out_dir = args.out_dir / "sintetico"
         lista = P.sintetico()
-        segmentos = particao.segmentos_de(particao.gerar_particoes(lista))
+        particoes = particao.gerar_particoes(lista)
+        segmentos = particao.segmentos_de(particoes)
         clipes = {c.rotulo: c for c in lista}
         X_jung = np.vstack([mfcc26(clipes[s.rotulo].x[s.inicio:s.fim]) for s in segmentos])
         y_jung = np.array([s.binario for s in segmentos])
@@ -375,6 +660,11 @@ def main() -> int:
     lda_falha = modelo_lda.prever(p_lda, X) == "falha"
     print(f"HUST: {len(segs)} segmentos; C2: {calib.sum()} de calibração, {med_normal.sum()} normais de "
           f"medida, {med_falha.sum()} de falha. Razões BPFO {razoes[0]:.4f}, BPFI {razoes[1]:.4f}.")
+
+    if args.recalibracao:
+        return rodar_recalibracao(args, segs, X, calib, med_normal, med_falha, X_jung, y_jung, p_lda,
+                                  particao.folds_de(particoes, "B"), divisao, modelo_id, hash_splits,
+                                  feat_commit)
 
     res = {}
     # LDA sem retreino: todos os segmentos
