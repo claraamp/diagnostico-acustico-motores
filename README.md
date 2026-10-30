@@ -76,7 +76,7 @@ O `inspect_deteccao_novidade.py` roda, no Protocolo B, os candidatos do `docs/cr
 
 O `10_prepare_hustmotor.py` põe o som do HUSTmotor multimodal (Zhao et al., 2025) no formato do pipeline, só as classes saudável e falha de rolamento, nas 4 velocidades (5, 10, 20 e 30 Hz), decimado de 25,6 para 12,8 kHz com a mesma regra de filtro do Jung. **Cada arquivo são 5 aquisições separadas de 1,28 s**, e não 6,4 s contínuos: cada bloco é decimado sozinho e dá um segmento de 1 s, então são 5 segmentos por classe e velocidade (20 por classe). O repositório não declara licença (a descrição pede a citação do artigo), e os dados não são versionados. O rolamento é o 6203, inferido (BPFO 3,053 × e BPFI 4,947 × a rotação nominal), e o pente é inviável a 5 e a 10 Hz. Detalhes, download e o que isso muda no Protocolo C em `docs/hustmotor.md`.
 
-A divisão do HUST por rotação fica versionada em `data/processed/hustmotor/divisao_rotacao.json`, gerada só do manifest pelo `11_divisao_hustmotor.py`: um id por segmento (`<arquivo>_a<aquisição>`, por exemplo `h_20hz_a3`), a divisão do C2 rotação a rotação (calibração nas aquisições 1 e 2 da normal, descarte na 3, medida na 4 e na 5, falha nas 5) e a da rotação deixada de fora (calibração com a normal das outras três rotações, todas as aquisições; teste com a normal e a falha da rotação de fora; `dentro_da_faixa_calibrada` só a 10 e a 20 Hz). Como o `03`, o script para se o arquivo existente for diferente; o `run_protocol_c.py --recalibracao` confere os papéis do C2 contra ele e grava o hash curto no registry.
+A divisão do HUST por rotação fica versionada em `data/processed/hustmotor/divisao_rotacao.json`, gerada só do manifest pelo `11_divisao_hustmotor.py`: um id por segmento (`<arquivo>_a<aquisição>`, por exemplo `h_20hz_a3`), a divisão do C2 rotação a rotação (calibração nas aquisições 1 e 2 da normal, descarte na 3, medida na 4 e na 5, falha nas 5) e a da rotação deixada de fora (calibração com a normal das outras três rotações, todas as aquisições; teste com a normal e a falha da rotação de fora; `dentro_da_faixa_calibrada` só a 10 e a 20 Hz). Como o `03`, o script para se o arquivo existente for diferente; o `run_protocol_c.py --recalibracao` confere os papéis do C2 contra ele, o `--rotacao-fora` confere os folds, e os dois gravam o hash curto no registry.
 
 ### Recalibração da LDA pela normal da máquina nova (`exp287`–`exp291`)
 
@@ -93,7 +93,27 @@ A divisão do HUST por rotação fica versionada em `data/processed/hustmotor/di
 
 O critério pedia pelo menos 12 dos 15 segmentos com falha a 10, 20 e 30 Hz na principal e no controle sem o c0. A recalibração acerta a parte do nível: os normais do HUST passam de 8/8 alarmes para 0/8. Mas a falha também é levada para o lado da normal, e nenhuma variante a detecta. A leitura combinada detecta exatamente o que o D2 detecta sozinho (`exp279`), porque a LDA recalibrada não dispara em nenhum segmento. A conferência no Protocolo B (cada fold recalibrado com a normal do próprio treino) dá 0,8750 com e sem a recalibração e nenhuma decisão diferente: o código não muda nada onde não há o que corrigir. O `decisoes_por_segmento.csv`, na mesma pasta, traz para cada segmento (com o id do `divisao_rotacao.json`) o papel no C2, o escore e a decisão da LDA sem recalibrar e de cada variante, o D2 do C2 e o combinado.
 
-**Por que não funciona.** Na variante principal, a recalibração só soma uma constante ao escore de cada rotação: ela equivale a mudar o bias da LDA, que é como o firmware a aplicaria. Ela move o limiar, mas não muda a ordem dos segmentos ao longo do eixo da LDA. No HUST, essa ordem já estava invertida antes de recalibrar (medianas do `decisoes_por_segmento.csv`): escore de 3.694 nos normais de medida e de 1.784 na falha, quando no Jung a falha fica acima da normal (medianas de −1.466 na normal e +1.463 nas falhas, no `escores_referencia.csv`). Depois da recalibração, a normal do HUST cai em −1.410, ao lado da normal do Jung, e a falha cai em −3.206, do lado oposto ao das falhas do Jung; em cada rotação, a falha de maior escore fica abaixo do normal de menor escore. Ao longo do eixo da LDA, a falha do HUST se afasta da normal na direção contrária à das falhas do Jung. Inverter o sinal depois de ver a falha seria treinar na falha, e não vale. **A diferença entre as máquinas não é só de nível e microfone: a direção que separa falha de normal no Jung não é a do HUST.** O que transfere entre as máquinas é a detecção de novidade calibrada só com a normal (o D2 do C2), e não o classificador.
+**Por que não funciona.** Na variante principal, a recalibração só soma uma constante ao escore de cada rotação: ela equivale a mudar o bias da LDA, que é como o firmware a aplicaria. Ela move o limiar, mas não muda a ordem dos segmentos ao longo do eixo da LDA. No HUST, essa ordem já estava invertida antes de recalibrar (medianas do `decisoes_por_segmento.csv`): escore de 3.694 nos normais de medida e de 1.784 na falha, quando no Jung a falha fica acima da normal (medianas de −1.466 na normal e +1.463 nas falhas, no `escores_referencia.csv`). Depois da recalibração, a normal do HUST cai em −1.410, ao lado da normal do Jung, e a falha cai em −3.206, do lado oposto ao das falhas do Jung; em cada rotação, a falha de maior escore fica abaixo do normal de menor escore. Ao longo do eixo da LDA, a falha do HUST se afasta da normal na direção contrária à das falhas do Jung. Inverter o sinal depois de ver a falha seria treinar na falha, e não vale. **A diferença entre as máquinas não é só de nível e microfone: a direção que separa falha de normal no Jung não é a do HUST.** Calibrado com a normal da máquina nova **em cada rotação em que vai operar** (C2, `exp279`), o D2 detecta a falha a 10–30 Hz (15/15), com o alarme inconclusivo (0/8); calibrado sem ela, reprova (`exp296`). A LDA, mesmo recalibrada, não detecta.
+
+### Rotação deixada de fora (`exp296`–`exp300`)
+
+**O D2 reprova: calibrado sem uma rotação, ele alarma todos os normais dela a 20 Hz (5/5).** O experimento segue o card "Protocolo C — rotação deixada de fora" e a regra de leitura da página "Adoção do D2" do Registro de Decisões, aprovada em 29/10, antes da rodada (`run_protocol_c.py --rotacao-fora`). São quatro folds, um por rotação: o D2 calibra com a normal das outras três (as 5 aquisições de cada, 15 segmentos) e é testado nas 5 normais e nas 5 falhas da rotação de fora. Pela regra, decidem 10 e 20 Hz, que ficam dentro da faixa calibrada, e o D2 reprova com 2 ou mais alarmes em 5 numa delas. 5 e 30 Hz são extrapolação e não reprovam. O total é só reporte. Os `exp296`–`exp300` substituem os `exp292`–`exp295` (commit `34773ec`), com os mesmos números, a regra da página no lugar da do card e o D2 sem o c0.
+
+| Leitura | Papel | Alarme falso 5 / 10 / 20 / 30 Hz | Detecção 5 / 10 / 20 / 30 Hz |
+|---|---|---|---|
+| D2 (`exp296`) | decide | 5/5 · **0/5** · **5/5** · 5/5 | 5/5 · **5/5** · 5/5 · 5/5 |
+| D2 sem o c0 (`exp297`) | reporte | 5/5 · 0/5 · 5/5 · 5/5 | 5/5 · 5/5 · 5/5 · 5/5 |
+| D2 OU a LDA do Jung (`exp298`) | reporte | 5/5 · 5/5 · 5/5 · 5/5 | 5/5 · 5/5 · 5/5 · 5/5 |
+| D1, rotação nominal (`exp299`) | reporte | — · — · 3/5 · 1/5 | — · — · 5/5 · 5/5 |
+| D1, rotação estimada (`exp300`) | reporte | — · — · 1/5 · 1/5 | — · — · 5/5 · 5/5 |
+
+- **D2:** reprova a 20 Hz (5/5, limite inferior de 55 %) e fica inconclusivo a 10 Hz (0/5, até 45 %). Estar dentro da faixa calibrada não protege: 20 Hz fica entre as rotações de calibração (10 e 30 Hz), e mesmo assim a normal dispara toda. A 5 e a 30 Hz, os 5/5 são extrapolação: o D2 não generaliza para fora da faixa calibrada.
+- **Detecção:** só a de 10 Hz (5/5) é lida como acerto. Nas outras rotações, os normais também disparam, e detectar a falha ali não diz nada.
+- **Sem o c0:** os alarmes são os mesmos. Eles não vêm só do nível do som, mas do resto do MFCC.
+- **D2 OU LDA:** 20/20 de alarme, porque a LDA sem recalibrar já dispara em todos os normais do HUST. O combinado com a LDA recalibrada não roda: no C2 ela não dispara em nenhum segmento (`exp287`–`exp291`), e aqui a recalibração precisaria da normal da própria rotação de teste, o que quebra o fold.
+- **D1:** com o limiar no máximo de 5 segmentos e 2 séries, cerca de 31 % de alarme é o esperado por construção. Pela `decidir()`, só o nominal a 20 Hz (3/5) reprova; o resto é inconclusivo.
+
+Pela proposta da página do D2, um D2 reprovado leva à opção 1 (não adotar); a decisão é da reunião de 03/11.
 
 ## Dataset
 
@@ -315,6 +335,8 @@ python scripts/validation/run_protocol_c.py --sintetico                    # aut
 python scripts/validation/run_protocol_c.py --responsavel <nome>           # LDA sem retreino, C1 e C2
 python scripts/validation/run_protocol_c.py --recalibracao --responsavel <nome>   # LDA recalibrada pela normal
 python scripts/validation/run_protocol_c.py --recalibracao --sem-registro  # teste: grava em reports/validation/teste_protocolo_c/
+python scripts/validation/run_protocol_c.py --rotacao-fora --sintetico   # rotação deixada de fora: auto-teste
+python scripts/validation/run_protocol_c.py --rotacao-fora --responsavel <nome>   # D2 nos 4 folds; D1 a 20 e 30 Hz
 
 # tabelas (leem os metrics.json; não treinam nem registram)
 python scripts/validation/run_tabela_comparativa.py   # provisório × oficial

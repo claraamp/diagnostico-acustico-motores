@@ -93,11 +93,46 @@ na decisão do D2 é o da página da adoção do D2. A conferência no Protocolo
 cada fold com a normal do próprio treino (a transformação vira a identidade): mostra
 que o código está certo, não que o método funciona.
 
+O auto-teste sintético (--recalibracao --sintetico) também dá "não funciona". O HUST
+sintético foi feito para o pente e não tem resposta conhecida para a recalibração: ele
+exercita o código, mas não é um controle positivo e não confirma o resultado nos dados
+reais.
+
 Os papéis do C2 vêm do manifest do HUST e são conferidos contra o divisao_rotacao.json
 versionado (11_divisao_hustmotor.py); o hash dele vai para o registry. Além do
 metrics.json e do normal_jung.json, a saída traz o decisoes_por_segmento.csv: para cada
 segmento (o id do divisao_rotacao.json), o papel no C2, o escore e a decisão da LDA sem
 recalibrar e de cada variante, o D2 do C2 e o combinado.
+
+Rotação deixada de fora (--rotacao-fora)
+----------------------------------------
+Card "Protocolo C — rotação deixada de fora" (passo 4 do Protocolo C), insumo da decisão
+do D2. Quatro folds, um por rotação: calibra com a normal das outras três rotações (as 5
+aquisições de cada, 15 segmentos) e mede na normal e na falha da rotação de fora. A divisão
+é a do divisao_rotacao.json (11_divisao_hustmotor.py), conferida contra a regra.
+    D2  o mesmo do C2 (26 características, Ledoit–Wolf). Limiar fora do bloco com a
+        aquisição como bloco, pela regra do card: a maior pontuação de um normal de
+        calibração, pontuado por um ajuste sem os 3 segmentos dessa aquisição (um de cada
+        rotação de calibração). As aquisições de rotações diferentes são arquivos
+        diferentes, sem relação no tempo; com cada segmento como bloco (como no C2), as
+        decisões são as mesmas nos quatro folds.
+    D2 sem o c0  o mesmo, sem a média e o desvio do c0 (COLUNAS_C0), só como reporte: diz
+        se os alarmes vêm do nível do som ou do resto do MFCC.
+    D1  só a 20 e a 30 Hz: dois folds, um calibra o outro (5 segmentos); limiar = maior
+        pontuação da calibração, por série; rotação nominal e estimada à parte. Os
+        segmentos em que o pente não foi avaliado (NaN) saem da conta, como na leitura().
+Cada segmento é medido num fold só, e o total junta os quatro. Alarme falso por rotação
+e total, com o limite unilateral de 95 % e a decidir(); detecção por rotação. O D2
+sozinho é o que decide; o D2 OU a LDA do Jung sai à parte. O combinado com a LDA
+recalibrada não roda: no C2 ela não dispara em nenhum segmento (exp287–exp291), e aqui
+a recalibração precisaria da normal da própria rotação de teste, o que quebra o fold.
+
+Regra de leitura (página "Adoção do D2" do Registro, aprovada em 29/10, antes da
+rodada): decidem 10 e 20 Hz, dentro da faixa calibrada; o D2 reprova se houver 2 ou mais
+alarmes em 5 em qualquer uma delas (a decidir()) e fica inconclusivo nos outros casos.
+Não há corte no total, que é só reporte. 5 e 30 Hz são extrapolação, reportadas à parte,
+e não reprovam. Numa rotação em que a decidir() reprova o alarme, a detecção ali não é
+lida como acerto. O D2 sem o c0 e o D1 são reporte.
 
 Uso
 ---
@@ -106,6 +141,8 @@ Uso
     python scripts/validation/run_protocol_c.py --recalibracao --sintetico
     python scripts/validation/run_protocol_c.py --recalibracao --responsavel <nome>
     python scripts/validation/run_protocol_c.py --recalibracao --sem-registro   # teste, não registra
+    python scripts/validation/run_protocol_c.py --rotacao-fora --sintetico
+    python scripts/validation/run_protocol_c.py --rotacao-fora --responsavel <nome>
 
 Pastas de saída: a rodada registrada grava em reports/validation/protocolo_c/ (versionada);
 --sem-registro, em reports/validation/teste_protocolo_c/, fora do Git, como as teste_* do
@@ -671,6 +708,233 @@ def rodar_recalibracao(args, segs: list[SegHust], X: np.ndarray, calib: np.ndarr
 
 
 # ---------------------------------------------------------------------------
+# Rotação deixada de fora (--rotacao-fora)
+# ---------------------------------------------------------------------------
+ROTACOES_D1 = (20, 30)                          # onde o pente é viável (docs/hustmotor.md)
+
+
+def folds_pela_regra(segs: list[SegHust], rotacoes=None) -> dict:
+    """
+    {rotação de fora: {calibracao, teste_normal, teste_falha}}, em ids de segmento: calibra
+    com a normal das outras rotações (todas as aquisições) e testa a normal e a falha da de fora.
+    """
+    rots = sorted({s.rotacao for s in segs}) if rotacoes is None else list(rotacoes)
+    folds = {}
+    for v in rots:
+        folds[v] = {"calibracao": sorted(id_segmento(s) for s in segs
+                                         if s.classe == "H" and s.rotacao in rots and s.rotacao != v),
+                    "teste_normal": sorted(id_segmento(s) for s in segs if s.classe == "H" and s.rotacao == v),
+                    "teste_falha": sorted(id_segmento(s) for s in segs if s.classe == "BF" and s.rotacao == v)}
+    return folds
+
+
+def conferir_folds(segs: list[SegHust], caminho: Path = DIVISAO_HUST) -> tuple[dict, str]:
+    """
+    Os folds do divisao_rotacao.json versionado, conferidos contra a regra; devolve os folds
+    e o hash curto do arquivo. Aborta se o arquivo faltar ou divergir.
+    """
+    caminho = Path(caminho)
+    if not caminho.exists():
+        raise SystemExit(f"Abortado: não achei {caminho}; rode scripts/pipeline/11_divisao_hustmotor.py.")
+    rf = json.loads(caminho.read_text(encoding="utf-8"))["rotacao_deixada_de_fora"]["por_rotacao"]
+    folds = {int(v): {k: sorted(f[k]) for k in ("calibracao", "teste_normal", "teste_falha")} for v, f in rf.items()}
+    if folds != folds_pela_regra(segs):
+        raise SystemExit(f"Abortado: a rotação deixada de fora em {caminho} difere da regra do card.")
+    return folds, hashlib.sha256(caminho.read_bytes()).hexdigest()[:10]
+
+
+def mascaras_fold(segs: list[SegHust], fold: dict) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    ids = np.array([id_segmento(s) for s in segs])
+    return tuple(np.isin(ids, fold[k]) for k in ("calibracao", "teste_normal", "teste_falha"))
+
+
+def d2_rotacao_fora(X: np.ndarray, calib: np.ndarray, aquisicao: np.ndarray) -> tuple[np.ndarray, float, dict]:
+    """
+    D2 de um fold: ajuste na normal de calibração; limiar fora do bloco, com a aquisição como
+    bloco (cada normal pontuado por um ajuste sem a aquisição dele).
+    """
+    idx = np.flatnonzero(calib)
+    blocos = np.asarray(aquisicao)[idx]
+    lim = N.limiar_fora_do_bloco(X, idx, blocos)
+    final = N.Mahalanobis().fit(X[idx])
+    fora = [N.Mahalanobis().fit(X[idx[blocos != b]]).lw.shrinkage_ for b in np.unique(blocos)]
+    info = {"n_calibracao": len(idx), "n_blocos": int(len(np.unique(blocos))),
+            "n_ajuste_fora_do_bloco": int(len(idx) - np.bincount(blocos).max()),
+            "encolhimento_final": float(final.lw.shrinkage_), "encolhimento_fora_do_bloco_media": float(np.mean(fora))}
+    return final.pontuar(X) > lim, lim, info
+
+
+def juntar_folds(n: int, por_fold: dict, testes: dict) -> np.ndarray:
+    """Cada segmento recebe a decisão do fold em que ele é teste (os testes não se repetem)."""
+    out = np.zeros(n, dtype=bool)
+    vistos = np.zeros(n, dtype=bool)
+    for v, d in por_fold.items():
+        t = testes[v]
+        if (vistos & t).any():
+            raise ValueError("um segmento é teste em dois folds")
+        out[t], vistos = d[t], vistos | t
+    return out
+
+
+def papel_rotacao(v: int, rotacoes) -> str:
+    """Decide a rotação dentro da faixa calibrada (10 e 20 Hz); as das pontas são extrapolação."""
+    return "decide" if min(rotacoes) < v < max(rotacoes) else "extrapolacao"
+
+
+def resumir_rotacao_fora(segs, disparo: np.ndarray, normal_teste: np.ndarray, falha_teste: np.ndarray,
+                         rotacoes=None) -> dict:
+    """
+    O resumir() do total, com a decidir() em cada rotação. Com `rotacoes` (as dos folds do
+    D2), cada rotação recebe o papel e sai a decisão pela regra da página do D2: reprova se
+    a decidir() reprovar numa rotação que decide; senão, inconclusivo (ou aprova, se todas
+    aprovarem). Sem `rotacoes`, a leitura é só reporte.
+    """
+    r = resumir(segs, disparo, normal_teste, falha_teste)
+    for v, x in r["por_rotacao"].items():
+        a = x["alarme"]
+        a["limite_inferior_95"] = limite_inferior(a["k"], a["n"])
+        a["decisao"] = decidir(a["k"], a["n"])
+        x["papel"] = papel_rotacao(v, rotacoes) if rotacoes is not None else "reporte"
+        x["deteccao_lida"] = a["decisao"] != "reprova"
+    if rotacoes is not None:
+        decs = [x["alarme"]["decisao"] for x in r["por_rotacao"].values() if x["papel"] == "decide"]
+        r["decisao_pagina_d2"] = ("reprova" if "reprova" in decs else
+                                  "aprova" if decs and all(d == "aprova" for d in decs) else "inconclusivo")
+    return r
+
+
+def d1_rotacao_fora(segs: list[SegHust], pont: np.ndarray, folds_d1: dict) -> tuple[np.ndarray, np.ndarray, dict]:
+    """D1 nos folds de 20 e 30 Hz: disparo, segmentos avaliados (sem NaN) e o limiar de cada fold."""
+    n = len(segs)
+    por_fold, validos_fold, testes, lims = {}, {}, {}, {}
+    for v, f in folds_d1.items():
+        cal, tn, tf = mascaras_fold(segs, f)
+        lims[v] = limiar_pente(pont[cal]).tolist()
+        d = dispara_pente(pont, np.asarray(lims[v]))
+        validos_fold[v], por_fold[v], testes[v] = ~np.isnan(d), np.nan_to_num(d).astype(bool), tn | tf
+    return juntar_folds(n, por_fold, testes), juntar_folds(n, validos_fold, testes), lims
+
+
+def rodar_rotacao_fora(args, segs: list[SegHust], X: np.ndarray, lda_falha: np.ndarray,
+                       razoes: tuple[float, float], modelo_id: str, hash_splits: str, feat_commit: str) -> int:
+    """D2 nos quatro folds (e D1 a 20 e 30 Hz), por rotação e no total, e o registro."""
+    n = len(segs)
+    rot = np.array([s.rotacao for s in segs])
+    aquisicao = np.array([s.bloco for s in segs])
+    if args.sintetico:
+        folds, hash_div = folds_pela_regra(segs), "sintetico"
+    else:
+        folds, hash_div = conferir_folds(segs, args.divisao)
+    mask = {v: mascaras_fold(segs, f) for v, f in folds.items()}
+    teste_n = {v: m[1] for v, m in mask.items()}
+    teste_f = {v: m[2] for v, m in mask.items()}
+    teste = {v: teste_n[v] | teste_f[v] for v in folds}
+    tot_n, tot_f = np.logical_or.reduce(list(teste_n.values())), np.logical_or.reduce(list(teste_f.values()))
+
+    rots = sorted(folds)
+    sem_c0 = np.setdiff1d(np.arange(X.shape[1]), COLUNAS_C0)
+    res, d2 = {}, {}
+    for nome, Xd in (("D2", X), ("D2_sem_c0", X[:, sem_c0])):
+        d2_fold, info_d2 = {}, {}
+        for v in folds:
+            d2_fold[v], lim, info = d2_rotacao_fora(Xd, mask[v][0], aquisicao)
+            info_d2[v] = {"limiar": lim, "papel": papel_rotacao(v, rots), **info}
+        d2[nome] = juntar_folds(n, d2_fold, teste)
+        n_cal = info_d2[min(folds)]["n_calibracao"]
+        res[f"RF_{nome}"] = {"detector": nome, "rotacao": None,
+                             "papel": "decide (página da adoção do D2)" if nome == "D2" else "reporte",
+                             "n_caracteristicas": int(Xd.shape[1]), "folds": info_d2,
+                             "alarme_esperado_pela_calibracao": alarme_esperado_pelo_maximo(n_cal),
+                             "resultado": {"sozinho": resumir_rotacao_fora(segs, d2[nome], tot_n, tot_f, rots)}}
+    res["RF_D2_ou_LDA"] = {"detector": "D2_OU_LDA", "rotacao": None, "papel": "reporte",
+                           "resultado": {"combinado": resumir_rotacao_fora(segs, d2["D2"] | lda_falha, tot_n, tot_f)}}
+
+    rots_d1 = [v for v in ROTACOES_D1 if v in folds]
+    if len(rots_d1) == 2:
+        segs_d1 = [s for s in segs if s.rotacao in rots_d1]
+        folds_d1 = folds_pela_regra(segs_d1, rots_d1)
+        no_d1 = np.isin(rot, rots_d1)
+        for m in ("nominal", "estimado"):
+            d1, validos, lims = d1_rotacao_fora(segs, pontuacoes_pente(segs, razoes, m), folds_d1)
+            ok = no_d1 & validos
+            res[f"RF_D1_{m}"] = {"detector": "D1", "rotacao": m, "papel": "reporte (opcional no card)",
+                                 "limiar_por_fold": lims, "n_nao_avaliados": int((no_d1 & ~validos & (tot_n | tot_f)).sum()),
+                                 "alarme_esperado_pela_calibracao": alarme_esperado_pelo_maximo(5, 2),
+                                 "resultado": {"sozinho": resumir_rotacao_fora(segs, d1, tot_n & ok, tot_f & ok)}}
+
+    print("\nRotação deixada de fora (calibra com a normal das outras rotações; mede a de fora)")
+    for nome, r in res.items():
+        for modo, rr in r["resultado"].items():
+            print(f"  {nome:<16} {modo:<9} {_fmt(rr)}  (total: só reporte)")
+            print(f"  {'':<16} {'':<9} por rotação (alarme e detecção): {_por_rot(rr)}")
+            if "decisao_pagina_d2" in rr:
+                print(f"  {'':<16} {'':<9} pela regra da página do D2 (decidem 10 e 20 Hz): {rr['decisao_pagina_d2']}")
+
+    destino = args.out_dir / "rotacao_fora"
+    destino.mkdir(parents=True, exist_ok=True)
+    parametros = {"modelo": modelo_id, "splits": hash_splits, "features_commit": feat_commit,
+                  "divisao_hust": hash_div, "folds": {str(v): f for v, f in folds.items()},
+                  "limiar_d2": "fora do bloco, aquisição como bloco", "espectro_d1": CAND.nome,
+                  "rotacoes_d1": rots_d1, "razoes_hust": razoes, "confianca": CONFIANCA, "x_alarme": X_ALARME,
+                  "card": "Protocolo C — rotação deixada de fora: especificidade do D2 (e do D1 a 20 e 30 Hz)",
+                  "leitura": "regra da página da adoção do D2 (29/10): decidem 10 e 20 Hz, reprova com 2 ou mais "
+                             "alarmes em 5 (decidir()); 5 e 30 Hz são extrapolação; sem corte no total",
+                  "combinado_lda_recalibrada": "não roda: no C2 a recalibrada não dispara (exp287–exp291), e "
+                                               "aqui precisaria da normal da rotação de teste"}
+    (destino / "metrics.json").write_text(json.dumps(
+        {"parametros": parametros, "leituras": res}, ensure_ascii=False, indent=2,
+        default=lambda o: list(o) if isinstance(o, tuple) else float(o)) + "\n", encoding="utf-8", newline="\n")
+    print(f"\nsaídas: {destino}/")
+    if args.sem_registro:
+        print("(registry não alterado)")
+        return 0
+
+    linhas, base = [], experimentos.next_exp_number(args.registry)
+    for nome, r in res.items():
+        met = {}
+        for modo, rr in r["resultado"].items():
+            a, d = rr["alarme"], rr["deteccao"]
+            met.update({f"alarme_{modo}": f"{a['k']}/{a['n']}", f"alarme_sup95_{modo}": f"{a['limite_superior_95']:.4f}",
+                        f"alarme_inf95_{modo}": f"{a['limite_inferior_95']:.4f}",
+                        f"decisao_total_{modo}": a["decisao"], f"deteccao_{modo}": f"{d['k']}/{d['n']}"})
+            if "decisao_pagina_d2" in rr:
+                met["decisao_pagina_d2"] = rr["decisao_pagina_d2"]
+            for v, x in rr["por_rotacao"].items():
+                met.update({f"papel_{v}hz": x["papel"], f"alarme_{v}hz": f"{x['alarme']['k']}/{x['alarme']['n']}",
+                            f"alarme_sup95_{v}hz": f"{x['alarme']['limite_superior_95']:.4f}",
+                            f"alarme_inf95_{v}hz": f"{x['alarme']['limite_inferior_95']:.4f}",
+                            f"decisao_{v}hz": x["alarme"]["decisao"],
+                            f"deteccao_{v}hz": f"{x['deteccao']['k']}/{x['deteccao']['n']}",
+                            f"deteccao_lida_{v}hz": "sim" if x["deteccao_lida"] else "nao"})
+        linhas.append({
+            "id": f"exp{base + len(linhas):03d}",
+            "data": date.today().isoformat(),
+            "etapa": "protocolo_c",
+            "script": "validation/run_protocol_c.py",
+            "git_commit": experimentos.git_short_hash(),
+            "parametros": experimentos.kv({
+                "protocolo": "C", "leitura": "rotacao_fora", "detector": r["detector"], "rotacao": r["rotacao"],
+                "calibracao": "normal_da_outra_rotacao_5_aquisicoes" if r["detector"] == "D1"
+                else "normal_das_outras_rotacoes_5_aquisicoes",
+                "limiar": "max_da_calibracao" if r["detector"] == "D1" else "fora_do_bloco_aquisicao",
+                "caracteristicas": r.get("n_caracteristicas"), "leitura_regra": "pagina_adocao_d2_29_10",
+                "modelo": modelo_id, "divisao_hust": hash_div,
+                "espectro": CAND.nome if r["detector"] == "D1" else None,
+                "splits": hash_splits, "features_commit": feat_commit, "fs_hz": config.FS_TRABALHO}),
+            "dataset": f"hustmotor_som_H_BF_{config.FS_TRABALHO}Hz",
+            "metricas": experimentos.kv(met),
+            "responsavel": args.responsavel,
+            "notas": (f"Protocolo C, rotação deixada de fora: {r['papel']}; alarme com limite unilateral de 95 % "
+                      "(Clopper–Pearson), só consegue reprovar; regra da página do D2: decidem 10 e 20 Hz (2 ou mais em 5 "
+                      "reprova), 5 e 30 Hz são extrapolação"
+                      + (f"; {args.notas}" if args.notas else "")),
+        })
+    experimentos.append_registry(args.registry, linhas)
+    print(f"registrado: {linhas[0]['id']}–{linhas[-1]['id']}")
+    return 0
+
+
+# ---------------------------------------------------------------------------
 def pasta_de_saida(out_dir: Path, sem_registro: bool, sintetico: bool) -> Path:
     """
     Onde a rodada grava. A registrada, na pasta pedida (por padrão a versionada); um teste
@@ -713,6 +977,8 @@ def main() -> int:
                     help="divisão do HUST por rotação (11_divisao_hustmotor.py), conferida no --recalibracao")
     ap.add_argument("--recalibracao", action="store_true",
                     help="só a recalibração da LDA pela normal da máquina nova (Registro, 29/10)")
+    ap.add_argument("--rotacao-fora", action="store_true",
+                    help="só a rotação deixada de fora (D2 nos 4 folds; D1 a 20 e 30 Hz)")
     args = ap.parse_args()
 
     # ---- Jung (C1, LDA) -------------------------------------------------------------
@@ -769,6 +1035,10 @@ def main() -> int:
     print(f"HUST: {len(segs)} segmentos; C2: {calib.sum()} de calibração, {med_normal.sum()} normais de "
           f"medida, {med_falha.sum()} de falha. Razões BPFO {razoes[0]:.4f}, BPFI {razoes[1]:.4f}.")
 
+    if args.recalibracao and args.rotacao_fora:
+        ap.error("--recalibracao e --rotacao-fora são rodadas separadas")
+    if args.rotacao_fora:
+        return rodar_rotacao_fora(args, segs, X, lda_falha, razoes, modelo_id, hash_splits, feat_commit)
     if args.recalibracao:
         return rodar_recalibracao(args, segs, X, calib, med_normal, med_falha, X_jung, y_jung, p_lda,
                                   particao.folds_de(particoes, "B"), divisao, modelo_id, hash_splits,

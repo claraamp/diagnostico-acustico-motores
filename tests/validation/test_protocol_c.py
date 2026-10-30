@@ -6,7 +6,11 @@ Garantias: o limite superior do alarme falso é o do card (zero alarmes em 8 dá
 limites; o pente só roda onde a máscara do eixo deixa dentes (20 e 30 Hz); o D2 do C2
 tira o limiar fora do bloco, só da calibração, igual a uma conta independente com o
 Ledoit–Wolf do sklearn, e marca um ponto longe; e os segmentos
-em que o pente não foi avaliado ficam fora da conta.
+em que o pente não foi avaliado ficam fora da conta. Na rotação deixada de fora, os folds
+seguem o card e conferem com a divisão versionada (e abortam se ela divergir), o limiar
+do D2 usa a aquisição como bloco, cada segmento é teste num fold só, a leitura segue a
+regra da página do D2 (decidem 10 e 20 Hz, 2 em 5 reprova; as pontas não reprovam) e o
+D1 tira da conta o que o pente não avaliou.
 """
 
 import json
@@ -285,3 +289,104 @@ def test_normal_c2_do_combinado_diz_que_o_d2_usa_a_normal_junta():
     # o valor tem que sobreviver à leitura do registry, que separa os pares por ";"
     par = dict(p.split("=", 1) for p in f"normal_c2={C.normal_c2('D2_OU_LDA_recal')}".split(";") if "=" in p)
     assert par["normal_c2"] == "lda_por_rotacao/d2_junta"
+
+
+# ---------------------------------------------------------------------------
+# Rotação deixada de fora (--rotacao-fora)
+# ---------------------------------------------------------------------------
+def _segs_rf():
+    return C.hust_sintetico((3.0531, 4.9469))
+
+
+def test_folds_da_rotacao_de_fora_seguem_o_card():
+    segs = _segs_rf()
+    folds = C.folds_pela_regra(segs)
+    assert sorted(folds) == [5, 10, 20, 30]
+    testes = []
+    for v, f in folds.items():
+        assert len(f["calibracao"]) == 15 and len(f["teste_normal"]) == 5 and len(f["teste_falha"]) == 5
+        assert not set(f["calibracao"]) & set(f["teste_normal"] + f["teste_falha"])   # a de fora não calibra
+        assert all(i.startswith("h_") and not i.startswith(f"h_{v}hz") for i in f["calibracao"])
+        testes += f["teste_normal"] + f["teste_falha"]
+    assert len(testes) == len(set(testes)) == 40                  # cada segmento é teste num fold só
+
+
+def test_folds_conferem_com_a_divisao_versionada_e_abortam_se_divergir(tmp_path):
+    segs = _segs_rf()                                             # os ids do sintético são os do HUST
+    folds, hash_div = C.conferir_folds(segs, C.DIVISAO_HUST)
+    assert folds == C.folds_pela_regra(segs) and len(hash_div) == 10
+    d = json.loads(C.DIVISAO_HUST.read_text(encoding="utf-8"))
+    fold5 = d["rotacao_deixada_de_fora"]["por_rotacao"]["5"]
+    fold5["calibracao"].append(fold5["teste_normal"][0])         # a de fora vazando para a calibração
+    errado = tmp_path / "divisao.json"
+    errado.write_text(json.dumps(d), encoding="utf-8")
+    with pytest.raises(SystemExit, match="difere"):
+        C.conferir_folds(segs, errado)
+
+
+def test_d2_da_rotacao_de_fora_usa_a_aquisicao_como_bloco():
+    rng = np.random.default_rng(1)
+    X = rng.standard_normal((20, 26))
+    calib = np.zeros(20, dtype=bool)
+    calib[:15] = True
+    aquisicao = np.tile(np.arange(1, 6), 4)                       # 3 normais de calibração por aquisição
+    X[19] += 20
+    dispara, lim, info = C.d2_rotacao_fora(X, calib, aquisicao)
+    assert dispara[19] and info["n_blocos"] == 5 and info["n_ajuste_fora_do_bloco"] == 12
+    # conta independente: cada aquisição pontuada por um Ledoit–Wolf ajustado sem ela
+    pont = []
+    for b in range(1, 6):
+        A, B = X[:15][aquisicao[:15] != b], X[:15][aquisicao[:15] == b]
+        mu, sd = A.mean(axis=0), A.std(axis=0)
+        inv = np.linalg.inv(LedoitWolf().fit((A - mu) / sd).covariance_)
+        pont += [((x - mu) / sd) @ inv @ ((x - mu) / sd) for x in B]
+    assert lim == pytest.approx(max(pont), rel=1e-9)
+
+
+def test_juntar_folds_recusa_teste_repetido():
+    d = {5: np.array([True, False, True]), 10: np.array([False, True, True])}
+    with pytest.raises(ValueError, match="dois folds"):
+        C.juntar_folds(3, d, {5: np.array([True, False, True]), 10: np.array([False, True, True])})
+    out = C.juntar_folds(3, d, {5: np.array([True, False, False]), 10: np.array([False, True, True])})
+    assert out.tolist() == [True, True, True]
+
+
+def test_regra_da_pagina_do_d2_decide_em_10_e_20_hz_e_reprova_com_2_em_5():
+    segs = _segs_rf()
+    normal = np.array([s.classe == "H" for s in segs])
+    rot = np.array([s.rotacao for s in segs])
+    rots = [5, 10, 20, 30]
+
+    def com_alarmes(**k):                                         # k alarmes nos normais de cada rotação
+        d = np.zeros(len(segs), bool)
+        for v, q in k.items():
+            m = normal & (rot == int(v[1:]))
+            d[np.flatnonzero(m)[:q]] = True
+        return C.resumir_rotacao_fora(segs, d, normal, ~normal, rots)
+
+    r = com_alarmes(r5=5, r10=1, r30=5)                            # pontas alarmam, 1 em 5 a 10 Hz
+    assert [r["por_rotacao"][v]["papel"] for v in rots] == ["extrapolacao", "decide", "decide", "extrapolacao"]
+    assert r["por_rotacao"][10]["alarme"]["decisao"] == "inconclusivo"
+    assert r["decisao_pagina_d2"] == "inconclusivo"               # 5 e 30 Hz não reprovam; o total (11/20) não conta
+    assert not r["por_rotacao"][5]["deteccao_lida"] and r["por_rotacao"][10]["deteccao_lida"]
+    assert com_alarmes(r20=2)["decisao_pagina_d2"] == "reprova"
+    assert "decisao_pagina_d2" not in C.resumir_rotacao_fora(segs, normal, normal, ~normal)   # reporte
+
+
+def test_d1_da_rotacao_de_fora_tira_da_conta_o_que_o_pente_nao_avaliou():
+    segs = [s for s in _segs_rf() if s.rotacao in (20, 30)]
+    folds = C.folds_pela_regra(segs, (20, 30))
+    pont = np.arange(2 * len(segs), dtype=float).reshape(-1, 2)
+    i = next(j for j, s in enumerate(segs) if s.classe == "H" and s.rotacao == 30)
+    pont[i, 0] = np.nan
+    d1, validos, lims = C.d1_rotacao_fora(segs, pont, folds)
+    assert not validos[i] and validos.sum() == len(segs) - 1        # com duas rotações, todos são teste
+    assert not d1[i]
+    assert sorted(lims) == [20, 30] and len(lims[20]) == 2
+
+
+def test_um_alarme_em_5_nao_reprova_pela_decidir():
+    assert C.decidir(0, 5) == "inconclusivo" and C.limite_superior(0, 5) == pytest.approx(0.451, abs=1e-3)
+    assert C.decidir(1, 5) == "inconclusivo"
+    assert C.decidir(2, 5) == "reprova"
+    assert C.limite_superior(0, 20) == pytest.approx(0.139, abs=1e-3)
