@@ -1,0 +1,690 @@
+{
+  "gerador": "scripts/pipeline/11_divisao_hustmotor.py",
+  "fonte": "data/processed/hustmotor/pcm_decimated/12800/manifest.json",
+  "fonte_sha256_origem": {
+    "h_5hz": "e6ebf8a390d7246f41a9cac08926fba022ea6985e6bffd2debaf8158c337f152",
+    "h_10hz": "aa2fbcc07e7530d51de8767ee4fb0812df87c12340c9caeb5d7206055fd76436",
+    "h_20hz": "dc541a5cbbd9159fafe1bffecb1ffa8416198fb9641348575d40c079489635b8",
+    "h_30hz": "eadfc8d60821a3afa1edac1f04f72254d2bd95181de7bcdd9eabba5caed3e259",
+    "bf_5hz": "bf8d63976a35ad8993d493c48704ac1e1719f5538bffb7f3e8642750a3a6d879",
+    "bf_10hz": "a720f746336b46ce78d38d22d67c523c5da55eebcc7704d3e1c62ac0961af2ef",
+    "bf_20hz": "c0d4697cece169f49adbc2408431cb458351d1423e7ce0afd66dd86c9512ea56",
+    "bf_30hz": "005f6123a94924be2151813d744a901212efccf29b52dba8a102f8a8384c781c"
+  },
+  "fs_hz": 12800,
+  "amostras_por_segmento": 12800,
+  "rotacoes": [
+    5,
+    10,
+    20,
+    30
+  ],
+  "segmentos": [
+    {
+      "id": "h_5hz_a1",
+      "arquivo": "h_5hz",
+      "classe": "H",
+      "binario": "normal",
+      "rotacao": 5,
+      "aquisicao": 1,
+      "amostra_inicio": 0,
+      "amostra_fim": 12800
+    },
+    {
+      "id": "h_5hz_a2",
+      "arquivo": "h_5hz",
+      "classe": "H",
+      "binario": "normal",
+      "rotacao": 5,
+      "aquisicao": 2,
+      "amostra_inicio": 12800,
+      "amostra_fim": 25600
+    },
+    {
+      "id": "h_5hz_a3",
+      "arquivo": "h_5hz",
+      "classe": "H",
+      "binario": "normal",
+      "rotacao": 5,
+      "aquisicao": 3,
+      "amostra_inicio": 25600,
+      "amostra_fim": 38400
+    },
+    {
+      "id": "h_5hz_a4",
+      "arquivo": "h_5hz",
+      "classe": "H",
+      "binario": "normal",
+      "rotacao": 5,
+      "aquisicao": 4,
+      "amostra_inicio": 38400,
+      "amostra_fim": 51200
+    },
+    {
+      "id": "h_5hz_a5",
+      "arquivo": "h_5hz",
+      "classe": "H",
+      "binario": "normal",
+      "rotacao": 5,
+      "aquisicao": 5,
+      "amostra_inicio": 51200,
+      "amostra_fim": 64000
+    },
+    {
+      "id": "h_10hz_a1",
+      "arquivo": "h_10hz",
+      "classe": "H",
+      "binario": "normal",
+      "rotacao": 10,
+      "aquisicao": 1,
+      "amostra_inicio": 0,
+      "amostra_fim": 12800
+    },
+    {
+      "id": "h_10hz_a2",
+      "arquivo": "h_10hz",
+      "classe": "H",
+      "binario": "normal",
+      "rotacao": 10,
+      "aquisicao": 2,
+      "amostra_inicio": 12800,
+      "amostra_fim": 25600
+    },
+    {
+      "id": "h_10hz_a3",
+      "arquivo": "h_10hz",
+      "classe": "H",
+      "binario": "normal",
+      "rotacao": 10,
+      "aquisicao": 3,
+      "amostra_inicio": 25600,
+      "amostra_fim": 38400
+    },
+    {
+      "id": "h_10hz_a4",
+      "arquivo": "h_10hz",
+      "classe": "H",
+      "binario": "normal",
+      "rotacao": 10,
+      "aquisicao": 4,
+      "amostra_inicio": 38400,
+      "amostra_fim": 51200
+    },
+    {
+      "id": "h_10hz_a5",
+      "arquivo": "h_10hz",
+      "classe": "H",
+      "binario": "normal",
+      "rotacao": 10,
+      "aquisicao": 5,
+      "amostra_inicio": 51200,
+      "amostra_fim": 64000
+    },
+    {
+      "id": "h_20hz_a1",
+      "arquivo": "h_20hz",
+      "classe": "H",
+      "binario": "normal",
+      "rotacao": 20,
+      "aquisicao": 1,
+      "amostra_inicio": 0,
+      "amostra_fim": 12800
+    },
+    {
+      "id": "h_20hz_a2",
+      "arquivo": "h_20hz",
+      "classe": "H",
+      "binario": "normal",
+      "rotacao": 20,
+      "aquisicao": 2,
+      "amostra_inicio": 12800,
+      "amostra_fim": 25600
+    },
+    {
+      "id": "h_20hz_a3",
+      "arquivo": "h_20hz",
+      "classe": "H",
+      "binario": "normal",
+      "rotacao": 20,
+      "aquisicao": 3,
+      "amostra_inicio": 25600,
+      "amostra_fim": 38400
+    },
+    {
+      "id": "h_20hz_a4",
+      "arquivo": "h_20hz",
+      "classe": "H",
+      "binario": "normal",
+      "rotacao": 20,
+      "aquisicao": 4,
+      "amostra_inicio": 38400,
+      "amostra_fim": 51200
+    },
+    {
+      "id": "h_20hz_a5",
+      "arquivo": "h_20hz",
+      "classe": "H",
+      "binario": "normal",
+      "rotacao": 20,
+      "aquisicao": 5,
+      "amostra_inicio": 51200,
+      "amostra_fim": 64000
+    },
+    {
+      "id": "h_30hz_a1",
+      "arquivo": "h_30hz",
+      "classe": "H",
+      "binario": "normal",
+      "rotacao": 30,
+      "aquisicao": 1,
+      "amostra_inicio": 0,
+      "amostra_fim": 12800
+    },
+    {
+      "id": "h_30hz_a2",
+      "arquivo": "h_30hz",
+      "classe": "H",
+      "binario": "normal",
+      "rotacao": 30,
+      "aquisicao": 2,
+      "amostra_inicio": 12800,
+      "amostra_fim": 25600
+    },
+    {
+      "id": "h_30hz_a3",
+      "arquivo": "h_30hz",
+      "classe": "H",
+      "binario": "normal",
+      "rotacao": 30,
+      "aquisicao": 3,
+      "amostra_inicio": 25600,
+      "amostra_fim": 38400
+    },
+    {
+      "id": "h_30hz_a4",
+      "arquivo": "h_30hz",
+      "classe": "H",
+      "binario": "normal",
+      "rotacao": 30,
+      "aquisicao": 4,
+      "amostra_inicio": 38400,
+      "amostra_fim": 51200
+    },
+    {
+      "id": "h_30hz_a5",
+      "arquivo": "h_30hz",
+      "classe": "H",
+      "binario": "normal",
+      "rotacao": 30,
+      "aquisicao": 5,
+      "amostra_inicio": 51200,
+      "amostra_fim": 64000
+    },
+    {
+      "id": "bf_5hz_a1",
+      "arquivo": "bf_5hz",
+      "classe": "BF",
+      "binario": "falha",
+      "rotacao": 5,
+      "aquisicao": 1,
+      "amostra_inicio": 0,
+      "amostra_fim": 12800
+    },
+    {
+      "id": "bf_5hz_a2",
+      "arquivo": "bf_5hz",
+      "classe": "BF",
+      "binario": "falha",
+      "rotacao": 5,
+      "aquisicao": 2,
+      "amostra_inicio": 12800,
+      "amostra_fim": 25600
+    },
+    {
+      "id": "bf_5hz_a3",
+      "arquivo": "bf_5hz",
+      "classe": "BF",
+      "binario": "falha",
+      "rotacao": 5,
+      "aquisicao": 3,
+      "amostra_inicio": 25600,
+      "amostra_fim": 38400
+    },
+    {
+      "id": "bf_5hz_a4",
+      "arquivo": "bf_5hz",
+      "classe": "BF",
+      "binario": "falha",
+      "rotacao": 5,
+      "aquisicao": 4,
+      "amostra_inicio": 38400,
+      "amostra_fim": 51200
+    },
+    {
+      "id": "bf_5hz_a5",
+      "arquivo": "bf_5hz",
+      "classe": "BF",
+      "binario": "falha",
+      "rotacao": 5,
+      "aquisicao": 5,
+      "amostra_inicio": 51200,
+      "amostra_fim": 64000
+    },
+    {
+      "id": "bf_10hz_a1",
+      "arquivo": "bf_10hz",
+      "classe": "BF",
+      "binario": "falha",
+      "rotacao": 10,
+      "aquisicao": 1,
+      "amostra_inicio": 0,
+      "amostra_fim": 12800
+    },
+    {
+      "id": "bf_10hz_a2",
+      "arquivo": "bf_10hz",
+      "classe": "BF",
+      "binario": "falha",
+      "rotacao": 10,
+      "aquisicao": 2,
+      "amostra_inicio": 12800,
+      "amostra_fim": 25600
+    },
+    {
+      "id": "bf_10hz_a3",
+      "arquivo": "bf_10hz",
+      "classe": "BF",
+      "binario": "falha",
+      "rotacao": 10,
+      "aquisicao": 3,
+      "amostra_inicio": 25600,
+      "amostra_fim": 38400
+    },
+    {
+      "id": "bf_10hz_a4",
+      "arquivo": "bf_10hz",
+      "classe": "BF",
+      "binario": "falha",
+      "rotacao": 10,
+      "aquisicao": 4,
+      "amostra_inicio": 38400,
+      "amostra_fim": 51200
+    },
+    {
+      "id": "bf_10hz_a5",
+      "arquivo": "bf_10hz",
+      "classe": "BF",
+      "binario": "falha",
+      "rotacao": 10,
+      "aquisicao": 5,
+      "amostra_inicio": 51200,
+      "amostra_fim": 64000
+    },
+    {
+      "id": "bf_20hz_a1",
+      "arquivo": "bf_20hz",
+      "classe": "BF",
+      "binario": "falha",
+      "rotacao": 20,
+      "aquisicao": 1,
+      "amostra_inicio": 0,
+      "amostra_fim": 12800
+    },
+    {
+      "id": "bf_20hz_a2",
+      "arquivo": "bf_20hz",
+      "classe": "BF",
+      "binario": "falha",
+      "rotacao": 20,
+      "aquisicao": 2,
+      "amostra_inicio": 12800,
+      "amostra_fim": 25600
+    },
+    {
+      "id": "bf_20hz_a3",
+      "arquivo": "bf_20hz",
+      "classe": "BF",
+      "binario": "falha",
+      "rotacao": 20,
+      "aquisicao": 3,
+      "amostra_inicio": 25600,
+      "amostra_fim": 38400
+    },
+    {
+      "id": "bf_20hz_a4",
+      "arquivo": "bf_20hz",
+      "classe": "BF",
+      "binario": "falha",
+      "rotacao": 20,
+      "aquisicao": 4,
+      "amostra_inicio": 38400,
+      "amostra_fim": 51200
+    },
+    {
+      "id": "bf_20hz_a5",
+      "arquivo": "bf_20hz",
+      "classe": "BF",
+      "binario": "falha",
+      "rotacao": 20,
+      "aquisicao": 5,
+      "amostra_inicio": 51200,
+      "amostra_fim": 64000
+    },
+    {
+      "id": "bf_30hz_a1",
+      "arquivo": "bf_30hz",
+      "classe": "BF",
+      "binario": "falha",
+      "rotacao": 30,
+      "aquisicao": 1,
+      "amostra_inicio": 0,
+      "amostra_fim": 12800
+    },
+    {
+      "id": "bf_30hz_a2",
+      "arquivo": "bf_30hz",
+      "classe": "BF",
+      "binario": "falha",
+      "rotacao": 30,
+      "aquisicao": 2,
+      "amostra_inicio": 12800,
+      "amostra_fim": 25600
+    },
+    {
+      "id": "bf_30hz_a3",
+      "arquivo": "bf_30hz",
+      "classe": "BF",
+      "binario": "falha",
+      "rotacao": 30,
+      "aquisicao": 3,
+      "amostra_inicio": 25600,
+      "amostra_fim": 38400
+    },
+    {
+      "id": "bf_30hz_a4",
+      "arquivo": "bf_30hz",
+      "classe": "BF",
+      "binario": "falha",
+      "rotacao": 30,
+      "aquisicao": 4,
+      "amostra_inicio": 38400,
+      "amostra_fim": 51200
+    },
+    {
+      "id": "bf_30hz_a5",
+      "arquivo": "bf_30hz",
+      "classe": "BF",
+      "binario": "falha",
+      "rotacao": 30,
+      "aquisicao": 5,
+      "amostra_inicio": 51200,
+      "amostra_fim": 64000
+    }
+  ],
+  "c2": {
+    "regra": {
+      "blocos_calibracao": [
+        1,
+        2
+      ],
+      "blocos_descarte": [
+        3
+      ],
+      "blocos_medida": [
+        4,
+        5
+      ],
+      "blocos_medida_falha": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "regra": "critério v4, seção 5, por posição do bloco, só na normal (a falha não calibra e mede com os 5 blocos); fixada em 20/10, depois de o BF ter sido visto para a geometria"
+    },
+    "por_rotacao": {
+      "5": {
+        "calibracao": [
+          "h_5hz_a1",
+          "h_5hz_a2"
+        ],
+        "descarte": [
+          "h_5hz_a3"
+        ],
+        "medida_normal": [
+          "h_5hz_a4",
+          "h_5hz_a5"
+        ],
+        "medida_falha": [
+          "bf_5hz_a1",
+          "bf_5hz_a2",
+          "bf_5hz_a3",
+          "bf_5hz_a4",
+          "bf_5hz_a5"
+        ]
+      },
+      "10": {
+        "calibracao": [
+          "h_10hz_a1",
+          "h_10hz_a2"
+        ],
+        "descarte": [
+          "h_10hz_a3"
+        ],
+        "medida_normal": [
+          "h_10hz_a4",
+          "h_10hz_a5"
+        ],
+        "medida_falha": [
+          "bf_10hz_a1",
+          "bf_10hz_a2",
+          "bf_10hz_a3",
+          "bf_10hz_a4",
+          "bf_10hz_a5"
+        ]
+      },
+      "20": {
+        "calibracao": [
+          "h_20hz_a1",
+          "h_20hz_a2"
+        ],
+        "descarte": [
+          "h_20hz_a3"
+        ],
+        "medida_normal": [
+          "h_20hz_a4",
+          "h_20hz_a5"
+        ],
+        "medida_falha": [
+          "bf_20hz_a1",
+          "bf_20hz_a2",
+          "bf_20hz_a3",
+          "bf_20hz_a4",
+          "bf_20hz_a5"
+        ]
+      },
+      "30": {
+        "calibracao": [
+          "h_30hz_a1",
+          "h_30hz_a2"
+        ],
+        "descarte": [
+          "h_30hz_a3"
+        ],
+        "medida_normal": [
+          "h_30hz_a4",
+          "h_30hz_a5"
+        ],
+        "medida_falha": [
+          "bf_30hz_a1",
+          "bf_30hz_a2",
+          "bf_30hz_a3",
+          "bf_30hz_a4",
+          "bf_30hz_a5"
+        ]
+      }
+    }
+  },
+  "rotacao_deixada_de_fora": {
+    "regra": "calibração: a normal das outras três rotações, todas as aquisições; teste: a normal e a falha da rotação deixada de fora. A regra de leitura é a da página da adoção do D2.",
+    "por_rotacao": {
+      "5": {
+        "rotacoes_calibracao": [
+          10,
+          20,
+          30
+        ],
+        "dentro_da_faixa_calibrada": false,
+        "calibracao": [
+          "h_10hz_a1",
+          "h_10hz_a2",
+          "h_10hz_a3",
+          "h_10hz_a4",
+          "h_10hz_a5",
+          "h_20hz_a1",
+          "h_20hz_a2",
+          "h_20hz_a3",
+          "h_20hz_a4",
+          "h_20hz_a5",
+          "h_30hz_a1",
+          "h_30hz_a2",
+          "h_30hz_a3",
+          "h_30hz_a4",
+          "h_30hz_a5"
+        ],
+        "teste_normal": [
+          "h_5hz_a1",
+          "h_5hz_a2",
+          "h_5hz_a3",
+          "h_5hz_a4",
+          "h_5hz_a5"
+        ],
+        "teste_falha": [
+          "bf_5hz_a1",
+          "bf_5hz_a2",
+          "bf_5hz_a3",
+          "bf_5hz_a4",
+          "bf_5hz_a5"
+        ]
+      },
+      "10": {
+        "rotacoes_calibracao": [
+          5,
+          20,
+          30
+        ],
+        "dentro_da_faixa_calibrada": true,
+        "calibracao": [
+          "h_5hz_a1",
+          "h_5hz_a2",
+          "h_5hz_a3",
+          "h_5hz_a4",
+          "h_5hz_a5",
+          "h_20hz_a1",
+          "h_20hz_a2",
+          "h_20hz_a3",
+          "h_20hz_a4",
+          "h_20hz_a5",
+          "h_30hz_a1",
+          "h_30hz_a2",
+          "h_30hz_a3",
+          "h_30hz_a4",
+          "h_30hz_a5"
+        ],
+        "teste_normal": [
+          "h_10hz_a1",
+          "h_10hz_a2",
+          "h_10hz_a3",
+          "h_10hz_a4",
+          "h_10hz_a5"
+        ],
+        "teste_falha": [
+          "bf_10hz_a1",
+          "bf_10hz_a2",
+          "bf_10hz_a3",
+          "bf_10hz_a4",
+          "bf_10hz_a5"
+        ]
+      },
+      "20": {
+        "rotacoes_calibracao": [
+          5,
+          10,
+          30
+        ],
+        "dentro_da_faixa_calibrada": true,
+        "calibracao": [
+          "h_5hz_a1",
+          "h_5hz_a2",
+          "h_5hz_a3",
+          "h_5hz_a4",
+          "h_5hz_a5",
+          "h_10hz_a1",
+          "h_10hz_a2",
+          "h_10hz_a3",
+          "h_10hz_a4",
+          "h_10hz_a5",
+          "h_30hz_a1",
+          "h_30hz_a2",
+          "h_30hz_a3",
+          "h_30hz_a4",
+          "h_30hz_a5"
+        ],
+        "teste_normal": [
+          "h_20hz_a1",
+          "h_20hz_a2",
+          "h_20hz_a3",
+          "h_20hz_a4",
+          "h_20hz_a5"
+        ],
+        "teste_falha": [
+          "bf_20hz_a1",
+          "bf_20hz_a2",
+          "bf_20hz_a3",
+          "bf_20hz_a4",
+          "bf_20hz_a5"
+        ]
+      },
+      "30": {
+        "rotacoes_calibracao": [
+          5,
+          10,
+          20
+        ],
+        "dentro_da_faixa_calibrada": false,
+        "calibracao": [
+          "h_5hz_a1",
+          "h_5hz_a2",
+          "h_5hz_a3",
+          "h_5hz_a4",
+          "h_5hz_a5",
+          "h_10hz_a1",
+          "h_10hz_a2",
+          "h_10hz_a3",
+          "h_10hz_a4",
+          "h_10hz_a5",
+          "h_20hz_a1",
+          "h_20hz_a2",
+          "h_20hz_a3",
+          "h_20hz_a4",
+          "h_20hz_a5"
+        ],
+        "teste_normal": [
+          "h_30hz_a1",
+          "h_30hz_a2",
+          "h_30hz_a3",
+          "h_30hz_a4",
+          "h_30hz_a5"
+        ],
+        "teste_falha": [
+          "bf_30hz_a1",
+          "bf_30hz_a2",
+          "bf_30hz_a3",
+          "bf_30hz_a4",
+          "bf_30hz_a5"
+        ]
+      }
+    }
+  }
+}

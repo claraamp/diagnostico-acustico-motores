@@ -9,6 +9,8 @@ Ledoit–Wolf do sklearn, e marca um ponto longe; e os segmentos
 em que o pente não foi avaliado ficam fora da conta.
 """
 
+import json
+
 import numpy as np
 import pytest
 from sklearn.covariance import LedoitWolf
@@ -239,3 +241,30 @@ def test_conferencia_no_protocolo_b_e_a_identidade():
     r = C.conferencia_protocolo_b(X, y, folds)
     assert r["decisoes_diferentes"] == 0 and r["acc_bal_media_sem"] == r["acc_bal_media_com"]
     assert r["maior_mudanca_nas_caracteristicas"] < 1e-12 and r["n_folds"] == 4
+
+
+def test_divisao_conferida_e_decisoes_por_segmento(tmp_path):
+    segs, cls, bl, rot, mn, mf = _segs_c2()
+    segs = [C.SegHust(f"{'h' if s.classe == 'H' else 'bf'}_{s.rotacao}hz", s.classe, s.binario, s.rotacao,
+                      s.bloco, s.x) for s in segs]
+    calib = (cls == "H") & np.isin(bl, [1, 2])
+    papel = C.papel_c2(calib, mn, mf, cls == "H")
+    assert set(papel[(cls == "H") & (bl == 3)]) == {"descarte"}
+    div = {"c2": {"por_rotacao": {str(v): {
+        "calibracao": [f"h_{v}hz_a{a}" for a in (1, 2)], "descarte": [f"h_{v}hz_a3"],
+        "medida_normal": [f"h_{v}hz_a{a}" for a in (4, 5)],
+        "medida_falha": [f"bf_{v}hz_a{a}" for a in range(1, 6)]} for v in (5, 10, 20, 30)}}}
+    caminho = tmp_path / "divisao.json"
+    caminho.write_text(json.dumps(div), encoding="utf-8")
+    assert len(C.conferir_divisao(segs, papel, caminho)) == 10
+    errado = papel.copy()
+    errado[0] = "medida_normal"                                     # h_5hz_a1 com outro papel
+    with pytest.raises(SystemExit, match="difere"):
+        C.conferir_divisao(segs, errado, caminho)
+    n = len(segs)
+    escores = {"sem_recal": np.arange(n, dtype=float), "medias13": -np.arange(n, dtype=float)}
+    dispara = {"sem_recal": np.ones(n, bool), "medias13": np.zeros(n, bool), "d2_c2": mf, "combinado": mf}
+    C.gravar_decisoes(tmp_path / "d.csv", segs, papel, escores, dispara)
+    linhas = (tmp_path / "d.csv").read_text(encoding="utf-8").splitlines()
+    assert linhas[0].startswith("segmento,classe,rotacao,aquisicao,papel_c2,escore_sem_recal,falha_sem_recal")
+    assert len(linhas) == n + 1 and linhas[1].startswith("h_5hz_a1,H,5,1,calibracao,0.000000,1,")

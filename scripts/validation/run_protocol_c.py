@@ -93,6 +93,12 @@ na decisão do D2 é o da página da adoção do D2. A conferência no Protocolo
 cada fold com a normal do próprio treino (a transformação vira a identidade): mostra
 que o código está certo, não que o método funciona.
 
+Os papéis do C2 vêm do manifest do HUST e são conferidos contra o divisao_rotacao.json
+versionado (11_divisao_hustmotor.py); o hash dele vai para o registry. Além do
+metrics.json e do normal_jung.json, a saída traz o decisoes_por_segmento.csv: para cada
+segmento (o id do divisao_rotacao.json), o papel no C2, o escore e a decisão da LDA sem
+recalibrar e de cada variante, o D2 do C2 e o combinado.
+
 Uso
 ---
     python scripts/validation/run_protocol_c.py --sintetico          # auto-teste, sem registro
@@ -104,6 +110,8 @@ Uso
 from __future__ import annotations
 
 import argparse
+import csv
+import hashlib
 import importlib.util
 import json
 import sys
@@ -472,19 +480,79 @@ def _fmt_recal(r: dict) -> str:
             f"mínimo {d['minimo']})   5 Hz {f['k']}/{f['n']}")
 
 
+DIVISAO_HUST = Path("data/processed/hustmotor/divisao_rotacao.json")   # do 11_divisao_hustmotor.py
+
+
+def id_segmento(s: SegHust) -> str:
+    """O id do segmento no divisao_rotacao.json: o arquivo e a aquisição (1 a 5)."""
+    return f"{s.rotulo}_a{s.bloco}"
+
+
+def papel_c2(calib: np.ndarray, med_normal: np.ndarray, med_falha: np.ndarray,
+             normal: np.ndarray) -> np.ndarray:
+    """O papel de cada segmento no C2: calibração, descarte, medida da normal ou medida da falha."""
+    papel = np.full(len(calib), "", dtype=object)
+    papel[normal] = "descarte"
+    papel[calib] = "calibracao"
+    papel[med_normal] = "medida_normal"
+    papel[med_falha] = "medida_falha"
+    return papel
+
+
+def conferir_divisao(segs: list[SegHust], papel: np.ndarray, caminho: Path = DIVISAO_HUST) -> str:
+    """
+    Confere que os papéis do C2 usados aqui são os do divisao_rotacao.json versionado e
+    devolve o hash curto do arquivo. Aborta se o arquivo faltar ou divergir.
+    """
+    caminho = Path(caminho)
+    if not caminho.exists():
+        raise SystemExit(f"Abortado: não achei {caminho}; rode scripts/pipeline/11_divisao_hustmotor.py.")
+    divisao = json.loads(caminho.read_text(encoding="utf-8"))
+    esperado = {}
+    for papeis in divisao["c2"]["por_rotacao"].values():
+        for nome, ids in papeis.items():
+            for i in ids:
+                esperado[i] = nome
+    usado = {id_segmento(s): str(p) for s, p in zip(segs, papel) if p}
+    if usado != esperado:
+        diferentes = sorted(set(usado.items()) ^ set(esperado.items()))[:6]
+        raise SystemExit(f"Abortado: a divisão do C2 difere de {caminho}: {diferentes}")
+    return hashlib.sha256(caminho.read_bytes()).hexdigest()[:10]
+
+
+def gravar_decisoes(caminho: Path, segs: list[SegHust], papel: np.ndarray, escores: dict,
+                    dispara: dict) -> None:
+    """Uma linha por segmento: o papel no C2, o escore e a decisão de cada leitura."""
+    nomes = list(escores)
+    with Path(caminho).open("w", encoding="utf-8", newline="") as f:
+        w = csv.writer(f, lineterminator="\n")
+        w.writerow(["segmento", "classe", "rotacao", "aquisicao", "papel_c2"]
+                   + [c for n in nomes for c in (f"escore_{n}", f"falha_{n}")] + ["falha_d2_c2", "falha_combinado"])
+        for i, s in enumerate(segs):
+            w.writerow([id_segmento(s), s.classe, s.rotacao, s.bloco, papel[i]]
+                       + [c for n in nomes for c in (f"{escores[n][i]:.6f}", int(dispara[n][i]))]
+                       + [int(dispara["d2_c2"][i]), int(dispara["combinado"][i])])
+
+
 def rodar_recalibracao(args, segs: list[SegHust], X: np.ndarray, calib: np.ndarray,
                        med_normal: np.ndarray, med_falha: np.ndarray, X_jung: np.ndarray,
                        y_jung: np.ndarray, p_lda: dict, folds_b, divisao: dict, modelo_id: str,
                        hash_splits: str, feat_commit: str) -> int:
     """As leituras da recalibração, a combinada com o D2, a conferência no B e o registro."""
     rot = np.array([s.rotacao for s in segs])
+    normal = np.array([s.classe == "H" for s in segs])
+    papel = papel_c2(calib, med_normal, med_falha, normal)
+    hash_div = "sintetico" if args.sintetico else conferir_divisao(segs, papel, args.divisao)
     ref = normal_referencia(X_jung, y_jung)
     res, dispara = {}, {}
-    for v, papel in VARIANTES_RECAL.items():
+    escores = {"sem_recal": modelo_lda.escore_dobrado(p_lda, X)}
+    dispara["sem_recal"] = modelo_lda.prever(p_lda, X) == "falha"
+    for v, papel_v in VARIANTES_RECAL.items():
         Xr, info = recalibrar(X, rot, calib, ref, v)
+        escores[v] = modelo_lda.escore_dobrado(p_lda, Xr)
         dispara[v] = modelo_lda.prever(p_lda, Xr) == "falha"
         res[f"C2_LDA_recal_{v}"] = {
-            "leitura": "C2", "detector": "LDA_recal", "variante": v, "papel": papel, "calibracao": info,
+            "leitura": "C2", "detector": "LDA_recal", "variante": v, "papel": papel_v, "calibracao": info,
             "resultado": {"sozinho": avaliar_recalibracao(segs, dispara[v], med_normal, med_falha)}}
     principal = res["C2_LDA_recal_medias13"]
     principal["bias_por_rotacao"] = {
@@ -499,6 +567,8 @@ def rodar_recalibracao(args, segs: list[SegHust], X: np.ndarray, calib: np.ndarr
     comparacao = {"C2_LDA_sem_recalibrar": avaliar_recalibracao(
         segs, modelo_lda.prever(p_lda, X) == "falha", med_normal, med_falha)}
     conf_b = conferencia_protocolo_b(X_jung, y_jung, folds_b)
+    dispara["d2_c2"] = d2_c2
+    dispara["combinado"] = d2_c2 | dispara["medias13"]
 
     print("\nRecalibração da LDA pela normal da máquina nova (C2; a falha não entra na calibração)")
     for nome, r in res.items():
@@ -516,6 +586,7 @@ def rodar_recalibracao(args, segs: list[SegHust], X: np.ndarray, calib: np.ndarr
     normal = {"origem": "segmentos normais do Jung (os do treino do modelo final)", "n": ref["n"],
               "modelo": modelo_id, "splits": hash_splits, "features_commit": feat_commit, "ddof_desvio": 1,
               "media": ref["media"].tolist(), "desvio": ref["desvio"].tolist()}
+    gravar_decisoes(destino / "decisoes_por_segmento.csv", segs, papel, escores, dispara)
     (destino / "normal_jung.json").write_text(json.dumps(normal, ensure_ascii=False, indent=2) + "\n",
                                              encoding="utf-8", newline="\n")
     parametros = {"modelo": modelo_id, "splits": hash_splits, "features_commit": feat_commit,
@@ -523,6 +594,7 @@ def rodar_recalibracao(args, segs: list[SegHust], X: np.ndarray, calib: np.ndarr
                   "rotacoes_criterio": ROTACOES_CRITERIO, "fracao_deteccao": FRACAO_DETECCAO,
                   "confianca": CONFIANCA, "x_alarme": X_ALARME,
                   "registro": "Recalibrar a LDA pela normal da máquina nova (29/10, Definida)",
+                  "divisao_hust": hash_div,
                   "criterio": "funciona: principal e controle sem o c0 com ≥ 12/15 a 10–30 Hz e alarme da "
                               "principal sem reprovar; detecção pelo nível: só a principal passa; 5 Hz à parte"}
     (destino / "metrics.json").write_text(json.dumps(
@@ -564,6 +636,7 @@ def rodar_recalibracao(args, segs: list[SegHust], X: np.ndarray, calib: np.ndarr
                 "papel": r["papel"].split(" ")[0], "referencia": f"normal_jung_{ref['n']}", "normal_c2": "por_rotacao",
                 "piso_desvio": PISO_DESVIO if r["variante"] == "desvio" else None,
                 "criterio": "12/15_a_10-30Hz", "modelo": modelo_id, "divisao_c2": divisao_txt,
+                "divisao_hust": hash_div,
                 "splits": hash_splits, "features_commit": feat_commit, "fs_hz": config.FS_TRABALHO}),
             "dataset": f"hustmotor_som_H_BF_{config.FS_TRABALHO}Hz",
             "metricas": experimentos.kv(met),
@@ -604,6 +677,8 @@ def main() -> int:
     ap.add_argument("--sintetico", action="store_true", help="auto-teste (implica --sem-registro)")
     ap.add_argument("--responsavel", default="")
     ap.add_argument("--notas", default="")
+    ap.add_argument("--divisao", type=Path, default=DIVISAO_HUST,
+                    help="divisão do HUST por rotação (11_divisao_hustmotor.py), conferida no --recalibracao")
     ap.add_argument("--recalibracao", action="store_true",
                     help="só a recalibração da LDA pela normal da máquina nova (Registro, 29/10)")
     args = ap.parse_args()
