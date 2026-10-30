@@ -110,17 +110,29 @@ Card "Protocolo C — rotação deixada de fora" (passo 4 do Protocolo C), insum
 do D2. Quatro folds, um por rotação: calibra com a normal das outras três rotações (as 5
 aquisições de cada, 15 segmentos) e mede na normal e na falha da rotação de fora. A divisão
 é a do divisao_rotacao.json (11_divisao_hustmotor.py), conferida contra a regra.
-    D2  o mesmo do C2 (26 características, Ledoit–Wolf). Limiar pela regra do critério,
-        com a aquisição no papel do bloco temporal: a maior pontuação de um normal de
-        calibração, pontuado por um ajuste sem a aquisição dele (sem as 3 rotações dela).
+    D2  o mesmo do C2 (26 características, Ledoit–Wolf). Limiar fora do bloco com a
+        aquisição como bloco, pela regra do card: a maior pontuação de um normal de
+        calibração, pontuado por um ajuste sem os 3 segmentos dessa aquisição (um de cada
+        rotação de calibração). As aquisições de rotações diferentes são arquivos
+        diferentes, sem relação no tempo; com cada segmento como bloco (como no C2), as
+        decisões são as mesmas nos quatro folds.
+    D2 sem o c0  o mesmo, sem a média e o desvio do c0 (COLUNAS_C0), só como reporte: diz
+        se os alarmes vêm do nível do som ou do resto do MFCC.
     D1  só a 20 e a 30 Hz: dois folds, um calibra o outro (5 segmentos); limiar = maior
-        pontuação da calibração, por série; rotação nominal e estimada à parte.
+        pontuação da calibração, por série; rotação nominal e estimada à parte. Os
+        segmentos em que o pente não foi avaliado (NaN) saem da conta, como na leitura().
 Cada segmento é medido num fold só, e o total junta os quatro. Alarme falso por rotação
 e total, com o limite unilateral de 95 % e a decidir(); detecção por rotação. O D2
-sozinho é o que a página da adoção do D2 lê; o D2 OU a LDA do Jung sai à parte.
-Leitura por rotação (aprovada no card): qualquer alarme na rotação de fora reprova o
-detector nela (`reprova_card`), mais rígida que a decidir(), que com 5 normais só reprova
-a partir de 2; a decidir() fica ao lado.
+sozinho é o que decide; o D2 OU a LDA do Jung sai à parte. O combinado com a LDA
+recalibrada não roda: no C2 ela não dispara em nenhum segmento (exp287–exp291), e aqui
+a recalibração precisaria da normal da própria rotação de teste, o que quebra o fold.
+
+Regra de leitura (página "Adoção do D2" do Registro, aprovada em 29/10, antes da
+rodada): decidem 10 e 20 Hz, dentro da faixa calibrada; o D2 reprova se houver 2 ou mais
+alarmes em 5 em qualquer uma delas (a decidir()) e fica inconclusivo nos outros casos.
+Não há corte no total, que é só reporte. 5 e 30 Hz são extrapolação, reportadas à parte,
+e não reprovam. Numa rotação em que a decidir() reprova o alarme, a detecção ali não é
+lida como acerto. O D2 sem o c0 e o D1 são reporte.
 
 Uso
 ---
@@ -764,15 +776,43 @@ def juntar_folds(n: int, por_fold: dict, testes: dict) -> np.ndarray:
     return out
 
 
-def resumir_rotacao_fora(segs, disparo: np.ndarray, normal_teste: np.ndarray, falha_teste: np.ndarray) -> dict:
-    """O resumir() do total, com a decidir() e a regra do card (um alarme reprova) em cada rotação."""
+def papel_rotacao(v: int, rotacoes) -> str:
+    """Decide a rotação dentro da faixa calibrada (10 e 20 Hz); as das pontas são extrapolação."""
+    return "decide" if min(rotacoes) < v < max(rotacoes) else "extrapolacao"
+
+
+def resumir_rotacao_fora(segs, disparo: np.ndarray, normal_teste: np.ndarray, falha_teste: np.ndarray,
+                         rotacoes=None) -> dict:
+    """
+    O resumir() do total, com a decidir() em cada rotação. Com `rotacoes` (as dos folds do
+    D2), cada rotação recebe o papel e sai a decisão pela regra da página do D2: reprova se
+    a decidir() reprovar numa rotação que decide; senão, inconclusivo (ou aprova, se todas
+    aprovarem). Sem `rotacoes`, a leitura é só reporte.
+    """
     r = resumir(segs, disparo, normal_teste, falha_teste)
     for v, x in r["por_rotacao"].items():
         a = x["alarme"]
         a["limite_inferior_95"] = limite_inferior(a["k"], a["n"])
         a["decisao"] = decidir(a["k"], a["n"])
-        a["reprova_card"] = bool(a["k"] > 0)
+        x["papel"] = papel_rotacao(v, rotacoes) if rotacoes is not None else "reporte"
+        x["deteccao_lida"] = a["decisao"] != "reprova"
+    if rotacoes is not None:
+        decs = [x["alarme"]["decisao"] for x in r["por_rotacao"].values() if x["papel"] == "decide"]
+        r["decisao_pagina_d2"] = ("reprova" if "reprova" in decs else
+                                  "aprova" if decs and all(d == "aprova" for d in decs) else "inconclusivo")
     return r
+
+
+def d1_rotacao_fora(segs: list[SegHust], pont: np.ndarray, folds_d1: dict) -> tuple[np.ndarray, np.ndarray, dict]:
+    """D1 nos folds de 20 e 30 Hz: disparo, segmentos avaliados (sem NaN) e o limiar de cada fold."""
+    n = len(segs)
+    por_fold, validos_fold, testes, lims = {}, {}, {}, {}
+    for v, f in folds_d1.items():
+        cal, tn, tf = mascaras_fold(segs, f)
+        lims[v] = limiar_pente(pont[cal]).tolist()
+        d = dispara_pente(pont, np.asarray(lims[v]))
+        validos_fold[v], por_fold[v], testes[v] = ~np.isnan(d), np.nan_to_num(d).astype(bool), tn | tf
+    return juntar_folds(n, por_fold, testes), juntar_folds(n, validos_fold, testes), lims
 
 
 def rodar_rotacao_fora(args, segs: list[SegHust], X: np.ndarray, lda_falha: np.ndarray,
@@ -791,17 +831,23 @@ def rodar_rotacao_fora(args, segs: list[SegHust], X: np.ndarray, lda_falha: np.n
     teste = {v: teste_n[v] | teste_f[v] for v in folds}
     tot_n, tot_f = np.logical_or.reduce(list(teste_n.values())), np.logical_or.reduce(list(teste_f.values()))
 
-    res, d2_fold, info_d2 = {}, {}, {}
-    for v in folds:
-        d2_fold[v], lim, info = d2_rotacao_fora(X, mask[v][0], aquisicao)
-        info_d2[v] = {"limiar": lim, "dentro_da_faixa_calibrada": bool(min(folds) < v < max(folds)), **info}
-    d2 = juntar_folds(n, d2_fold, teste)
-    n_cal = info_d2[min(folds)]["n_calibracao"]
-    res["RF_D2"] = {"detector": "D2", "rotacao": None, "papel": "lido pela página da adoção do D2",
-                    "folds": info_d2, "alarme_esperado_pela_calibracao": alarme_esperado_pelo_maximo(n_cal),
-                    "resultado": {"sozinho": resumir_rotacao_fora(segs, d2, tot_n, tot_f)}}
+    rots = sorted(folds)
+    sem_c0 = np.setdiff1d(np.arange(X.shape[1]), COLUNAS_C0)
+    res, d2 = {}, {}
+    for nome, Xd in (("D2", X), ("D2_sem_c0", X[:, sem_c0])):
+        d2_fold, info_d2 = {}, {}
+        for v in folds:
+            d2_fold[v], lim, info = d2_rotacao_fora(Xd, mask[v][0], aquisicao)
+            info_d2[v] = {"limiar": lim, "papel": papel_rotacao(v, rots), **info}
+        d2[nome] = juntar_folds(n, d2_fold, teste)
+        n_cal = info_d2[min(folds)]["n_calibracao"]
+        res[f"RF_{nome}"] = {"detector": nome, "rotacao": None,
+                             "papel": "decide (página da adoção do D2)" if nome == "D2" else "reporte",
+                             "n_caracteristicas": int(Xd.shape[1]), "folds": info_d2,
+                             "alarme_esperado_pela_calibracao": alarme_esperado_pelo_maximo(n_cal),
+                             "resultado": {"sozinho": resumir_rotacao_fora(segs, d2[nome], tot_n, tot_f, rots)}}
     res["RF_D2_ou_LDA"] = {"detector": "D2_OU_LDA", "rotacao": None, "papel": "reporte",
-                           "resultado": {"combinado": resumir_rotacao_fora(segs, d2 | lda_falha, tot_n, tot_f)}}
+                           "resultado": {"combinado": resumir_rotacao_fora(segs, d2["D2"] | lda_falha, tot_n, tot_f)}}
 
     rots_d1 = [v for v in ROTACOES_D1 if v in folds]
     if len(rots_d1) == 2:
@@ -809,24 +855,20 @@ def rodar_rotacao_fora(args, segs: list[SegHust], X: np.ndarray, lda_falha: np.n
         folds_d1 = folds_pela_regra(segs_d1, rots_d1)
         no_d1 = np.isin(rot, rots_d1)
         for m in ("nominal", "estimado"):
-            pont = pontuacoes_pente(segs, razoes, m)
-            por_fold, lims = {}, {}
-            testes_d1 = {}
-            for v, f in folds_d1.items():
-                cal, tn, tf = mascaras_fold(segs, f)
-                lims[v] = limiar_pente(pont[cal]).tolist()
-                por_fold[v] = np.nan_to_num(dispara_pente(pont, np.asarray(lims[v]))).astype(bool)
-                testes_d1[v] = tn | tf
-            d1 = juntar_folds(n, por_fold, testes_d1)
+            d1, validos, lims = d1_rotacao_fora(segs, pontuacoes_pente(segs, razoes, m), folds_d1)
+            ok = no_d1 & validos
             res[f"RF_D1_{m}"] = {"detector": "D1", "rotacao": m, "papel": "reporte (opcional no card)",
-                                 "limiar_por_fold": lims, "alarme_esperado_pela_calibracao": alarme_esperado_pelo_maximo(5, 2),
-                                 "resultado": {"sozinho": resumir_rotacao_fora(segs, d1, tot_n & no_d1, tot_f & no_d1)}}
+                                 "limiar_por_fold": lims, "n_nao_avaliados": int((no_d1 & ~validos & (tot_n | tot_f)).sum()),
+                                 "alarme_esperado_pela_calibracao": alarme_esperado_pelo_maximo(5, 2),
+                                 "resultado": {"sozinho": resumir_rotacao_fora(segs, d1, tot_n & ok, tot_f & ok)}}
 
     print("\nRotação deixada de fora (calibra com a normal das outras rotações; mede a de fora)")
     for nome, r in res.items():
         for modo, rr in r["resultado"].items():
-            print(f"  {nome:<16} {modo:<9} {_fmt(rr)}")
+            print(f"  {nome:<16} {modo:<9} {_fmt(rr)}  (total: só reporte)")
             print(f"  {'':<16} {'':<9} por rotação (alarme e detecção): {_por_rot(rr)}")
+            if "decisao_pagina_d2" in rr:
+                print(f"  {'':<16} {'':<9} pela regra da página do D2 (decidem 10 e 20 Hz): {rr['decisao_pagina_d2']}")
 
     destino = args.out_dir / "rotacao_fora"
     destino.mkdir(parents=True, exist_ok=True)
@@ -835,7 +877,10 @@ def rodar_rotacao_fora(args, segs: list[SegHust], X: np.ndarray, lda_falha: np.n
                   "limiar_d2": "fora do bloco, aquisição como bloco", "espectro_d1": CAND.nome,
                   "rotacoes_d1": rots_d1, "razoes_hust": razoes, "confianca": CONFIANCA, "x_alarme": X_ALARME,
                   "card": "Protocolo C — rotação deixada de fora: especificidade do D2 (e do D1 a 20 e 30 Hz)",
-                  "leitura": "por rotação, regra do card: qualquer alarme reprova nela; decidir() ao lado"}
+                  "leitura": "regra da página da adoção do D2 (29/10): decidem 10 e 20 Hz, reprova com 2 ou mais "
+                             "alarmes em 5 (decidir()); 5 e 30 Hz são extrapolação; sem corte no total",
+                  "combinado_lda_recalibrada": "não roda: no C2 a recalibrada não dispara (exp287–exp291), e "
+                                               "aqui precisaria da normal da rotação de teste"}
     (destino / "metrics.json").write_text(json.dumps(
         {"parametros": parametros, "leituras": res}, ensure_ascii=False, indent=2,
         default=lambda o: list(o) if isinstance(o, tuple) else float(o)) + "\n", encoding="utf-8", newline="\n")
@@ -850,13 +895,17 @@ def rodar_rotacao_fora(args, segs: list[SegHust], X: np.ndarray, lda_falha: np.n
         for modo, rr in r["resultado"].items():
             a, d = rr["alarme"], rr["deteccao"]
             met.update({f"alarme_{modo}": f"{a['k']}/{a['n']}", f"alarme_sup95_{modo}": f"{a['limite_superior_95']:.4f}",
-                        f"decisao_{modo}": a["decisao"], f"deteccao_{modo}": f"{d['k']}/{d['n']}"})
+                        f"alarme_inf95_{modo}": f"{a['limite_inferior_95']:.4f}",
+                        f"decisao_total_{modo}": a["decisao"], f"deteccao_{modo}": f"{d['k']}/{d['n']}"})
+            if "decisao_pagina_d2" in rr:
+                met["decisao_pagina_d2"] = rr["decisao_pagina_d2"]
             for v, x in rr["por_rotacao"].items():
-                met.update({f"alarme_{v}hz": f"{x['alarme']['k']}/{x['alarme']['n']}",
+                met.update({f"papel_{v}hz": x["papel"], f"alarme_{v}hz": f"{x['alarme']['k']}/{x['alarme']['n']}",
                             f"alarme_sup95_{v}hz": f"{x['alarme']['limite_superior_95']:.4f}",
+                            f"alarme_inf95_{v}hz": f"{x['alarme']['limite_inferior_95']:.4f}",
                             f"decisao_{v}hz": x["alarme"]["decisao"],
-                            f"reprova_card_{v}hz": "sim" if x["alarme"]["reprova_card"] else "nao",
-                            f"deteccao_{v}hz": f"{x['deteccao']['k']}/{x['deteccao']['n']}"})
+                            f"deteccao_{v}hz": f"{x['deteccao']['k']}/{x['deteccao']['n']}",
+                            f"deteccao_lida_{v}hz": "sim" if x["deteccao_lida"] else "nao"})
         linhas.append({
             "id": f"exp{base + len(linhas):03d}",
             "data": date.today().isoformat(),
@@ -865,8 +914,10 @@ def rodar_rotacao_fora(args, segs: list[SegHust], X: np.ndarray, lda_falha: np.n
             "git_commit": experimentos.git_short_hash(),
             "parametros": experimentos.kv({
                 "protocolo": "C", "leitura": "rotacao_fora", "detector": r["detector"], "rotacao": r["rotacao"],
-                "calibracao": "normal_das_outras_rotacoes_5_aquisicoes", "limiar": "fora_do_bloco_aquisicao"
-                if r["detector"] == "D2" or r["detector"] == "D2_OU_LDA" else "max_da_calibracao",
+                "calibracao": "normal_da_outra_rotacao_5_aquisicoes" if r["detector"] == "D1"
+                else "normal_das_outras_rotacoes_5_aquisicoes",
+                "limiar": "max_da_calibracao" if r["detector"] == "D1" else "fora_do_bloco_aquisicao",
+                "caracteristicas": r.get("n_caracteristicas"), "leitura_regra": "pagina_adocao_d2_29_10",
                 "modelo": modelo_id, "divisao_hust": hash_div,
                 "espectro": CAND.nome if r["detector"] == "D1" else None,
                 "splits": hash_splits, "features_commit": feat_commit, "fs_hz": config.FS_TRABALHO}),
@@ -874,7 +925,8 @@ def rodar_rotacao_fora(args, segs: list[SegHust], X: np.ndarray, lda_falha: np.n
             "metricas": experimentos.kv(met),
             "responsavel": args.responsavel,
             "notas": (f"Protocolo C, rotação deixada de fora: {r['papel']}; alarme com limite unilateral de 95 % "
-                      "(Clopper–Pearson), só consegue reprovar; por rotação, um alarme reprova (regra do card)"
+                      "(Clopper–Pearson), só consegue reprovar; regra da página do D2: decidem 10 e 20 Hz (2 ou mais em 5 "
+                      "reprova), 5 e 30 Hz são extrapolação"
                       + (f"; {args.notas}" if args.notas else "")),
         })
     experimentos.append_registry(args.registry, linhas)

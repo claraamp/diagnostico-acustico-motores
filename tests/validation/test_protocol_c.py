@@ -8,7 +8,9 @@ tira o limiar fora do bloco, só da calibração, igual a uma conta independente
 Ledoit–Wolf do sklearn, e marca um ponto longe; e os segmentos
 em que o pente não foi avaliado ficam fora da conta. Na rotação deixada de fora, os folds
 seguem o card e conferem com a divisão versionada (e abortam se ela divergir), o limiar
-do D2 usa a aquisição como bloco, e cada segmento é teste num fold só.
+do D2 usa a aquisição como bloco, cada segmento é teste num fold só, a leitura segue a
+regra da página do D2 (decidem 10 e 20 Hz, 2 em 5 reprova; as pontas não reprovam) e o
+D1 tira da conta o que o pente não avaliou.
 """
 
 import json
@@ -349,16 +351,41 @@ def test_juntar_folds_recusa_teste_repetido():
     assert out.tolist() == [True, True, True]
 
 
-def test_um_alarme_em_5_reprova_pelo_card_e_nao_pela_decidir():
-    # o card diz que um alarme na rotação de fora reprova nela; pela decidir() são precisos 2 em 5
+def test_regra_da_pagina_do_d2_decide_em_10_e_20_hz_e_reprova_com_2_em_5():
     segs = _segs_rf()
     normal = np.array([s.classe == "H" for s in segs])
     rot = np.array([s.rotacao for s in segs])
-    disparo = normal & (rot == 10) & (np.cumsum(normal & (rot == 10)) == 1)    # 1 alarme, só a 10 Hz
-    r = C.resumir_rotacao_fora(segs, disparo, normal, ~normal)
-    a = r["por_rotacao"][10]["alarme"]
-    assert (a["k"], a["reprova_card"], a["decisao"]) == (1, True, "inconclusivo")
-    assert not r["por_rotacao"][20]["alarme"]["reprova_card"]
+    rots = [5, 10, 20, 30]
+
+    def com_alarmes(**k):                                         # k alarmes nos normais de cada rotação
+        d = np.zeros(len(segs), bool)
+        for v, q in k.items():
+            m = normal & (rot == int(v[1:]))
+            d[np.flatnonzero(m)[:q]] = True
+        return C.resumir_rotacao_fora(segs, d, normal, ~normal, rots)
+
+    r = com_alarmes(r5=5, r10=1, r30=5)                            # pontas alarmam, 1 em 5 a 10 Hz
+    assert [r["por_rotacao"][v]["papel"] for v in rots] == ["extrapolacao", "decide", "decide", "extrapolacao"]
+    assert r["por_rotacao"][10]["alarme"]["decisao"] == "inconclusivo"
+    assert r["decisao_pagina_d2"] == "inconclusivo"               # 5 e 30 Hz não reprovam; o total (11/20) não conta
+    assert not r["por_rotacao"][5]["deteccao_lida"] and r["por_rotacao"][10]["deteccao_lida"]
+    assert com_alarmes(r20=2)["decisao_pagina_d2"] == "reprova"
+    assert "decisao_pagina_d2" not in C.resumir_rotacao_fora(segs, normal, normal, ~normal)   # reporte
+
+
+def test_d1_da_rotacao_de_fora_tira_da_conta_o_que_o_pente_nao_avaliou():
+    segs = [s for s in _segs_rf() if s.rotacao in (20, 30)]
+    folds = C.folds_pela_regra(segs, (20, 30))
+    pont = np.arange(2 * len(segs), dtype=float).reshape(-1, 2)
+    i = next(j for j, s in enumerate(segs) if s.classe == "H" and s.rotacao == 30)
+    pont[i, 0] = np.nan
+    d1, validos, lims = C.d1_rotacao_fora(segs, pont, folds)
+    assert not validos[i] and validos.sum() == len(segs) - 1        # com duas rotações, todos são teste
+    assert not d1[i]
+    assert sorted(lims) == [20, 30] and len(lims[20]) == 2
+
+
+def test_um_alarme_em_5_nao_reprova_pela_decidir():
     assert C.decidir(0, 5) == "inconclusivo" and C.limite_superior(0, 5) == pytest.approx(0.451, abs=1e-3)
     assert C.decidir(1, 5) == "inconclusivo"
     assert C.decidir(2, 5) == "reprova"
