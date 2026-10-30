@@ -178,6 +178,7 @@ diagnostico-acustico-motores/
 │       ├── metricas.py                    # sensibilidade, especificidade, acurácia balanceada
 │       ├── selecao.py                     # validação interna ao B e regra de escolha (escolher), sem torch
 │       ├── run_protocol.py                # executável: roda A ou B e registra o resultado
+│       ├── run_protocol_c.py              # executável: Protocolo C no HUSTmotor (C1, C2 e recalibração da LDA)
 │       ├── run_tabela_comparativa.py      # executável: tabela provisório × oficial a partir dos metrics.json
 │       ├── run_tabela_controles.py        # executável: tabela dos controles (sem c0, permutação, curva)
 │       ├── run_tabela_aumento.py          # executável: tabela do B com e sem aumento de dados
@@ -212,6 +213,7 @@ diagnostico-acustico-motores/
 │       ├── test_tabela_taxas.py           # tabela das taxas: comparabilidade e mesma partição em segundos
 │       ├── test_consolidacao.py           # consolidação: número sem registry ou rodada no papel errado aborta
 │       ├── test_particao.py               # inclui: outra taxa dá os mesmos segmentos em segundos
+│       ├── test_protocol_c.py             # Protocolo C: limites binomiais, D2 do C2, recalibração (variantes, critério 12/15, só o bias), divisão conferida
 │       └── test_selecao.py                # folds internos não leem o teste externo; escolher fica com o mais barato na margem
 │
 ├── notebooks/                # notebooks de análise/visualização
@@ -307,6 +309,12 @@ python scripts/validation/run_protocol.py --protocolo B --permutar    # controle
 python scripts/validation/run_protocol.py --protocolo B --permutar --semente 1   # uma rodada por semente
 python scripts/validation/run_protocol.py --protocolo B --segundos-treino 5 --semente 1   # curva de aprendizado (mín. 2 s; sorteio repartido entre as gravações)
 python scripts/validation/run_protocol.py --protocolo B --sem-registro   # teste, não registra
+
+# Protocolo C no HUSTmotor (precisa do 10 e do 11; lê o data/processed/hustmotor/)
+python scripts/validation/run_protocol_c.py --sintetico                    # auto-teste, sem registro
+python scripts/validation/run_protocol_c.py --responsavel <nome>           # LDA sem retreino, C1 e C2
+python scripts/validation/run_protocol_c.py --recalibracao --responsavel <nome>   # LDA recalibrada pela normal
+python scripts/validation/run_protocol_c.py --recalibracao --sem-registro  # teste: grava em reports/validation/teste_protocolo_c/
 
 # tabelas (leem os metrics.json; não treinam nem registram)
 python scripts/validation/run_tabela_comparativa.py   # provisório × oficial
