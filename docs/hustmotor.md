@@ -12,7 +12,7 @@ Card "HUSTmotor — preparar os dados (licença, download, decimação e geometr
 | Geometria | Rolamento **6203** (8 esferas), **inferido**: BPFO = 3,053 × e BPFI = 4,947 × a rotação. Os autores não publicam a geometria; no `BF`, o BPFO aparece a até ~1 % e o BPFI 2 a 3 % abaixo. |
 | Rotação | A nominal de cada arquivo (5, 10, 20 e 30 Hz), como pede o critério v4. A medida na vibração é 1,2 a 3,3 % menor (escorregamento). |
 | Segmentos | **5 por classe e velocidade**, 20 por classe, e não ~25: cada arquivo são 5 aquisições separadas de 1,28 s. |
-| Divisão do C2 | Em cada arquivo da normal, os blocos 1 e 2 calibram, o 3 é descartado e o 4 e o 5 medem; a falha mede com os 5 blocos (seção "Divisão do C2"). **O C2 só consegue reprovar um detector**: com 8 segmentos medidos, zero alarmes ainda é compatível com até 31 % de alarme falso. |
+| Divisão do C2 | Em cada arquivo da normal, os blocos 1 e 2 calibram, o 3 é descartado e o 4 e o 5 medem; a falha mede com os 5 blocos (seção "Divisão do C2"). **O C2 só consegue reprovar um detector**: com 8 segmentos medidos, zero alarmes ainda é compatível com até 31 % de alarme falso. Versionada, com a divisão da rotação deixada de fora, em `data/processed/hustmotor/divisao_rotacao.json`. |
 | Risco a 5 Hz | **O pente é inviável a 5 e a 10 Hz** com a resolução de 3,125 Hz. Afeta só o D1, que já não é elegível; o D2 não usa o pente. |
 
 ## Fonte e licença
@@ -96,6 +96,12 @@ A regra do critério (metade calibra, 1 de descarte, metade mede) vale só para 
 | `BF` | 1 a 5 | medida da detecção | 5 / 20 |
 
 A falha não calibra nada, então não perde blocos: os 5 medem a detecção.
+
+**Arquivo versionado.** A divisão fica em `data/processed/hustmotor/divisao_rotacao.json`, gerado só a partir do manifest pelo `scripts/pipeline/11_divisao_hustmotor.py` (que, como o `03`, para se o arquivo existente for diferente). Ele traz:
+
+- um id estável por segmento, `<arquivo>_a<aquisição>` (por exemplo `h_20hz_a3`), com as amostras que ele ocupa no `.bin`;
+- `c2`: a divisão acima, rotação a rotação. O `run_protocol_c.py --recalibracao` confere os papéis contra ela e grava o hash curto do arquivo no registry;
+- `rotacao_deixada_de_fora`: para cada rotação de teste, a calibração com a normal das outras três rotações (as 15 aquisições: são arquivos diferentes, então não há vazamento no tempo para descartar) e o teste com os 5 normais e as 5 falhas da rotação de fora. `dentro_da_faixa_calibrada` é verdadeiro só a 10 e a 20 Hz; a 5 e a 30 Hz, a rotação de teste fica fora da faixa da calibração, e a leitura é de extrapolação de rotação. A regra de leitura é a da página da adoção do D2; o arquivo só fixa os segmentos.
 
 **Decisões do Registro (22/10).** Três pontos que o critério v4 não fixava foram aprovados pelo grupo, por comentário na página do Registro de Decisões:
 
