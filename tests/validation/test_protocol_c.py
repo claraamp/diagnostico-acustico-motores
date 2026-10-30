@@ -277,3 +277,11 @@ def test_rodada_de_teste_nao_grava_na_pasta_versionada():
     assert C.SAIDA_TESTE.name.startswith("teste_")                  # fora do Git (.gitignore)
     assert C.pasta_de_saida(C.SAIDA_REGISTRADA, True, True) == C.SAIDA_REGISTRADA / "sintetico"
     assert C.pasta_de_saida(Path("outra"), True, False) == Path("outra")    # pasta pedida é respeitada
+
+
+def test_normal_c2_do_combinado_diz_que_o_d2_usa_a_normal_junta():
+    assert C.normal_c2("LDA_recal") == "por_rotacao"
+    assert C.normal_c2("D2_OU_LDA_recal") == "lda_por_rotacao/d2_junta"
+    # o valor tem que sobreviver à leitura do registry, que separa os pares por ";"
+    par = dict(p.split("=", 1) for p in f"normal_c2={C.normal_c2('D2_OU_LDA_recal')}".split(";") if "=" in p)
+    assert par["normal_c2"] == "lda_por_rotacao/d2_junta"

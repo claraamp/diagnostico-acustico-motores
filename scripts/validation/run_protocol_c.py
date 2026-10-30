@@ -542,14 +542,24 @@ def gravar_decisoes(caminho: Path, segs: list[SegHust], papel: np.ndarray, escor
                        + [int(dispara["d2_c2"][i]), int(dispara["combinado"][i])])
 
 
+def normal_c2(detector: str) -> str:
+    """De onde vem a normal do C2 em cada leitura da recalibração, para o registry.
+
+    A LDA recalibrada usa a média da normal de cada rotação; o D2 usa a normal junta (as
+    quatro rotações), como nas leituras do C2 sem recalibração. O combinado tem as duas.
+    Sem ";" no valor: é o separador dos pares do registry (`experimentos.kv`).
+    """
+    return "lda_por_rotacao/d2_junta" if detector == "D2_OU_LDA_recal" else "por_rotacao"
+
+
 def rodar_recalibracao(args, segs: list[SegHust], X: np.ndarray, calib: np.ndarray,
                        med_normal: np.ndarray, med_falha: np.ndarray, X_jung: np.ndarray,
                        y_jung: np.ndarray, p_lda: dict, folds_b, divisao: dict, modelo_id: str,
                        hash_splits: str, feat_commit: str) -> int:
     """As leituras da recalibração, a combinada com o D2, a conferência no B e o registro."""
     rot = np.array([s.rotacao for s in segs])
-    normal = np.array([s.classe == "H" for s in segs])
-    papel = papel_c2(calib, med_normal, med_falha, normal)
+    e_normal = np.array([s.classe == "H" for s in segs])
+    papel = papel_c2(calib, med_normal, med_falha, e_normal)
     hash_div = "sintetico" if args.sintetico else conferir_divisao(segs, papel, args.divisao)
     ref = normal_referencia(X_jung, y_jung)
     res, dispara = {}, {}
@@ -591,11 +601,11 @@ def rodar_recalibracao(args, segs: list[SegHust], X: np.ndarray, calib: np.ndarr
 
     destino = args.out_dir / "recalibracao"
     destino.mkdir(parents=True, exist_ok=True)
-    normal = {"origem": "segmentos normais do Jung (os do treino do modelo final)", "n": ref["n"],
+    normal_jung = {"origem": "segmentos normais do Jung (os do treino do modelo final)", "n": ref["n"],
               "modelo": modelo_id, "splits": hash_splits, "features_commit": feat_commit, "ddof_desvio": 1,
               "media": ref["media"].tolist(), "desvio": ref["desvio"].tolist()}
     gravar_decisoes(destino / "decisoes_por_segmento.csv", segs, papel, escores, dispara)
-    (destino / "normal_jung.json").write_text(json.dumps(normal, ensure_ascii=False, indent=2) + "\n",
+    (destino / "normal_jung.json").write_text(json.dumps(normal_jung, ensure_ascii=False, indent=2) + "\n",
                                              encoding="utf-8", newline="\n")
     parametros = {"modelo": modelo_id, "splits": hash_splits, "features_commit": feat_commit,
                   "divisao_c2": divisao, "variantes": VARIANTES_RECAL, "piso_desvio": PISO_DESVIO,
@@ -606,7 +616,7 @@ def rodar_recalibracao(args, segs: list[SegHust], X: np.ndarray, calib: np.ndarr
                   "criterio": "funciona: principal e controle sem o c0 com ≥ 12/15 a 10–30 Hz e alarme da "
                               "principal sem reprovar; detecção pelo nível: só a principal passa; 5 Hz à parte"}
     (destino / "metrics.json").write_text(json.dumps(
-        {"parametros": parametros, "normal_referencia": normal, "resultado": resultado,
+        {"parametros": parametros, "normal_referencia": normal_jung, "resultado": resultado,
          "conferencia_protocolo_b": conf_b, "comparacao": comparacao, "leituras": res},
         ensure_ascii=False, indent=2,
         default=lambda o: list(o) if isinstance(o, tuple) else float(o)) + "\n", encoding="utf-8", newline="\n")
@@ -641,7 +651,7 @@ def rodar_recalibracao(args, segs: list[SegHust], X: np.ndarray, calib: np.ndarr
             "git_commit": experimentos.git_short_hash(),
             "parametros": experimentos.kv({
                 "protocolo": "C", "leitura": "C2", "detector": r["detector"], "variante": r["variante"],
-                "papel": r["papel"].split(" ")[0], "referencia": f"normal_jung_{ref['n']}", "normal_c2": "por_rotacao",
+                "papel": r["papel"].split(" ")[0], "referencia": f"normal_jung_{ref['n']}", "normal_c2": normal_c2(r["detector"]),
                 "piso_desvio": PISO_DESVIO if r["variante"] == "desvio" else None,
                 "criterio": "12/15_a_10-30Hz", "modelo": modelo_id, "divisao_c2": divisao_txt,
                 "divisao_hust": hash_div,
