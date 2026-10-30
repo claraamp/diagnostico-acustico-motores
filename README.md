@@ -315,6 +315,8 @@ python scripts/validation/run_protocol_c.py --sintetico                    # aut
 python scripts/validation/run_protocol_c.py --responsavel <nome>           # LDA sem retreino, C1 e C2
 python scripts/validation/run_protocol_c.py --recalibracao --responsavel <nome>   # LDA recalibrada pela normal
 python scripts/validation/run_protocol_c.py --recalibracao --sem-registro  # teste: grava em reports/validation/teste_protocolo_c/
+python scripts/validation/run_protocol_c.py --rotacao-fora --sintetico   # rotação deixada de fora: auto-teste
+python scripts/validation/run_protocol_c.py --rotacao-fora --responsavel <nome>   # D2 nos 4 folds; D1 a 20 e 30 Hz
 
 # tabelas (leem os metrics.json; não treinam nem registram)
 python scripts/validation/run_tabela_comparativa.py   # provisório × oficial
