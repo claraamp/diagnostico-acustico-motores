@@ -105,6 +105,12 @@ Uso
     python scripts/validation/run_protocol_c.py --responsavel <nome>
     python scripts/validation/run_protocol_c.py --recalibracao --sintetico
     python scripts/validation/run_protocol_c.py --recalibracao --responsavel <nome>
+    python scripts/validation/run_protocol_c.py --recalibracao --sem-registro   # teste, não registra
+
+Pastas de saída: a rodada registrada grava em reports/validation/protocolo_c/ (versionada);
+--sem-registro, em reports/validation/teste_protocolo_c/, fora do Git, como as teste_* do
+run_protocol.py (CONVENTIONS.md), para um teste nunca sobrescrever uma saída registrada;
+--sintetico, em <pasta>/sintetico/, também fora do Git.
 """
 
 from __future__ import annotations
@@ -143,6 +149,8 @@ CAND = N.CAND_B                            # o espectro do D1 (FFT de 4.096 pont
 EIXO_JUNG_HZ = N.EIXO_NOMINAL_HZ           # 50,17 Hz
 EIXO_ESTIMADO_REL = (0.85, 1.02)           # faixa do pente do eixo, em vezes a rotação nominal
 CONFIANCA = 0.95
+SAIDA_REGISTRADA = Path("reports/validation/protocolo_c")
+SAIDA_TESTE = Path("reports/validation/teste_protocolo_c")
 X_ALARME = 0.05                            # alarme falso máximo por segmento (critério, seção 4)
 
 
@@ -653,6 +661,20 @@ def rodar_recalibracao(args, segs: list[SegHust], X: np.ndarray, calib: np.ndarr
 
 
 # ---------------------------------------------------------------------------
+def pasta_de_saida(out_dir: Path, sem_registro: bool, sintetico: bool) -> Path:
+    """
+    Onde a rodada grava. A registrada, na pasta pedida (por padrão a versionada); um teste
+    (--sem-registro) com a pasta padrão, em SAIDA_TESTE, fora do Git, para nunca
+    sobrescrever uma saída registrada; o auto-teste sintético, em <pasta>/sintetico/.
+    """
+    out_dir = Path(out_dir)
+    if sintetico:
+        return out_dir / "sintetico"
+    if sem_registro and out_dir == SAIDA_REGISTRADA:
+        return SAIDA_TESTE
+    return out_dir
+
+
 def _fmt(r: dict) -> str:
     a, d = r["alarme"], r["deteccao"]
     return (f"alarme {a['k']:>2}/{a['n']:<2} (≤ {a['limite_superior_95']:.0%}; {a['decisao']:<12})   "
@@ -671,7 +693,7 @@ def main() -> int:
     ap.add_argument("--splits", type=Path, default=Path(config.arquivo_splits(config.FS_TRABALHO)))
     ap.add_argument("--features", type=Path, default=Path(config.dir_features(config.FS_TRABALHO)) / "mfcc_features.npz")
     ap.add_argument("--modelo", type=Path, default=Path("reports/modelo_final/lda_final.json"))
-    ap.add_argument("--out-dir", type=Path, default=Path("reports/validation/protocolo_c"))
+    ap.add_argument("--out-dir", type=Path, default=SAIDA_REGISTRADA)
     ap.add_argument("--registry", type=Path, default=Path("experiments/registry.csv"))
     ap.add_argument("--sem-registro", action="store_true")
     ap.add_argument("--sintetico", action="store_true", help="auto-teste (implica --sem-registro)")
@@ -686,7 +708,8 @@ def main() -> int:
     # ---- Jung (C1, LDA) -------------------------------------------------------------
     if args.sintetico:
         args.sem_registro = True
-        args.out_dir = args.out_dir / "sintetico"
+    args.out_dir = pasta_de_saida(args.out_dir, args.sem_registro, args.sintetico)
+    if args.sintetico:
         lista = P.sintetico()
         particoes = particao.gerar_particoes(lista)
         segmentos = particao.segmentos_de(particoes)

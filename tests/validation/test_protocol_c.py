@@ -268,3 +268,12 @@ def test_divisao_conferida_e_decisoes_por_segmento(tmp_path):
     linhas = (tmp_path / "d.csv").read_text(encoding="utf-8").splitlines()
     assert linhas[0].startswith("segmento,classe,rotacao,aquisicao,papel_c2,escore_sem_recal,falha_sem_recal")
     assert len(linhas) == n + 1 and linhas[1].startswith("h_5hz_a1,H,5,1,calibracao,0.000000,1,")
+
+
+def test_rodada_de_teste_nao_grava_na_pasta_versionada():
+    from pathlib import Path
+    assert C.pasta_de_saida(C.SAIDA_REGISTRADA, False, False) == C.SAIDA_REGISTRADA
+    assert C.pasta_de_saida(C.SAIDA_REGISTRADA, True, False) == C.SAIDA_TESTE
+    assert C.SAIDA_TESTE.name.startswith("teste_")                  # fora do Git (.gitignore)
+    assert C.pasta_de_saida(C.SAIDA_REGISTRADA, True, True) == C.SAIDA_REGISTRADA / "sintetico"
+    assert C.pasta_de_saida(Path("outra"), True, False) == Path("outra")    # pasta pedida é respeitada
