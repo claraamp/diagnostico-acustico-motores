@@ -151,17 +151,19 @@
     "confianca": 0.95,
     "x_alarme": 0.05,
     "card": "Protocolo C — rotação deixada de fora: especificidade do D2 (e do D1 a 20 e 30 Hz)",
-    "leitura": "por rotação, regra do card: qualquer alarme reprova nela; decidir() ao lado"
+    "leitura": "regra da página da adoção do D2 (29/10): decidem 10 e 20 Hz, reprova com 2 ou mais alarmes em 5 (decidir()); 5 e 30 Hz são extrapolação; sem corte no total",
+    "combinado_lda_recalibrada": "não roda: no C2 a recalibrada não dispara (exp287–exp291), e aqui precisaria da normal da rotação de teste"
   },
   "leituras": {
     "RF_D2": {
       "detector": "D2",
       "rotacao": null,
-      "papel": "lido pela página da adoção do D2",
+      "papel": "decide (página da adoção do D2)",
+      "n_caracteristicas": 26,
       "folds": {
         "5": {
           "limiar": 64.86893180114714,
-          "dentro_da_faixa_calibrada": false,
+          "papel": "extrapolacao",
           "n_calibracao": 15,
           "n_blocos": 5,
           "n_ajuste_fora_do_bloco": 12,
@@ -170,7 +172,7 @@
         },
         "10": {
           "limiar": 59.045140657066085,
-          "dentro_da_faixa_calibrada": true,
+          "papel": "decide",
           "n_calibracao": 15,
           "n_blocos": 5,
           "n_ajuste_fora_do_bloco": 12,
@@ -179,7 +181,7 @@
         },
         "20": {
           "limiar": 87.05161712189837,
-          "dentro_da_faixa_calibrada": true,
+          "papel": "decide",
           "n_calibracao": 15,
           "n_blocos": 5,
           "n_ajuste_fora_do_bloco": 12,
@@ -188,7 +190,7 @@
         },
         "30": {
           "limiar": 116.58844513642507,
-          "dentro_da_faixa_calibrada": false,
+          "papel": "extrapolacao",
           "n_calibracao": 15,
           "n_blocos": 5,
           "n_ajuste_fora_do_bloco": 12,
@@ -224,14 +226,15 @@
                 "taxa": 1.0,
                 "limite_superior_95": 1.0,
                 "limite_inferior_95": 0.5492802716530589,
-                "decisao": "reprova",
-                "reprova_card": true
+                "decisao": "reprova"
               },
               "deteccao": {
                 "k": 5,
                 "n": 5,
                 "taxa": 1.0
-              }
+              },
+              "papel": "extrapolacao",
+              "deteccao_lida": false
             },
             "10": {
               "alarme": {
@@ -240,14 +243,15 @@
                 "taxa": 0.0,
                 "limite_superior_95": 0.450719728346941,
                 "limite_inferior_95": 0.0,
-                "decisao": "inconclusivo",
-                "reprova_card": false
+                "decisao": "inconclusivo"
               },
               "deteccao": {
                 "k": 5,
                 "n": 5,
                 "taxa": 1.0
-              }
+              },
+              "papel": "decide",
+              "deteccao_lida": true
             },
             "20": {
               "alarme": {
@@ -256,14 +260,15 @@
                 "taxa": 1.0,
                 "limite_superior_95": 1.0,
                 "limite_inferior_95": 0.5492802716530589,
-                "decisao": "reprova",
-                "reprova_card": true
+                "decisao": "reprova"
               },
               "deteccao": {
                 "k": 5,
                 "n": 5,
                 "taxa": 1.0
-              }
+              },
+              "papel": "decide",
+              "deteccao_lida": false
             },
             "30": {
               "alarme": {
@@ -272,16 +277,155 @@
                 "taxa": 1.0,
                 "limite_superior_95": 1.0,
                 "limite_inferior_95": 0.5492802716530589,
-                "decisao": "reprova",
-                "reprova_card": true
+                "decisao": "reprova"
               },
               "deteccao": {
                 "k": 5,
                 "n": 5,
                 "taxa": 1.0
-              }
+              },
+              "papel": "extrapolacao",
+              "deteccao_lida": false
             }
-          }
+          },
+          "decisao_pagina_d2": "reprova"
+        }
+      }
+    },
+    "RF_D2_sem_c0": {
+      "detector": "D2_sem_c0",
+      "rotacao": null,
+      "papel": "reporte",
+      "n_caracteristicas": 24,
+      "folds": {
+        "5": {
+          "limiar": 42.08968175653869,
+          "papel": "extrapolacao",
+          "n_calibracao": 15,
+          "n_blocos": 5,
+          "n_ajuste_fora_do_bloco": 12,
+          "encolhimento_final": 0.24274894612592418,
+          "encolhimento_fora_do_bloco_media": 0.2836860614742439
+        },
+        "10": {
+          "limiar": 51.858875653697766,
+          "papel": "decide",
+          "n_calibracao": 15,
+          "n_blocos": 5,
+          "n_ajuste_fora_do_bloco": 12,
+          "encolhimento_final": 0.2234786570733807,
+          "encolhimento_fora_do_bloco_media": 0.2621542464238668
+        },
+        "20": {
+          "limiar": 82.68780961631147,
+          "papel": "decide",
+          "n_calibracao": 15,
+          "n_blocos": 5,
+          "n_ajuste_fora_do_bloco": 12,
+          "encolhimento_final": 0.2057842619941377,
+          "encolhimento_fora_do_bloco_media": 0.24255761405992987
+        },
+        "30": {
+          "limiar": 53.536110509684306,
+          "papel": "extrapolacao",
+          "n_calibracao": 15,
+          "n_blocos": 5,
+          "n_ajuste_fora_do_bloco": 12,
+          "encolhimento_final": 0.2138123862750899,
+          "encolhimento_fora_do_bloco_media": 0.25117215123558995
+        }
+      },
+      "alarme_esperado_pela_calibracao": 0.0625,
+      "resultado": {
+        "sozinho": {
+          "alarme": {
+            "k": 15,
+            "n": 20,
+            "taxa": 0.75,
+            "limite_superior_95": 0.8959191640898638,
+            "limite_inferior_95": 0.5444175959982511,
+            "decisao": "reprova"
+          },
+          "deteccao": {
+            "k": 20,
+            "n": 20,
+            "taxa": 1.0,
+            "intervalo_95": [
+              0.8315665290169147,
+              1.0
+            ]
+          },
+          "por_rotacao": {
+            "5": {
+              "alarme": {
+                "k": 5,
+                "n": 5,
+                "taxa": 1.0,
+                "limite_superior_95": 1.0,
+                "limite_inferior_95": 0.5492802716530589,
+                "decisao": "reprova"
+              },
+              "deteccao": {
+                "k": 5,
+                "n": 5,
+                "taxa": 1.0
+              },
+              "papel": "extrapolacao",
+              "deteccao_lida": false
+            },
+            "10": {
+              "alarme": {
+                "k": 0,
+                "n": 5,
+                "taxa": 0.0,
+                "limite_superior_95": 0.450719728346941,
+                "limite_inferior_95": 0.0,
+                "decisao": "inconclusivo"
+              },
+              "deteccao": {
+                "k": 5,
+                "n": 5,
+                "taxa": 1.0
+              },
+              "papel": "decide",
+              "deteccao_lida": true
+            },
+            "20": {
+              "alarme": {
+                "k": 5,
+                "n": 5,
+                "taxa": 1.0,
+                "limite_superior_95": 1.0,
+                "limite_inferior_95": 0.5492802716530589,
+                "decisao": "reprova"
+              },
+              "deteccao": {
+                "k": 5,
+                "n": 5,
+                "taxa": 1.0
+              },
+              "papel": "decide",
+              "deteccao_lida": false
+            },
+            "30": {
+              "alarme": {
+                "k": 5,
+                "n": 5,
+                "taxa": 1.0,
+                "limite_superior_95": 1.0,
+                "limite_inferior_95": 0.5492802716530589,
+                "decisao": "reprova"
+              },
+              "deteccao": {
+                "k": 5,
+                "n": 5,
+                "taxa": 1.0
+              },
+              "papel": "extrapolacao",
+              "deteccao_lida": false
+            }
+          },
+          "decisao_pagina_d2": "reprova"
         }
       }
     },
@@ -316,14 +460,15 @@
                 "taxa": 1.0,
                 "limite_superior_95": 1.0,
                 "limite_inferior_95": 0.5492802716530589,
-                "decisao": "reprova",
-                "reprova_card": true
+                "decisao": "reprova"
               },
               "deteccao": {
                 "k": 5,
                 "n": 5,
                 "taxa": 1.0
-              }
+              },
+              "papel": "reporte",
+              "deteccao_lida": false
             },
             "10": {
               "alarme": {
@@ -332,14 +477,15 @@
                 "taxa": 1.0,
                 "limite_superior_95": 1.0,
                 "limite_inferior_95": 0.5492802716530589,
-                "decisao": "reprova",
-                "reprova_card": true
+                "decisao": "reprova"
               },
               "deteccao": {
                 "k": 5,
                 "n": 5,
                 "taxa": 1.0
-              }
+              },
+              "papel": "reporte",
+              "deteccao_lida": false
             },
             "20": {
               "alarme": {
@@ -348,14 +494,15 @@
                 "taxa": 1.0,
                 "limite_superior_95": 1.0,
                 "limite_inferior_95": 0.5492802716530589,
-                "decisao": "reprova",
-                "reprova_card": true
+                "decisao": "reprova"
               },
               "deteccao": {
                 "k": 5,
                 "n": 5,
                 "taxa": 1.0
-              }
+              },
+              "papel": "reporte",
+              "deteccao_lida": false
             },
             "30": {
               "alarme": {
@@ -364,14 +511,15 @@
                 "taxa": 1.0,
                 "limite_superior_95": 1.0,
                 "limite_inferior_95": 0.5492802716530589,
-                "decisao": "reprova",
-                "reprova_card": true
+                "decisao": "reprova"
               },
               "deteccao": {
                 "k": 5,
                 "n": 5,
                 "taxa": 1.0
-              }
+              },
+              "papel": "reporte",
+              "deteccao_lida": false
             }
           }
         }
@@ -391,6 +539,7 @@
           3.9921410539045383
         ]
       },
+      "n_nao_avaliados": 0,
       "alarme_esperado_pela_calibracao": 0.30555555555555547,
       "resultado": {
         "sozinho": {
@@ -419,14 +568,15 @@
                 "taxa": 0.6,
                 "limite_superior_95": 0.923559608587671,
                 "limite_inferior_95": 0.18925537743777085,
-                "decisao": "reprova",
-                "reprova_card": true
+                "decisao": "reprova"
               },
               "deteccao": {
                 "k": 5,
                 "n": 5,
                 "taxa": 1.0
-              }
+              },
+              "papel": "reporte",
+              "deteccao_lida": false
             },
             "30": {
               "alarme": {
@@ -435,14 +585,15 @@
                 "taxa": 0.2,
                 "limite_superior_95": 0.6574083180011386,
                 "limite_inferior_95": 0.010206218313011505,
-                "decisao": "inconclusivo",
-                "reprova_card": true
+                "decisao": "inconclusivo"
               },
               "deteccao": {
                 "k": 5,
                 "n": 5,
                 "taxa": 1.0
-              }
+              },
+              "papel": "reporte",
+              "deteccao_lida": true
             }
           }
         }
@@ -462,6 +613,7 @@
           4.030451029750226
         ]
       },
+      "n_nao_avaliados": 0,
       "alarme_esperado_pela_calibracao": 0.30555555555555547,
       "resultado": {
         "sozinho": {
@@ -490,14 +642,15 @@
                 "taxa": 0.2,
                 "limite_superior_95": 0.6574083180011386,
                 "limite_inferior_95": 0.010206218313011505,
-                "decisao": "inconclusivo",
-                "reprova_card": true
+                "decisao": "inconclusivo"
               },
               "deteccao": {
                 "k": 5,
                 "n": 5,
                 "taxa": 1.0
-              }
+              },
+              "papel": "reporte",
+              "deteccao_lida": true
             },
             "30": {
               "alarme": {
@@ -506,14 +659,15 @@
                 "taxa": 0.2,
                 "limite_superior_95": 0.6574083180011386,
                 "limite_inferior_95": 0.010206218313011505,
-                "decisao": "inconclusivo",
-                "reprova_card": true
+                "decisao": "inconclusivo"
               },
               "deteccao": {
                 "k": 5,
                 "n": 5,
                 "taxa": 1.0
-              }
+              },
+              "papel": "reporte",
+              "deteccao_lida": true
             }
           }
         }
