@@ -40,6 +40,7 @@
     "confianca": 0.95,
     "x_alarme": 0.05,
     "registro": "Recalibrar a LDA pela normal da máquina nova (29/10, Definida)",
+    "divisao_hust": "acff87bde3",
     "criterio": "funciona: principal e controle sem o c0 com ≥ 12/15 a 10–30 Hz e alarme da principal sem reprovar; detecção pelo nível: só a principal passa; 5 Hz à parte"
   },
   "normal_referencia": {

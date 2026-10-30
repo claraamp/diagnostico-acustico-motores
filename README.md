@@ -76,6 +76,25 @@ O `inspect_deteccao_novidade.py` roda, no Protocolo B, os candidatos do `docs/cr
 
 O `10_prepare_hustmotor.py` põe o som do HUSTmotor multimodal (Zhao et al., 2025) no formato do pipeline, só as classes saudável e falha de rolamento, nas 4 velocidades (5, 10, 20 e 30 Hz), decimado de 25,6 para 12,8 kHz com a mesma regra de filtro do Jung. **Cada arquivo são 5 aquisições separadas de 1,28 s**, e não 6,4 s contínuos: cada bloco é decimado sozinho e dá um segmento de 1 s, então são 5 segmentos por classe e velocidade (20 por classe). O repositório não declara licença (a descrição pede a citação do artigo), e os dados não são versionados. O rolamento é o 6203, inferido (BPFO 3,053 × e BPFI 4,947 × a rotação nominal), e o pente é inviável a 5 e a 10 Hz. Detalhes, download e o que isso muda no Protocolo C em `docs/hustmotor.md`.
 
+A divisão do HUST por rotação fica versionada em `data/processed/hustmotor/divisao_rotacao.json`, gerada só do manifest pelo `11_divisao_hustmotor.py`: um id por segmento (`<arquivo>_a<aquisição>`, por exemplo `h_20hz_a3`), a divisão do C2 rotação a rotação (calibração nas aquisições 1 e 2 da normal, descarte na 3, medida na 4 e na 5, falha nas 5) e a da rotação deixada de fora (calibração com a normal das outras três rotações, todas as aquisições; teste com a normal e a falha da rotação de fora; `dentro_da_faixa_calibrada` só a 10 e a 20 Hz). Como o `03`, o script para se o arquivo existente for diferente; o `run_protocol_c.py --recalibracao` confere os papéis do C2 contra ele e grava o hash curto no registry.
+
+### Recalibração da LDA pela normal da máquina nova (`exp287`–`exp291`)
+
+**Não funciona: a LDA recalibrada não detecta nenhum segmento com falha do HUSTmotor (0/15 a 10, 20 e 30 Hz; 0/5 a 5 Hz).** O experimento segue a página "Recalibrar a LDA pela normal da máquina nova" do Registro de Decisões (29/10, Definida), com tudo fixado antes de rodar (`run_protocol_c.py --recalibracao`). A LDA final do Jung é aplicada sem mudar os pesos, depois de as características do HUST serem levadas ao referencial da normal do Jung só com gravações saudáveis: a média de cada rotação sai das aquisições 1 e 2 da normal (as do C2), e a referência é a média dos 59 segmentos normais do Jung (`reports/validation/protocolo_c/recalibracao/normal_jung.json`). A base é a normalização da média cepstral: um microfone, uma sala ou um ganho diferentes deslocam as 13 médias do MFCC e não mudam os 13 desvios. Os `exp287`–`exp291` substituem os `exp282`–`exp286` (commit `7681e2b`), com os mesmos números; a rodada nova confere a divisão versionada e grava as decisões por segmento.
+
+| Leitura | Papel | Alarme falso (normais de medida) | Detecção a 10–30 Hz | Detecção a 5 Hz |
+|---|---|---:|---:|---:|
+| LDA sem recalibrar (comparação) | — | 8/8, reprova | 15/15 | 5/5 |
+| Só as 13 médias (`exp287`) | decide | 0/8, inconclusivo | **0/15** | 0/5 |
+| Controle sem o c0 (`exp288`) | decide junto | 0/8, inconclusivo | 0/15 | 0/5 |
+| As 26 médias (`exp289`) | reporte | 0/8, inconclusivo | 0/15 | 0/5 |
+| Com o desvio, piso de 0,5 σ (`exp290`) | reporte | 0/8, inconclusivo | 0/15 | 0/5 |
+| D2 do C2 OU a LDA recalibrada (`exp291`) | combinado | 0/8, inconclusivo | 15/15 | 0/5 |
+
+O critério pedia pelo menos 12 dos 15 segmentos com falha a 10, 20 e 30 Hz na principal e no controle sem o c0. A recalibração acerta a parte do nível: os normais do HUST passam de 8/8 alarmes para 0/8. Mas a falha também é levada para o lado da normal, e nenhuma variante a detecta. A leitura combinada detecta exatamente o que o D2 detecta sozinho (`exp279`), porque a LDA recalibrada não dispara em nenhum segmento. A conferência no Protocolo B (cada fold recalibrado com a normal do próprio treino) dá 0,8750 com e sem a recalibração e nenhuma decisão diferente: o código não muda nada onde não há o que corrigir. O `decisoes_por_segmento.csv`, na mesma pasta, traz para cada segmento (com o id do `divisao_rotacao.json`) o papel no C2, o escore e a decisão da LDA sem recalibrar e de cada variante, o D2 do C2 e o combinado.
+
+**Por que não funciona.** Na variante principal, a recalibração só soma uma constante ao escore de cada rotação: ela equivale a mudar o bias da LDA, que é como o firmware a aplicaria. Ela move o limiar, mas não muda a ordem dos segmentos ao longo do eixo da LDA. No HUST, essa ordem já estava invertida antes de recalibrar (medianas do `decisoes_por_segmento.csv`): escore de 3.694 nos normais de medida e de 1.784 na falha, quando no Jung a falha fica acima da normal (medianas de −1.466 na normal e +1.463 nas falhas, no `escores_referencia.csv`). Depois da recalibração, a normal do HUST cai em −1.410, ao lado da normal do Jung, e a falha cai em −3.206, do lado oposto ao das falhas do Jung; em cada rotação, a falha de maior escore fica abaixo do normal de menor escore. Ao longo do eixo da LDA, a falha do HUST se afasta da normal na direção contrária à das falhas do Jung. Inverter o sinal depois de ver a falha seria treinar na falha, e não vale. **A diferença entre as máquinas não é só de nível e microfone: a direção que separa falha de normal no Jung não é a do HUST.** O que transfere entre as máquinas é a detecção de novidade calibrada só com a normal (o D2 do C2), e não o classificador.
+
 ## Dataset
 
 Jung, W.; Kim, S.-H.; Yun, S.-H.; Bae, J.; Park, Y.-H. (2023), *Data in Brief* 48, 109049. Subconjunto acústico (microfone), 5 classes — `0Nm_Normal`, `0Nm_BPFI_03`, `0Nm_BPFI_10`, `0Nm_BPFO_03`, `0Nm_BPFO_10` — 60 s cada, 51,2 kHz, formato `.mat`.
@@ -110,7 +129,9 @@ diagnostico-acustico-motores/
 │       │   └── splits_25600.json   # a mesma partição a 25,6 kHz (03 --fs 25600), para comparar taxas
 │       ├── features/         # saída do 04 — mfcc_features.npz + manifest_features.json, NÃO versionados
 │       │                     # (outra taxa: features/<fs>/)
-│       └── hustmotor/pcm_decimated/12800/   # saída do 10 — .bin não versionados, manifest.json versionado
+│       └── hustmotor/
+│           ├── pcm_decimated/12800/  # saída do 10 — .bin não versionados, manifest.json versionado
+│           └── divisao_rotacao.json  # saída do 11 — divisão do C2 e da rotação deixada de fora, VERSIONADA
 │
 ├── scripts/
 │   ├── config.py             # parâmetros compartilhados entre etapas
@@ -150,7 +171,8 @@ diagnostico-acustico-motores/
 │   │   ├── 07_export_lda_test_vectors.py  # .h com features e escores de referência para o marco na placa
 │   │   ├── 08_export_stage_references.py  # referências por estágio (float64) e tolerâncias do A4 para o harness em C
 │   │   ├── 09_export_clips.py             # clipes int16 para a flash da placa (12,8 kHz e um recorte a 51,2 kHz) → .h
-│   │   └── 10_prepare_hustmotor.py        # HUSTmotor (Protocolo C): som de H e BF, 4 velocidades, decimado → data/processed/hustmotor/
+│   │   ├── 10_prepare_hustmotor.py        # HUSTmotor (Protocolo C): som de H e BF, 4 velocidades, decimado → data/processed/hustmotor/
+│   │   └── 11_divisao_hustmotor.py        # divisão do HUSTmotor por rotação (C2 e rotação deixada de fora) → divisao_rotacao.json
 │   └── validation/           # protocolo de validação do classificador
 │       ├── particao.py                    # segmentos, folds A e B, verificação
 │       ├── metricas.py                    # sensibilidade, especificidade, acurácia balanceada
@@ -178,7 +200,8 @@ diagnostico-acustico-motores/
 │   │   ├── test_export_lda_test_vectors.py # os vetores de teste ficam dentro da tolerância, a seleção não olha o escore, recusa .h de outro modelo
 │   │   ├── test_export_stage_references.py # o formato volta igual do arquivo; as referências versionadas são as do dsp atual
 │   │   ├── test_export_clips.py           # o clipe recalculado do .h dá o escore gravado; o recorte decimado é o clipe a 12,8 kHz
-│   │   └── test_prepare_hustmotor.py      # blocos do HUST lidos e decimados um a um, um segmento de 1 s por bloco
+│   │   ├── test_prepare_hustmotor.py      # blocos do HUST lidos e decimados um a um, um segmento de 1 s por bloco
+│   │   └── test_divisao_hustmotor.py      # o divisao_rotacao.json versionado é o que o manifest gera; papéis sem repetição
 │   ├── exploration/
 │   │   ├── test_deteccao_novidade.py      # D1b, amplitude da série sintética, D4 só com normais de treino, controle e regra de escolha
 │   │   ├── test_comb_features.py          # candidatos A/B/C do card (A inviável); acha a série fora da razão cinemática; decisão pela validação interna
@@ -243,6 +266,7 @@ python scripts/pipeline/07_export_lda_test_vectors.py                 # vetores 
 python scripts/pipeline/08_export_stage_references.py                 # referências por estágio → reports/c_reference/estagios/
 python scripts/pipeline/09_export_clips.py                            # clipes para a flash → reports/c_reference/clipes_demo.h
 python scripts/pipeline/10_prepare_hustmotor.py                       # HUSTmotor (data/raw/hustmotor/) → data/processed/hustmotor/
+python scripts/pipeline/11_divisao_hustmotor.py                       # divisão do HUSTmotor por rotação → data/processed/hustmotor/divisao_rotacao.json
 ```
 
 O `05` treina a LDA uma única vez, com os 295 segmentos e sem aumento, e grava em `reports/modelo_final/lda_final.json` os parâmetros nas duas formas equivalentes de `models/lda.py`: a padronizada (média, escala, coeficientes e intercepto) e a dobrada, `escore = pesos · x + bias`, que é a que o firmware usa. A convenção é **escore ≥ 0 → falha**: o empate exato segue o sklearn, que o classifica como falha (campo `escore_zero` do JSON). As 26 features seguem a ordem do `04` (as 13 médias, depois os 13 desvios, populacionais). Antes de gravar, o script confere que o JSON reproduz o sklearn em todos os segmentos. O `escores_referencia.csv` traz o escore de cada segmento para conferir a implementação em C. Esses segmentos são os do próprio treino: **o `05` não mede desempenho**, que continua sendo o do Protocolo B (`exp015`). O modelo final classifica corretamente os 295 segmentos, inclusive os da `bpfo_0.3mm`, porque todos estão no treino; **uma demonstração com trechos dessas gravações reproduz o treino, não o Protocolo B**, e não deve ser apresentada como desempenho. O tamanho do escore (±1.300 a ±1.600 nesses segmentos) também não é medida de confiança: a margem vem de o treino conter as cinco gravações, e não diz nada sobre uma gravação nova. **O firmware usa só o sinal do escore.** O JSON é o contrato com o firmware: além dos pesos, ele descreve a cadeia que produz as 26 features nos pontos em que um porte em C costuma divergir sem erro (bloco `entrada`): a origem do sinal a 12,8 kHz (FIR Kaiser de 147 taps, corte em 5.760 Hz, decimação por 4, com o atraso de grupo descartado), escala da entrada (`int16 / 32767`, e não `/ 32768` como a conversão Q15 da CMSIS), janela de Hann simétrica (`np.hanning`), FFT de 512 pontos com espectro de potência, banco de Mel HTK de 20 Hz a fs/2 com os bins já calculados, log natural com `+1e-10`, DCT-II ortonormal e desvio populacional. Um teste refaz o MFCC só a partir dessa descrição e compara com o `dsp.mfcc`. Ao comparar o C com o `escores_referencia.csv`, use tolerância relativa (~1e-3) no escore, porque o MFCC em `float32` difere um pouco do Python; a previsão tem que ser idêntica. Ele exige as features de referência (sem `--norm-clipe`); se o `04` foi rodado com outra opção, rode-o de novo sem opções antes.
