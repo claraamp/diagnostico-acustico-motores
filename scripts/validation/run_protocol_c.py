@@ -93,6 +93,11 @@ na decisão do D2 é o da página da adoção do D2. A conferência no Protocolo
 cada fold com a normal do próprio treino (a transformação vira a identidade): mostra
 que o código está certo, não que o método funciona.
 
+O auto-teste sintético (--recalibracao --sintetico) também dá "não funciona". O HUST
+sintético foi feito para o pente e não tem resposta conhecida para a recalibração: ele
+exercita o código, mas não é um controle positivo e não confirma o resultado nos dados
+reais.
+
 Os papéis do C2 vêm do manifest do HUST e são conferidos contra o divisao_rotacao.json
 versionado (11_divisao_hustmotor.py); o hash dele vai para o registry. Além do
 metrics.json e do normal_jung.json, a saída traz o decisoes_por_segmento.csv: para cada
