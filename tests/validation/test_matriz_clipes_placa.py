@@ -105,8 +105,9 @@ def test_formatacao_brasileira():
     assert mc.tex_num(-1331.76767, 3) == "$-1.331{,}768$"
 
 
-def test_hash_do_csv_nao_depende_da_quebra_de_linha(tmp_path):
+def test_hash_nao_depende_da_quebra_de_linha(tmp_path):
+    """O git guarda o CSV e a captura com LF; o hash tem de ser o dos bytes originais, em CRLF."""
     crlf, lf = tmp_path / "crlf.csv", tmp_path / "lf.csv"
     crlf.write_bytes(b"segmento,escore\r\n29,-1331.76767\r\n")
     lf.write_bytes(b"segmento,escore\n29,-1331.76767\n")
-    assert mc.sha12_csv(crlf) == mc.sha12_csv(lf) == mc.sha12(crlf)
+    assert mc.sha12_crlf(crlf) == mc.sha12_crlf(lf) == mc.sha12(crlf)

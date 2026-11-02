@@ -222,12 +222,15 @@ def sha12(caminho: Path) -> str:
     return hashlib.sha256(caminho.read_bytes()).hexdigest()[:12]
 
 
-def sha12_csv(caminho: Path) -> str:
+def sha12_crlf(caminho: Path) -> str:
     """
-    Hash do CSV com as quebras em CRLF, como o 09_export_clips o gravou.
+    Hash com as quebras normalizadas para CRLF.
 
-    O CLIPES_CSV_SHA256_12 do clipes_demo.h é o dos bytes com CRLF; conforme a
-    configuração do git, o arquivo pode chegar com LF, e o conteúdo é o mesmo.
+    O CSV de referência e a captura da serial nasceram com CRLF, e o git deste
+    repositório os guarda com LF: um clone novo traz bytes diferentes com o
+    mesmo conteúdo. O CLIPES_CSV_SHA256_12 do clipes_demo.h e o captura_sha do
+    registry (a partir do exp301) são os dos bytes com CRLF, e este hash os
+    reproduz em qualquer checkout.
     """
     b = caminho.read_bytes().replace(b"\r\n", b"\n").replace(b"\n", b"\r\n")
     return hashlib.sha256(b).hexdigest()[:12]
@@ -476,8 +479,8 @@ def main() -> int:
     args = ap.parse_args()
 
     try:
-        if sha12_csv(args.referencia) != CSV_SHA12:
-            raise Abortar(f"{args.referencia} tem sha {sha12_csv(args.referencia)} (em CRLF); "
+        if sha12_crlf(args.referencia) != CSV_SHA12:
+            raise Abortar(f"{args.referencia} tem sha {sha12_crlf(args.referencia)} (em CRLF); "
                           f"o firmware foi gerado do CSV com sha {CSV_SHA12} (clipes_demo.h)")
         ref = ler_referencia(args.referencia)
         with args.captura.open("rb") as fh:
@@ -493,7 +496,7 @@ def main() -> int:
         return 1
 
     res = resultado(cap, ref)
-    meta = {"captura_nome": args.captura.name, "captura_sha": sha12(args.captura),
+    meta = {"captura_nome": args.captura.name, "captura_sha": sha12_crlf(args.captura),
             "csv_sha": CSV_SHA12, "modelo": MODELO, "json": JSON_SHA12,
             "resumo_firmware": cap.resumo_firmware}
     args.out_dir.mkdir(parents=True, exist_ok=True)
