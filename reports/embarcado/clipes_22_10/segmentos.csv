@@ -1,0 +1,11 @@
+segmento,clipe,k,classe,escore_python,escore_placa,dif_placa,tol_placa,frac_tol,frac_tol_conservadora,decisao_python,decisao_placa,passagens_iguais
+29,normal,0,normal,-1331.76767,-1331.768,0.000122,0.013318,0.0092,0.0623,normal,normal,3
+30,normal,1,normal,-1392.13252,-1392.132,0.000244,0.013921,0.0175,0.0733,normal,normal,3
+88,bpfi_0.3mm,0,falha,1361.83595,1361.836,0.000366,0.013618,0.0269,0.0404,falha,falha,3
+89,bpfi_0.3mm,1,falha,1477.39064,1477.391,0.000122,0.014774,0.0083,0.0582,falha,falha,3
+147,bpfi_1.0mm,0,falha,1469.79876,1469.799,0.000122,0.014698,0.0083,0.0503,falha,falha,3
+148,bpfi_1.0mm,1,falha,1425.16537,1425.165,0.000854,0.014252,0.0599,0.0610,falha,falha,3
+206,bpfo_0.3mm,0,falha,1492.37453,1492.374,0.000122,0.014924,0.0082,0.0690,falha,falha,3
+207,bpfo_0.3mm,1,falha,1518.17746,1518.177,0.000366,0.015182,0.0241,0.0632,falha,falha,3
+265,bpfo_1.0mm,0,falha,1499.83921,1499.839,0.0,0.014998,0.0000,0.0473,falha,falha,3
+266,bpfo_1.0mm,1,falha,1499.84737,1499.847,0.0,0.014998,0.0000,0.0580,falha,falha,3
