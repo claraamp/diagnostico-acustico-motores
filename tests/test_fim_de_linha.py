@@ -21,7 +21,7 @@ from validation import particao
 RAIZ = Path(__file__).resolve().parents[1]
 
 # o que pode ficar fora de LF no repositório (ver .gitattributes)
-SEM_CONVERSAO = (".csv",)                 # gravados pelo módulo csv, com CRLF, e mantidos como estão
+SEM_CONVERSAO = (".csv", ".log")          # CRLF do módulo csv e da serial da placa, mantidos como estão
 BINARIOS = (".png", ".pdf", ".bin", ".npz", ".npy", ".mat", ".f64", ".i16")
 
 
