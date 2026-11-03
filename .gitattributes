@@ -30,6 +30,11 @@
 # assim (alguns em LF). Ficam exatamente como foram gravados, sem conversão.
 *.csv -text
 
+# Capturas da serial da placa (reports/embarcado/capturas/): CRLF, como saem do
+# firmware. O sha delas vai para o registry (captura_sha), então ficam byte a
+# byte iguais às do repositório do firmware, sem conversão.
+*.log -text
+
 # Binários: nunca converter nem fazer diff de texto.
 *.bin binary
 *.npz binary

@@ -32,8 +32,11 @@ O que o script confere ANTES de gravar qualquer saída (se algo falhar, aborta)
 3. O ref= que o firmware imprime (float32, 3 casas) é o escore do CSV.
 4. Conferência independente da tolerância, contra o float64 do CSV: mesmo no
    pior arredondamento do texto (0,0005), |placa - ref| fica dentro de
-   1e-5 x |ref|. A fração que vai para a tabela é a da placa (dif/tol medidos
-   em float32 na própria placa, 6 casas), que é a exata; a conservadora sai no CSV.
+   1e-5 x |ref|. A fração que vai para a tabela é a medida na placa, contra o
+   ref em float32 do clipes_demo.h (dif/tol, 6 casas). O ref em float32 difere
+   do float64 do Python em até meio ulp (6,1e-5, cerca de 0,4 ponto percentual
+   da tolerância), então um 0,0 % quer dizer "igual ao float32 do ref". A fração
+   conservadora, contra o float64 e no pior arredondamento do texto, sai no CSV.
 5. Cada volta do laço tem os 10 segmentos, com o mesmo escore e a mesma decisão
    do boot (a conta é determinística).
 6. Cada linha "demo" tem logo depois o $SEG de origem C com o mesmo clipe,
@@ -219,21 +222,14 @@ def ler_referencia(caminho: Path) -> dict[int, dict]:
 
 
 def sha12(caminho: Path) -> str:
+    """
+    Hash curto dos bytes do arquivo, como o CLIPES_CSV_SHA256_12 do clipes_demo.h.
+
+    Vale porque o CSV e a captura são guardados no git sem conversão de fim de
+    linha (*.csv -text e *.log -text no .gitattributes): um clone novo traz os
+    mesmos bytes, em CRLF, como saíram do módulo csv e da serial da placa.
+    """
     return hashlib.sha256(caminho.read_bytes()).hexdigest()[:12]
-
-
-def sha12_crlf(caminho: Path) -> str:
-    """
-    Hash com as quebras normalizadas para CRLF.
-
-    O CSV de referência e a captura da serial nasceram com CRLF, e o git deste
-    repositório os guarda com LF: um clone novo traz bytes diferentes com o
-    mesmo conteúdo. O CLIPES_CSV_SHA256_12 do clipes_demo.h e o captura_sha do
-    registry (a partir do exp301) são os dos bytes com CRLF, e este hash os
-    reproduz em qualquer checkout.
-    """
-    b = caminho.read_bytes().replace(b"\r\n", b"\n").replace(b"\n", b"\r\n")
-    return hashlib.sha256(b).hexdigest()[:12]
 
 
 # --------------------------------------------------------------------------- #
@@ -413,7 +409,8 @@ def escrever_md(res: dict, meta: dict, destino: Path) -> None:
           f"- Concordância placa × Python: {res['concordancia']}/{n}.",
           f"- Pior caso: seg {pior['segmento']} ({pior['clipe']}), "
           f"{pct(pior['frac_tol'])} da tolerância encadeada (dif {br(pior['dif_placa'], 6)} de "
-          f"{br(pior['tol_placa'], 6)}, medidos na placa). No pior arredondamento do texto, "
+          f"{br(pior['tol_placa'], 6)}, medidos na placa contra o ref em float32). "
+          f"No pior arredondamento do texto, "
           f"contra o float64 do CSV: {pct(max(x['frac_tol_conservadora'] for x in res['linhas']))}.",
           f"- Escore e decisão iguais ao boot nas {res['n_voltas']} voltas do laço, nos {n} segmentos.",
           f"- {res['n_pacotes_c']} pacotes $SEG de origem C, cada um igual à linha demo "
@@ -434,7 +431,8 @@ def escrever_tex(res: dict, destino: Path) -> None:
     t = [r"\begin{table}[H]", r"\centering",
          r"\caption{Cadeia completa na placa nos 10 segmentos dos clipes (verificação na "
          r"inicialização do firmware final, 22/10). Fração da tolerância encadeada de "
-         r"$10^{-5}$ relativo, com a diferença medida na placa.}",
+         r"$10^{-5}$ relativo, com a diferença medida na placa, contra a referência em "
+         r"\emph{float32}.}",
          r"\label{tab:clipes_placa_segmentos}", r"\small",
          r"\begin{tabular}{rlrrrl}", r"\toprule",
          r"\textbf{Seg.} & \textbf{Clipe} & \textbf{Escore Python} & \textbf{Escore placa} & "
@@ -479,9 +477,10 @@ def main() -> int:
     args = ap.parse_args()
 
     try:
-        if sha12_crlf(args.referencia) != CSV_SHA12:
-            raise Abortar(f"{args.referencia} tem sha {sha12_crlf(args.referencia)} (em CRLF); "
-                          f"o firmware foi gerado do CSV com sha {CSV_SHA12} (clipes_demo.h)")
+        if sha12(args.referencia) != CSV_SHA12:
+            raise Abortar(f"{args.referencia} tem sha {sha12(args.referencia)}; o firmware foi "
+                          f"gerado do CSV com sha {CSV_SHA12} (clipes_demo.h). Se o conteúdo "
+                          f"é o mesmo, confira se o fim de linha foi convertido (.gitattributes)")
         ref = ler_referencia(args.referencia)
         with args.captura.open("rb") as fh:
             cap = ler_captura(b.decode("ascii", errors="replace") for b in fh)
@@ -496,7 +495,7 @@ def main() -> int:
         return 1
 
     res = resultado(cap, ref)
-    meta = {"captura_nome": args.captura.name, "captura_sha": sha12_crlf(args.captura),
+    meta = {"captura_nome": args.captura.name, "captura_sha": sha12(args.captura),
             "csv_sha": CSV_SHA12, "modelo": MODELO, "json": JSON_SHA12,
             "resumo_firmware": cap.resumo_firmware}
     args.out_dir.mkdir(parents=True, exist_ok=True)

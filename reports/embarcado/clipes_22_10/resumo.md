@@ -45,7 +45,7 @@ Os 10 segmentos estão no treino do modelo final: a matriz mede a fidelidade do 
 ## Conferências
 
 - Concordância placa × Python: 10/10.
-- Pior caso: seg 148 (bpfi_1.0mm), 6,0 % da tolerância encadeada (dif 0,000854 de 0,014252, medidos na placa). No pior arredondamento do texto, contra o float64 do CSV: 7,3 %.
+- Pior caso: seg 148 (bpfi_1.0mm), 6,0 % da tolerância encadeada (dif 0,000854 de 0,014252, medidos na placa contra o ref em float32). No pior arredondamento do texto, contra o float64 do CSV: 7,3 %.
 - Escore e decisão iguais ao boot nas 2 voltas do laço, nos 10 segmentos.
 - 20 pacotes $SEG de origem C, cada um igual à linha demo correspondente; contador sem salto, nenhum checksum errado.
 - Referência: o sha do CSV é o CLIPES_CSV_SHA256_12 do clipes_demo.h, e o ref= impresso pela placa é o escore do CSV em todos os segmentos.
