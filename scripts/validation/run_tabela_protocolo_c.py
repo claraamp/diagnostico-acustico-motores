@@ -1,0 +1,304 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+run_tabela_protocolo_c.py — fechamento do Protocolo C numa tabela única
+=======================================================================
+
+Fecha o card "Validação externa no HUSTmotor multi-modal (Protocolo C)": junta,
+para o relatório final, as leituras do Protocolo C que já têm rodada no
+registry. Lê os três `metrics.json` do `run_protocol_c.py` em
+`reports/validation/protocolo_c/` e grava, na mesma pasta:
+
+tabela_protocolo_c.md    a tabela com o alarme falso e a detecção por rotação,
+                         o total, a decisão e a rodada de cada leitura
+tab_protocoloC.tex       a mesma tabela no formato do relatório (vírgula decimal,
+                         `tabularx`/`booktabs`), sem a coluna do total
+
+Não treina nada nem escreve no registry.
+
+Leituras, na ordem do protocolo
+-------------------------------
+1. Sem retreino: a LDA final do Jung aplicada ao HUST (`exp274`).
+2. C1, transferência: cada detector com o modelo e o limiar do Jung (`exp275`–`exp278`).
+3. C2, comissionamento: a normal do próprio HUST calibra, aquisições 1 e 2
+   (`exp279`–`exp281`).
+4. Recalibração da LDA pela normal da máquina nova (`exp287`–`exp291`).
+5. Rotação deixada de fora: o D2 calibra com as outras três rotações (`exp296`–`exp300`).
+
+A checagem do retreino da LDA (Amanda, 29/10) não tem rodada no registry: está
+só na página "Retreinar a LDA no HUSTmotor" do Registro de Decisões, descartada.
+Entra como nota abaixo da tabela, dita como fora do registry, e não como linha.
+
+Rastreabilidade
+---------------
+Cada linha tem que ter rodada no registry, do `run_protocol_c.py`, com o mesmo
+detector, não substituída por outra, e com as mesmas contagens do metrics.json:
+alarme e detecção no total e por rotação, e a decisão. Se alguma não bater, o
+script aborta antes de gravar qualquer saída.
+
+Uso
+---
+    python scripts/validation/run_tabela_protocolo_c.py
+"""
+
+from __future__ import annotations
+
+import argparse
+import csv
+import json
+import sys
+from dataclasses import dataclass
+from pathlib import Path
+
+ROTACOES = (5, 10, 20, 30)
+SCRIPT = "validation/run_protocol_c.py"
+
+
+@dataclass(frozen=True)
+class Linha:
+    exp_id: str
+    arquivo: str          # subpasta do metrics.json ("" = o do C1 e do C2)
+    chave: str            # leitura dentro de "leituras"
+    bloco: str            # "sozinho", "ou_lda" ou "combinado"
+    etapa: str
+    nome: str
+    papel: str
+
+
+LINHAS = (
+    Linha("exp274", "", "LDA_sem_retreino", "sozinho", "Sem retreino", "LDA do Jung", "transferência"),
+    Linha("exp275", "", "C1_D2", "sozinho", "C1, limiar do Jung", "D2", "reporte"),
+    Linha("exp275", "", "C1_D2", "ou_lda", "C1, limiar do Jung", "D2 OU LDA", "reporte"),
+    Linha("exp276", "", "C1_D1_nominal", "sozinho", "C1, limiar do Jung", "D1, rotação nominal", "reporte"),
+    Linha("exp277", "", "C1_D1_estimado", "sozinho", "C1, limiar do Jung", "D1, rotação estimada", "reporte"),
+    Linha("exp278", "", "C1_D4", "sozinho", "C1, limiar do Jung", "D4", "reporte"),
+    Linha("exp279", "", "C2_D2", "sozinho", "C2, normal do HUST", "D2", "reporte"),
+    Linha("exp279", "", "C2_D2", "ou_lda", "C2, normal do HUST", "D2 OU LDA", "reporte"),
+    Linha("exp280", "", "C2_D1_nominal", "sozinho", "C2, normal do HUST", "D1, rotação nominal", "reporte"),
+    Linha("exp281", "", "C2_D1_estimado", "sozinho", "C2, normal do HUST", "D1, rotação estimada", "reporte"),
+    Linha("exp287", "recalibracao", "C2_LDA_recal_medias13", "sozinho", "LDA recalibrada (C2)",
+          "só as 13 médias", "decide"),
+    Linha("exp288", "recalibracao", "C2_LDA_recal_sem_c0", "sozinho", "LDA recalibrada (C2)",
+          "sem o c0", "decide junto"),
+    Linha("exp289", "recalibracao", "C2_LDA_recal_medias26", "sozinho", "LDA recalibrada (C2)",
+          "as 26 médias", "reporte"),
+    Linha("exp290", "recalibracao", "C2_LDA_recal_desvio", "sozinho", "LDA recalibrada (C2)",
+          "com o desvio", "reporte"),
+    Linha("exp291", "recalibracao", "C2_D2_ou_LDA_recal", "combinado", "LDA recalibrada (C2)",
+          "D2 OU LDA recalibrada", "reporte"),
+    Linha("exp296", "rotacao_fora", "RF_D2", "sozinho", "Rotação deixada de fora", "D2",
+          "decide (adoção do D2)"),
+    Linha("exp297", "rotacao_fora", "RF_D2_sem_c0", "sozinho", "Rotação deixada de fora",
+          "D2 sem o c0", "reporte"),
+    Linha("exp298", "rotacao_fora", "RF_D2_ou_LDA", "combinado", "Rotação deixada de fora",
+          "D2 OU LDA", "reporte"),
+    Linha("exp299", "rotacao_fora", "RF_D1_nominal", "sozinho", "Rotação deixada de fora",
+          "D1, rotação nominal", "reporte"),
+    Linha("exp300", "rotacao_fora", "RF_D1_estimado", "sozinho", "Rotação deixada de fora",
+          "D1, rotação estimada", "reporte"),
+)
+
+RETREINO = ("Checagem do retreino da LDA (Amanda, 29/10), **fora do registry**: está só na página "
+            "\"Retreinar a LDA no HUSTmotor\" do Registro de Decisões, descartada. Acurácia balanceada "
+            "com uma rotação deixada de fora: LDA 0,65 (1,00 / 1,00 / 0,50 / 0,10 a 5 / 10 / 20 / 30 Hz), "
+            "SVM linear 0,88; o controle com rótulos trocados por arquivo chega a 0,82 no percentil 95 "
+            "(só para a LDA). Dividindo dentro do arquivo, 0,94 a 1,00, que mede reconhecer a gravação.")
+
+
+# ---------------------------------------------------------------------------
+
+def ler_registry(caminho: Path) -> dict[str, dict]:
+    with caminho.open(encoding="utf-8", newline="") as fh:
+        return {r["id"]: r for r in csv.DictReader(fh)}
+
+
+def _kv(texto: str) -> dict[str, str]:
+    return dict(par.split("=", 1) for par in (texto or "").split(";") if "=" in par)
+
+
+def carregar(pasta: Path) -> dict[str, dict]:
+    """Os três metrics.json do run_protocol_c.py, pela subpasta."""
+    arquivos = {}
+    for sub in sorted({ln.arquivo for ln in LINHAS}):
+        caminho = pasta / sub / "metrics.json"
+        if not caminho.exists():
+            raise SystemExit(f"Abortado: falta {caminho} (rode o run_protocol_c.py).")
+        arquivos[sub] = json.loads(caminho.read_text(encoding="utf-8"))
+    return arquivos
+
+
+def resultado(arquivos: dict, ln: Linha) -> dict:
+    try:
+        return arquivos[ln.arquivo]["leituras"][ln.chave]["resultado"][ln.bloco]
+    except KeyError as e:
+        raise SystemExit(f"Abortado: {ln.exp_id}: {ln.chave}/{ln.bloco} não está no metrics.json ({e}).")
+
+
+def _kn(c: dict) -> str:
+    return f"{c['k']}/{c['n']}"
+
+
+def conferir(arquivos: dict, registry: dict[str, dict]) -> int:
+    """Toda linha tem rodada no registry com as mesmas contagens; devolve quantas foram conferidas."""
+    erros, n = [], 0
+    for ln in LINHAS:
+        reg = registry.get(ln.exp_id)
+        if reg is None:
+            erros.append(f"{ln.exp_id}: sem linha no registry")
+            continue
+        if reg["script"] != SCRIPT:
+            erros.append(f"{ln.exp_id}: registry diz script {reg['script']}")
+        if "substituída" in reg["notas"]:
+            erros.append(f"{ln.exp_id}: substituída por outra rodada no registry")
+        leitura = arquivos[ln.arquivo]["leituras"][ln.chave]
+        if _kv(reg["parametros"]).get("detector") != leitura["detector"]:
+            erros.append(f"{ln.exp_id}: detector do registry ≠ {leitura['detector']} do metrics.json")
+        r, m = resultado(arquivos, ln), _kv(reg["metricas"])
+        esperado = {f"alarme_{ln.bloco}": _kn(r["alarme"]), f"deteccao_{ln.bloco}": _kn(r["deteccao"])}
+        chave_dec = f"decisao_{ln.bloco}" if f"decisao_{ln.bloco}" in m else f"decisao_total_{ln.bloco}"
+        esperado[chave_dec] = r["alarme"]["decisao"]
+        if "decisao_pagina_d2" in r:
+            esperado["decisao_pagina_d2"] = r["decisao_pagina_d2"]
+        if ln.arquivo == "rotacao_fora":       # só aqui o registry grava por rotação
+            for v, pr in r["por_rotacao"].items():
+                esperado |= {f"alarme_{v}hz": _kn(pr["alarme"]), f"deteccao_{v}hz": _kn(pr["deteccao"]),
+                             f"decisao_{v}hz": pr["alarme"]["decisao"]}
+        for chave, valor in esperado.items():
+            n += 1
+            if m.get(chave) != valor:
+                erros.append(f"{ln.exp_id}: {chave} registry={m.get(chave)} metrics.json={valor}")
+    if erros:
+        raise SystemExit("Abortado: registry e metrics.json não batem:\n  " + "\n  ".join(erros))
+    return n
+
+
+# ---------------------------------------------------------------------------
+
+def por_rotacao(r: dict, campo: str) -> list[str]:
+    """k/n em 5, 10, 20 e 30 Hz; — onde a leitura não avalia a rotação (o D1 a 5 e a 10 Hz)."""
+    pr = r["por_rotacao"]
+    return [_kn(pr[str(v)][campo]) if str(v) in pr else "—" for v in ROTACOES]
+
+
+def decisao(r: dict) -> str:
+    """O que a leitura decide, na regra de cada etapa."""
+    if "deteccao_criterio" in r:               # recalibração: pelo menos 12/15 a 10–30 Hz
+        c = r["deteccao_criterio"]
+        return (f"alarme {r['alarme']['decisao']}; detecção {'passa' if c['passa'] else 'não passa'} "
+                f"({_kn(c)} a 10–30 Hz)")
+    pr = r["por_rotacao"]
+    if "papel" not in next(iter(pr.values())):
+        return r["alarme"]["decisao"]
+    # rotação deixada de fora: o total é só reporte; na regra da página do D2, decidem 10 e 20 Hz
+    lidas = [v for v in pr if pr[v]["papel"] == "decide"] if "decisao_pagina_d2" in r else list(pr)
+    reprova = [v for v in lidas if pr[v]["alarme"]["decisao"] == "reprova"]
+    if not reprova:
+        return "inconclusivo"
+    if len(reprova) == len(pr):
+        return "reprova em todas"
+    return "reprova a " + " e ".join(filter(None, (", ".join(reprova[:-1]), reprova[-1]))) + " Hz"
+
+
+def md(arquivos: dict, n_conferidas: int) -> str:
+    rot = " / ".join(str(v) for v in ROTACOES)
+    texto = [
+        "# Protocolo C no HUSTmotor: tabela única",
+        "",
+        "Gerada pelo `run_tabela_protocolo_c.py` a partir dos `metrics.json` do `run_protocol_c.py`; "
+        f"{n_conferidas} contagens conferidas contra o `registry.csv`. Alarme falso nos segmentos normais "
+        "e detecção nos de falha, por rotação; a decisão é a do alarme (Clopper–Pearson unilateral de 95 %, "
+        "`decidir()`), que só consegue reprovar.",
+        "",
+        f"| Etapa | Leitura | Papel | Alarme falso {rot} Hz | Detecção {rot} Hz | Alarme total "
+        "| Detecção total | Decisão | Rodada |",
+        "|---|---|---|---|---|---:|---:|---|---|",
+    ]
+    for ln in LINHAS:
+        r = resultado(arquivos, ln)
+        texto.append(f"| {ln.etapa} | {ln.nome} | {ln.papel} | {' · '.join(por_rotacao(r, 'alarme'))} "
+                     f"| {' · '.join(por_rotacao(r, 'deteccao'))} | {_kn(r['alarme'])} "
+                     f"| {_kn(r['deteccao'])} | {decisao(r)} | `{ln.exp_id}` |")
+    texto += [
+        "",
+        "- **Sem retreino e C1:** a LDA e os detectores com o limiar do Jung disparam nos normais do HUST; "
+        "é o limite de transferência que o critério já previa. O D1 não dispara, mas detecta só metade.",
+        "- **C2:** calibrado com a normal do HUST na mesma rotação, o D2 não alarma (0/8, inconclusivo: "
+        "o C2 só consegue reprovar) e detecta a 10–30 Hz. O combinado com a LDA do Jung herda os alarmes dela.",
+        "- **LDA recalibrada:** zera os alarmes, mas não detecta nenhuma falha; a direção da falha no HUST "
+        "não é a do Jung.",
+        "- **Rotação deixada de fora:** sem a normal da própria rotação, o D2 reprova a 20 Hz (5/5), dentro "
+        "da faixa calibrada. Pela página \"Adoção do D2\", isso leva à opção 1, não adotar, a confirmar "
+        "na reunião de 03/11.",
+        "",
+        "## Fora do registry",
+        "",
+        RETREINO,
+        "",
+    ]
+    return "\n".join(texto)
+
+
+def _tex(s: str) -> str:
+    return (s.replace("—", "---").replace("–", "--").replace(" · ", r" $\cdot$ ").replace(" Hz", "~Hz")
+            .replace("c0", r"$c_0$").replace("D2 OU", r"D2 \textsc{ou}").replace("D4 OU", r"D4 \textsc{ou}"))
+
+
+def tex(arquivos: dict) -> str:
+    linhas, etapa = [], None
+    for ln in LINHAS:
+        if ln.etapa != etapa:
+            if etapa is not None:
+                linhas.append(r"\midrule")
+            linhas.append(r"\multicolumn{5}{l}{\textbf{" + _tex(ln.etapa) + r"}} \\")
+            etapa = ln.etapa
+        r = resultado(arquivos, ln)
+        linhas.append(f"{_tex(ln.nome)} & {_tex(' · '.join(por_rotacao(r, 'alarme')))} & "
+                      f"{_tex(' · '.join(por_rotacao(r, 'deteccao')))} & {_tex(decisao(r))} & "
+                      r"\texttt{" + ln.exp_id + r"} \\")
+    return "\n".join([
+        r"\begin{table}[H]",
+        r"\centering",
+        r"\caption{Protocolo C no HUSTmotor: alarme falso nos segmentos normais e detecção nos de falha, "
+        r"a 5, 10, 20 e 30~Hz. A decisão é a do alarme (Clopper--Pearson unilateral de 95~\%), que só "
+        r"consegue reprovar.}",
+        r"\label{tab:protocoloC}",
+        r"\footnotesize",
+        r"\setlength{\tabcolsep}{4pt}",
+        r"\begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}p{3.3cm} C{2.6cm} C{2.6cm} "
+        r">{\raggedright\arraybackslash}X C{1.1cm}}",
+        r"\toprule",
+        r"\textbf{Leitura} & \textbf{Alarme falso} & \textbf{Detecção} & \textbf{Decisão} & "
+        r"\textbf{Rodada} \\",
+        r"\midrule",
+        *linhas,
+        r"\bottomrule",
+        r"\end{tabularx}",
+        r"\end{table}",
+        "",
+    ])
+
+
+def gerar(pasta: Path, registry: Path) -> int:
+    arquivos = carregar(pasta)
+    n = conferir(arquivos, ler_registry(registry))
+    saidas = {"tabela_protocolo_c.md": md(arquivos, n), "tab_protocoloC.tex": tex(arquivos)}
+    for nome, texto in saidas.items():
+        (pasta / nome).write_text(texto, encoding="utf-8")
+    return n
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--pasta", type=Path, default=Path("reports/validation/protocolo_c"))
+    ap.add_argument("--registry", type=Path, default=Path("experiments/registry.csv"))
+    args = ap.parse_args()
+    n = gerar(args.pasta, args.registry)
+    print((args.pasta / "tabela_protocolo_c.md").read_text(encoding="utf-8"))
+    print(f"{n} contagens de {len({ln.exp_id for ln in LINHAS})} rodadas conferidas contra o registry.")
+    print(f"saídas: {args.pasta}/")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
