@@ -12,7 +12,8 @@ registry. Lê os três `metrics.json` do `run_protocol_c.py` em
 tabela_protocolo_c.md    a tabela com o alarme falso e a detecção por rotação,
                          o total, a decisão e a rodada de cada leitura
 tab_protocoloC.tex       a mesma tabela no formato do relatório (vírgula decimal,
-                         `tabularx`/`booktabs`), sem a coluna do total
+                         `tabularx`/`booktabs`), sem a coluna do total e com as
+                         leituras que decidem em negrito
 
 Não treina nada nem escreve no registry.
 
@@ -33,8 +34,15 @@ Rastreabilidade
 ---------------
 Cada linha tem que ter rodada no registry, do `run_protocol_c.py`, com o mesmo
 detector, não substituída por outra, e com as mesmas contagens do metrics.json:
-alarme e detecção no total e por rotação, e a decisão. Se alguma não bater, o
-script aborta antes de gravar qualquer saída.
+alarme e detecção no total e a decisão do alarme; na recalibração, também a
+detecção a 10–30 Hz, se passa no critério, e a de 5 Hz; na rotação deixada de
+fora, também alarme, detecção e decisão por rotação e a decisão da página do D2.
+Se alguma não bater, o script aborta antes de gravar qualquer saída. O registry
+só grava por rotação a rotação deixada de fora: nas outras etapas, as colunas
+por rotação saem só do metrics.json, conferidas pela soma com o total.
+
+Os itens de leitura abaixo da tabela não citam números, que ficam só nas células
+conferidas; a exceção é a nota do retreino, dita como fora do registry.
 
 Uso
 ---
@@ -159,6 +167,11 @@ def conferir(arquivos: dict, registry: dict[str, dict]) -> int:
         esperado[chave_dec] = r["alarme"]["decisao"]
         if "decisao_pagina_d2" in r:
             esperado["decisao_pagina_d2"] = r["decisao_pagina_d2"]
+        if "deteccao_criterio" in r:            # recalibração: o critério de 12/15 a 10–30 Hz
+            c = r["deteccao_criterio"]
+            esperado |= {f"deteccao_10a30hz_{ln.bloco}": _kn(c),
+                         f"passa_10a30hz_{ln.bloco}": "sim" if c["passa"] else "nao",
+                         f"deteccao_5hz_{ln.bloco}": _kn(r["deteccao_fora_do_criterio"])}
         if ln.arquivo == "rotacao_fora":       # só aqui o registry grava por rotação
             for v, pr in r["por_rotacao"].items():
                 esperado |= {f"alarme_{v}hz": _kn(pr["alarme"]), f"deteccao_{v}hz": _kn(pr["deteccao"]),
@@ -167,6 +180,11 @@ def conferir(arquivos: dict, registry: dict[str, dict]) -> int:
             n += 1
             if m.get(chave) != valor:
                 erros.append(f"{ln.exp_id}: {chave} registry={m.get(chave)} metrics.json={valor}")
+        for campo in ("alarme", "deteccao"):    # as colunas por rotação somam o total conferido
+            soma = [sum(pr[campo][x] for pr in r["por_rotacao"].values()) for x in ("k", "n")]
+            if soma != [r[campo]["k"], r[campo]["n"]]:
+                erros.append(f"{ln.exp_id}: {campo} por rotação soma {soma[0]}/{soma[1]}, "
+                             f"total {_kn(r[campo])}")
     if erros:
         raise SystemExit("Abortado: registry e metrics.json não batem:\n  " + "\n  ".join(erros))
     return n
@@ -220,15 +238,17 @@ def md(arquivos: dict, n_conferidas: int) -> str:
                      f"| {_kn(r['deteccao'])} | {decisao(r)} | `{ln.exp_id}` |")
     texto += [
         "",
-        "- **Sem retreino e C1:** a LDA e os detectores com o limiar do Jung disparam nos normais do HUST; "
-        "é o limite de transferência que o critério já previa. O D1 não dispara, mas detecta só metade.",
-        "- **C2:** calibrado com a normal do HUST na mesma rotação, o D2 não alarma (0/8, inconclusivo: "
-        "o C2 só consegue reprovar) e detecta a 10–30 Hz. O combinado com a LDA do Jung herda os alarmes dela.",
-        "- **LDA recalibrada:** zera os alarmes, mas não detecta nenhuma falha; a direção da falha no HUST "
+        "- **Sem retreino e C1:** com o limiar do Jung, a LDA, o D2 e o D4 disparam nos normais do HUST; "
+        "é o limite de transferência que o critério já previa. O D1 não dispara, mas detecta pouco.",
+        "- **C2:** calibrado com a normal do HUST na mesma rotação, o D2 fica inconclusivo no alarme (o C2 "
+        "só consegue reprovar) e detecta a 10–30 Hz. O combinado com a LDA do Jung herda os alarmes dela.",
+        "- **LDA recalibrada:** zera os alarmes, mas não detecta a falha; a direção da falha no HUST "
         "não é a do Jung.",
-        "- **Rotação deixada de fora:** sem a normal da própria rotação, o D2 reprova a 20 Hz (5/5), dentro "
-        "da faixa calibrada. Pela página \"Adoção do D2\", isso leva à opção 1, não adotar, a confirmar "
-        "na reunião de 03/11.",
+        "- **Rotação deixada de fora:** sem a normal da própria rotação, o D2 reprova a 20 Hz, dentro da "
+        "faixa calibrada. Na decisão, só ele conta (página \"Adoção do D2\"); o resto é reporte.",
+        "",
+        "**Decisão (reunião de 03/11, página \"Adoção do D2\" Definida):** opção 1, o D2 não é adotado. "
+        "Ele fica só como resultado em Python no relatório.",
         "",
         "## Fora do registry",
         "",
@@ -252,7 +272,10 @@ def tex(arquivos: dict) -> str:
             linhas.append(r"\multicolumn{5}{l}{\textbf{" + _tex(ln.etapa) + r"}} \\")
             etapa = ln.etapa
         r = resultado(arquivos, ln)
-        linhas.append(f"{_tex(ln.nome)} & {_tex(' · '.join(por_rotacao(r, 'alarme')))} & "
+        nome = _tex(ln.nome)
+        if ln.papel.startswith("decide"):
+            nome = r"\textbf{" + nome + "}"
+        linhas.append(f"{nome} & {_tex(' · '.join(por_rotacao(r, 'alarme')))} & "
                       f"{_tex(' · '.join(por_rotacao(r, 'deteccao')))} & {_tex(decisao(r))} & "
                       r"\texttt{" + ln.exp_id + r"} \\")
     return "\n".join([
@@ -260,7 +283,7 @@ def tex(arquivos: dict) -> str:
         r"\centering",
         r"\caption{Protocolo C no HUSTmotor: alarme falso nos segmentos normais e detecção nos de falha, "
         r"a 5, 10, 20 e 30~Hz. A decisão é a do alarme (Clopper--Pearson unilateral de 95~\%), que só "
-        r"consegue reprovar.}",
+        r"consegue reprovar. Em negrito, as leituras que decidem; as outras são reporte.}",
         r"\label{tab:protocoloC}",
         r"\footnotesize",
         r"\setlength{\tabcolsep}{4pt}",

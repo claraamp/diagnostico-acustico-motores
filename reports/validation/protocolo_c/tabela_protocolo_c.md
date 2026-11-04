@@ -1,6 +1,6 @@
 # Protocolo C no HUSTmotor: tabela única
 
-Gerada pelo `run_tabela_protocolo_c.py` a partir dos `metrics.json` do `run_protocol_c.py`; 110 contagens conferidas contra o `registry.csv`. Alarme falso nos segmentos normais e detecção nos de falha, por rotação; a decisão é a do alarme (Clopper–Pearson unilateral de 95 %, `decidir()`), que só consegue reprovar.
+Gerada pelo `run_tabela_protocolo_c.py` a partir dos `metrics.json` do `run_protocol_c.py`; 125 contagens conferidas contra o `registry.csv`. Alarme falso nos segmentos normais e detecção nos de falha, por rotação; a decisão é a do alarme (Clopper–Pearson unilateral de 95 %, `decidir()`), que só consegue reprovar.
 
 | Etapa | Leitura | Papel | Alarme falso 5 / 10 / 20 / 30 Hz | Detecção 5 / 10 / 20 / 30 Hz | Alarme total | Detecção total | Decisão | Rodada |
 |---|---|---|---|---|---:|---:|---|---|
@@ -25,10 +25,12 @@ Gerada pelo `run_tabela_protocolo_c.py` a partir dos `metrics.json` do `run_prot
 | Rotação deixada de fora | D1, rotação nominal | reporte | — · — · 3/5 · 1/5 | — · — · 5/5 · 5/5 | 4/10 | 10/10 | reprova a 20 Hz | `exp299` |
 | Rotação deixada de fora | D1, rotação estimada | reporte | — · — · 1/5 · 1/5 | — · — · 5/5 · 5/5 | 2/10 | 10/10 | inconclusivo | `exp300` |
 
-- **Sem retreino e C1:** a LDA e os detectores com o limiar do Jung disparam nos normais do HUST; é o limite de transferência que o critério já previa. O D1 não dispara, mas detecta só metade.
-- **C2:** calibrado com a normal do HUST na mesma rotação, o D2 não alarma (0/8, inconclusivo: o C2 só consegue reprovar) e detecta a 10–30 Hz. O combinado com a LDA do Jung herda os alarmes dela.
-- **LDA recalibrada:** zera os alarmes, mas não detecta nenhuma falha; a direção da falha no HUST não é a do Jung.
-- **Rotação deixada de fora:** sem a normal da própria rotação, o D2 reprova a 20 Hz (5/5), dentro da faixa calibrada. Pela página "Adoção do D2", isso leva à opção 1, não adotar, a confirmar na reunião de 03/11.
+- **Sem retreino e C1:** com o limiar do Jung, a LDA, o D2 e o D4 disparam nos normais do HUST; é o limite de transferência que o critério já previa. O D1 não dispara, mas detecta pouco.
+- **C2:** calibrado com a normal do HUST na mesma rotação, o D2 fica inconclusivo no alarme (o C2 só consegue reprovar) e detecta a 10–30 Hz. O combinado com a LDA do Jung herda os alarmes dela.
+- **LDA recalibrada:** zera os alarmes, mas não detecta a falha; a direção da falha no HUST não é a do Jung.
+- **Rotação deixada de fora:** sem a normal da própria rotação, o D2 reprova a 20 Hz, dentro da faixa calibrada. Na decisão, só ele conta (página "Adoção do D2"); o resto é reporte.
+
+**Decisão (reunião de 03/11, página "Adoção do D2" Definida):** opção 1, o D2 não é adotado. Ele fica só como resultado em Python no relatório.
 
 ## Fora do registry
 

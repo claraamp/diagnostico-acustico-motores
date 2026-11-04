@@ -104,6 +104,30 @@ def test_contagem_diferente_ou_rodada_substituida_aborta_sem_gravar(pasta, tmp_p
     assert not (pasta / "tabela_protocolo_c.md").exists()
 
 
+def test_criterio_da_recalibracao_e_soma_por_rotacao_sao_conferidos(pasta, tmp_path, monkeypatch):
+    recal = {**C2, "deteccao": {"k": 0, "n": 20},
+             "por_rotacao": {v: {**pr, "deteccao": {"k": 0, "n": 5}} for v, pr in C2["por_rotacao"].items()},
+             "deteccao_criterio": {"k": 0, "n": 15, "passa": False},
+             "deteccao_fora_do_criterio": {"k": 0, "n": 5}}
+    (pasta / "recalibracao").mkdir()
+    (pasta / "recalibracao" / "metrics.json").write_text(json.dumps(
+        {"leituras": {"REC": {"detector": "D2", "resultado": {"sozinho": recal}}}}), encoding="utf-8")
+    monkeypatch.setattr(T, "LINHAS", LINHAS + (T.Linha("exp003", "recalibracao", "REC", "sozinho",
+                                                       "Recalibração", "LDA", "decide"),))
+    errado = _registro("exp003", recal)
+    errado["metricas"] += ";deteccao_10a30hz_sozinho=0/15;passa_10a30hz_sozinho=sim;deteccao_5hz_sozinho=0/5"
+    # o C2 com uma rotação que não soma o total: 1/2 a 30 Hz e 0/8 no total
+    c2 = json.loads((pasta / "metrics.json").read_text(encoding="utf-8"))
+    c2["leituras"]["C2_D2"]["resultado"]["sozinho"]["por_rotacao"]["30"]["alarme"]["k"] = 1
+    (pasta / "metrics.json").write_text(json.dumps(c2), encoding="utf-8")
+    reg = tmp_path / "registry.csv"
+    _gravar_registry(reg, [_registro("exp001", C2), _registro("exp002", RF), errado])
+    with pytest.raises(SystemExit) as e:
+        T.gerar(pasta, reg)
+    assert "exp003: passa_10a30hz_sozinho registry=sim metrics.json=nao" in str(e.value)
+    assert "exp001: alarme por rotação soma 1/8, total 0/8" in str(e.value)
+
+
 def test_rotacao_de_fora_so_le_10_e_20_hz_pela_regra_da_pagina_do_d2():
     # 5 e 30 Hz também têm 5/5, mas são extrapolação; sem a regra da página, contam todas
     assert T.decisao(RF) == "reprova a 20 Hz"
