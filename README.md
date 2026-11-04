@@ -115,6 +115,12 @@ O critério pedia pelo menos 12 dos 15 segmentos com falha a 10, 20 e 30 Hz na p
 
 Pela proposta da página do D2, um D2 reprovado leva à opção 1 (não adotar); a decisão é da reunião de 03/11.
 
+### Protocolo C fechado: tabela única
+
+O `run_tabela_protocolo_c.py` junta as leituras do Protocolo C numa tabela só, para o relatório final: sem retreino (`exp274`), C1 (`exp275`–`exp278`), C2 (`exp279`–`exp281`), LDA recalibrada (`exp287`–`exp291`) e rotação deixada de fora (`exp296`–`exp300`), com o alarme falso e a detecção por rotação e a decisão de cada leitura. Antes de gravar, ele confere cada contagem contra a linha do registry e aborta se alguma rodada faltar, for de outro detector ou estiver substituída. Saídas em `reports/validation/protocolo_c/`: `tabela_protocolo_c.md` e `tab_protocoloC.tex`, no formato do relatório. A checagem do retreino da LDA (descartada em 29/10) não tem rodada no registry e entra só como nota, com os números da página do Registro de Decisões.
+
+**Leitura do protocolo:** a transferência sem recalibrar falha (a LDA do Jung, o D2 e o D4 alarmam em todos os normais do HUST), e só o D2 calibrado com a normal da máquina nova **na mesma rotação** (C2) fica sem alarme e detecta a falha a 10–30 Hz. Recalibrar a LDA zera os alarmes, mas ela deixa de detectar. Sem a normal da rotação em que vai operar, o D2 reprova a 20 Hz.
+
 ## Dataset
 
 Jung, W.; Kim, S.-H.; Yun, S.-H.; Bae, J.; Park, Y.-H. (2023), *Data in Brief* 48, 109049. Subconjunto acústico (microfone), 5 classes — `0Nm_Normal`, `0Nm_BPFI_03`, `0Nm_BPFI_10`, `0Nm_BPFO_03`, `0Nm_BPFO_10` — 60 s cada, 51,2 kHz, formato `.mat`.
@@ -203,6 +209,7 @@ diagnostico-acustico-motores/
 │       ├── run_tabela_controles.py        # executável: tabela dos controles (sem c0, permutação, curva)
 │       ├── run_tabela_aumento.py          # executável: tabela do B com e sem aumento de dados
 │       ├── run_tabela_taxas.py            # executável: tabela do B em duas taxas de amostragem
+│       ├── run_tabela_protocolo_c.py      # executável: tabela única do Protocolo C, conferida contra o registry
 │       └── run_consolidacao.py            # executável: tabelas .tex e figuras finais para o relatório
 │
 ├── tests/                    # pytest; não dependem de data/
@@ -337,6 +344,7 @@ python scripts/validation/run_protocol_c.py --recalibracao --responsavel <nome> 
 python scripts/validation/run_protocol_c.py --recalibracao --sem-registro  # teste: grava em reports/validation/teste_protocolo_c/
 python scripts/validation/run_protocol_c.py --rotacao-fora --sintetico   # rotação deixada de fora: auto-teste
 python scripts/validation/run_protocol_c.py --rotacao-fora --responsavel <nome>   # D2 nos 4 folds; D1 a 20 e 30 Hz
+python scripts/validation/run_tabela_protocolo_c.py   # tabela única do Protocolo C (só lê; confere o registry)
 
 # tabelas (leem os metrics.json; não treinam nem registram)
 python scripts/validation/run_tabela_comparativa.py   # provisório × oficial
