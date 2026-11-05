@@ -28,4 +28,5 @@ reports/**/sintetico/
 # Arquivos gerados de features e testes locais
 data/processed/features/
 reports/validation/teste_*/
+reports/embarcado/teste_*/
 reports/modelo_final/teste/
