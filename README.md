@@ -121,6 +121,14 @@ O `run_tabela_protocolo_c.py` junta as leituras do Protocolo C numa tabela só, 
 
 **Leitura do protocolo:** a transferência sem recalibrar falha (a LDA do Jung, o D2 e o D4 alarmam em todos os normais do HUST), e só o D2 calibrado com a normal da máquina nova **na mesma rotação** (C2) fica sem alarme (0/8, inconclusivo: o C2 só consegue reprovar) e detecta a falha a 10–30 Hz. Recalibrar a LDA zera os alarmes, mas ela deixa de detectar. Sem a normal da rotação em que vai operar, o D2 reprova a 20 Hz.
 
+### Sistema embarcado: segmentos pela serial e matriz contra o Python
+
+O `matriz_serial_placa.py` (card "Script do computador: envio dos segmentos à placa e matriz embarcada contra o Python") manda à placa, pelo modo de recepção do firmware (origem `S` do `$SEG`), os 295 segmentos do Jung e os 40 do HUSTmotor, um por vez, em quadros de 1 s a 12,8 kHz (`int16`), e compara cada escore com o do Python em float64 pela tolerância encadeada do escore no A4 (10⁻⁵ relativo). O formato do quadro e o diálogo são os do README do firmware ([`lab3-firmware-stm32`](https://github.com/claraamp/lab3-firmware-stm32), seção "Recepção de segmentos pela serial"), e o script segue as "Regras do PC na rodada" de lá: confere o modelo (`modelo=` e `json=` da linha `recepcao inicio` contra o `lda_final.json`) antes do primeiro quadro; no máximo 3 tentativas por segmento, contando `$ERR`, timeout (tempo de transmissão mais 2 s) e resposta rejeitada, e depois "não processado"; vale o primeiro `$SEG` de cada segmento, e as duplicatas são contadas e têm de ser iguais bit a bit; grupo 1 = Jung (id do segmento no `splits.json`) e grupo 2 = HUSTmotor (índice, a partir de 0, na lista `segmentos` do `divisao_rotacao.json`); um reinício da placa no meio da rodada faz o PC pedir o modo de novo e retomar do segmento pendente; o escore vem do `escore_hex` da linha `rx`, que tem de bater com o `$SEG` logo depois (grupo, id, texto do escore e decisão); e uma `rx` com `estouros` > 0 (anel do DMA, no firmware com o contador de voltas do PR #12 do firmware) é descartada e o segmento reenviado. A porta abre a 921.600 bit/s (`--baud 115200` para um firmware antigo), com o DTR e o RTS desligados, para não reiniciar a placa.
+
+O escore do Python é recalculado do mesmo `int16` que vai no quadro (`dsp.mfcc` e a forma dobrada do `lda_final.json`, como no `09`) e conferido, antes de qualquer envio, com o `escores_referencia.csv` (Jung) e com o `escore_sem_recal` do `decisoes_por_segmento.csv` da recalibração (HUST). A captura (`reports/embarcado/capturas/serial-DD-MM.log`) guarda as linhas da placa como chegaram e as do PC começando por `#pc` (o plano, cada envio, timeouts, reinícios); a matriz sai só dela, e `--captura` refaz a análise sem a placa. As saídas (`segmentos.csv`, `resumo.md` e `tabelas.tex`, em `reports/embarcado/serial_DD_MM/`) seguem o formato da matriz dos clipes, com uma matriz por conjunto: no Jung, todos os segmentos são do treino do modelo final, e o resultado é a fidelidade do porte (concordância e fração da tolerância), não desempenho; no HUSTmotor, é a LDA do Jung sem retreino (`exp274` do Protocolo C), e o que se mede é de novo a concordância com o Python. A rodada completa grava duas linhas no registry (etapa `validacao_embarcada`), uma por conjunto, com o commit e a data da rodada (do cabeçalho da captura); uma captura que já tem linha no registry (o mesmo `captura_sha`) não é registrada de novo, então refazer a matriz com `--captura` não cria rodada nova.
+
+**Ensaio contra o emulador do firmware (04/11, sem a placa):** com o `emular_placa` do firmware (a cadeia em C de verdade, compilada no PC, sem a fusão de multiplicação e soma do Cortex-M4), os 335 segmentos foram processados na primeira tentativa, com concordância de 295/295 no Jung e 40/40 no HUSTmotor. O pior caso no Jung é o `bpfi_1.0mm_seg0167`, com 11,3 % da tolerância, o mesmo segmento e o mesmo número da validação bloco a bloco sem FMA (`docs/validacao-blocos.md` do firmware); no HUSTmotor, o `bf_20hz_a4`, com 13,2 %. Os 10 segmentos dos clipes saíram, pela serial, bit a bit iguais às linhas `ref`. Com o emulador do PR #12 do firmware, com o anel estourado de propósito (`--travar-ms 50`) e com um erro de linha (`--erro-uart 9000`), o primeiro quadro voltou como `$ERR truncado` e foi reenviado. A rodada na placa é com a Clara.
+
 ## Dataset
 
 Jung, W.; Kim, S.-H.; Yun, S.-H.; Bae, J.; Park, Y.-H. (2023), *Data in Brief* 48, 109049. Subconjunto acústico (microfone), 5 classes — `0Nm_Normal`, `0Nm_BPFI_03`, `0Nm_BPFI_10`, `0Nm_BPFO_03`, `0Nm_BPFO_10` — 60 s cada, 51,2 kHz, formato `.mat`.
@@ -205,6 +213,7 @@ diagnostico-acustico-motores/
 │       ├── selecao.py                     # validação interna ao B e regra de escolha (escolher), sem torch
 │       ├── run_protocol.py                # executável: roda A ou B e registra o resultado
 │       ├── run_protocol_c.py              # executável: Protocolo C no HUSTmotor (C1, C2 e recalibração da LDA)
+│       ├── matriz_serial_placa.py         # executável: segmentos pela serial à placa e matriz embarcada contra o Python
 │       ├── run_tabela_comparativa.py      # executável: tabela provisório × oficial a partir dos metrics.json
 │       ├── run_tabela_controles.py        # executável: tabela dos controles (sem c0, permutação, curva)
 │       ├── run_tabela_aumento.py          # executável: tabela do B com e sem aumento de dados
@@ -345,6 +354,15 @@ python scripts/validation/run_protocol_c.py --recalibracao --sem-registro  # tes
 python scripts/validation/run_protocol_c.py --rotacao-fora --sintetico   # rotação deixada de fora: auto-teste
 python scripts/validation/run_protocol_c.py --rotacao-fora --responsavel <nome>   # D2 nos 4 folds; D1 a 20 e 30 Hz
 python scripts/validation/run_tabela_protocolo_c.py   # tabela única do Protocolo C (só lê; confere o registry)
+
+# sistema embarcado: os 295 + 40 segmentos pela serial e a matriz contra o Python (precisa do pyserial)
+python scripts/validation/matriz_serial_placa.py --simulada                       # sem a placa (placa simulada em Python)
+# emular_placa: do repo lab3-firmware-stm32 (Linux/macOS). Lá: cmake -S tests/host/harness -B build/harness -G Ninja,
+# cmake --build build/harness e ./build/harness/emular_placa &, que imprime a porta /dev/pts/N usada abaixo
+python scripts/validation/matriz_serial_placa.py --porta /dev/pts/N --sem-registro   # contra o emular_placa do firmware
+python scripts/validation/matriz_serial_placa.py --porta COM5 --sem-registro      # ensaio com a placa (saídas fora do Git)
+python scripts/validation/matriz_serial_placa.py --porta COM5 --responsavel <nome>   # a rodada registrada
+python scripts/validation/matriz_serial_placa.py --captura reports/embarcado/capturas/serial-DD-MM.log --sem-registro   # refaz a matriz
 
 # tabelas (leem os metrics.json; não treinam nem registram)
 python scripts/validation/run_tabela_comparativa.py   # provisório × oficial
