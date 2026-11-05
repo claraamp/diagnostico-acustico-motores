@@ -1198,6 +1198,11 @@ def main(argv=None) -> int:
     conjuntos = [c.strip() for c in args.conjuntos.split(",") if c.strip()]
     if not conjuntos or any(c not in GRUPOS for c in conjuntos):
         ap.error("--conjuntos: jung, hust ou jung,hust")
+    if args.porta:                              # avisa antes de recalcular os escores
+        try:
+            import serial  # noqa: F401
+        except ImportError:
+            ap.error("--porta precisa do pyserial: pip install pyserial")
     registrar = not (args.sem_registro or args.simulada or args.limite)
     if registrar and not args.responsavel:
         ap.error("--responsavel é obrigatório numa rodada registrada (ou use --sem-registro)")

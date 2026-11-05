@@ -349,6 +349,8 @@ python scripts/validation/run_protocol_c.py --rotacao-fora --responsavel <nome> 
 
 # sistema embarcado: os 295 + 40 segmentos pela serial e a matriz contra o Python (precisa do pyserial)
 python scripts/validation/matriz_serial_placa.py --simulada                       # sem a placa (placa simulada em Python)
+# emular_placa: do repo lab3-firmware-stm32 (Linux/macOS). Lá: cmake -S tests/host/harness -B build/harness -G Ninja,
+# cmake --build build/harness e ./build/harness/emular_placa &, que imprime a porta /dev/pts/N usada abaixo
 python scripts/validation/matriz_serial_placa.py --porta /dev/pts/N --sem-registro   # contra o emular_placa do firmware
 python scripts/validation/matriz_serial_placa.py --porta COM5 --sem-registro      # ensaio com a placa (saídas fora do Git)
 python scripts/validation/matriz_serial_placa.py --porta COM5 --responsavel <nome>   # a rodada registrada
