@@ -119,11 +119,15 @@ RETREINO = ("Checagem do retreino da LDA (Amanda, 29/10), fora do registry: est�
             "serviu só para descartar o retreino. Acurácia balanceada com uma rotação deixada de fora: "
             "LDA 0,65 (1,00 / 1,00 / 0,50 / 0,10 a 5 / 10 / 20 / 30 Hz), SVM linear 0,88. No controle com "
             "rótulos trocados por arquivo, a LDA tem média 0,48 e percentil 95 de 0,82; nas 14 trocas "
-            "possíveis, 4 igualam a LDA e 2 igualam o SVM (valor-p de cerca de 0,2). Dividindo dentro do "
+            "possíveis, 4 igualam ou superam a LDA (valor-p ≈ 0,33) e 2 igualam o SVM (≈ 0,2). As trocas "
+            "formam 7 pares com o mesmo valor (inverter todos os rótulos não muda a acurácia balanceada), "
+            "então o valor-p nunca cairia abaixo de cerca de 0,12: o controle não teria como mostrar "
+            "significância. Dividindo dentro do "
             "arquivo, 0,94 a 1,00, que mede reconhecer a gravação.")
 
 LEGENDA = ("Entre colchetes, alarmes em rotação fora da faixa calibrada (extrapolação): ficam fora da "
-           "decisão e são reportados à parte. Entre parênteses, detecção numa rotação em que o detector "
+           "decisão e são reportados à parte; no D2 OU LDA não há colchetes, porque a LDA do Jung alarma "
+           "em qualquer rotação, sem depender da calibração. Entre parênteses, detecção numa rotação em que o detector "
            "alarma os normais: não é lida como acerto.")
 
 
@@ -302,7 +306,7 @@ def md(arquivos: dict, n_conferidas: int) -> str:
 
 def _tex(s: str) -> str:
     return (re.sub(r'"([^"]*)"', r"``\1''", s)
-            .replace("—", "---").replace("–", "--").replace(" · ", r" $\cdot$ ").replace(" Hz", "~Hz")
+            .replace("≈ ", r"$\approx$ ").replace("—", "---").replace("–", "--").replace(" · ", r" $\cdot$ ").replace(" Hz", "~Hz")
             .replace("c0", r"$c_0$").replace("D2 OU", r"D2 \textsc{ou}").replace("D4 OU", r"D4 \textsc{ou}"))
 
 
