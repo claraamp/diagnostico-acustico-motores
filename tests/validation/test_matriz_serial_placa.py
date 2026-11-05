@@ -45,6 +45,7 @@ def rodar(tmp_path, falhas=None, escore=None, modelo=MODELO, **kw):
                             refs={29: ref[(1, 29)], 88: ref[(1, 88)]}, falhas=falhas,
                             ulps=lambda g, i: 1, demo_s=0.005, **kw)
     cap = M.Captura(tmp_path / "cap.log")
+    cap.pc(f"rodada inicio data=2026-11-05 porta=simulada baud=921600 modelo={MODELO} json={JSON} commit=abc1234")
     for c in ("jung", "hust"):
         cap.pc(f"plano grupo={M.GRUPOS[c]} ids={M.faixas([s.id for s in segs if s.conjunto == c])}")
     msgs = []
@@ -158,13 +159,16 @@ def test_tres_falhas_viram_nao_processado(tmp_path):
     j = res["conjuntos"]["jung"]
     assert j["nao_processados"] == ["jung_88"] and j["processados"] == 2
     assert (1, 88) in a.nao_processados_pc and any("NÃO PROCESSADO" in m for m in msgs)
+    assert res["divergencias_pc"] == []                                # o PC e a captura concordam
 
 
 def test_reinicio_pede_o_modo_de_novo_sem_gastar_tentativa(tmp_path):
     _, placa, envio, a, res, _ = rodar(tmp_path, {(2, 0, 1): "reinicia"})
     assert envio["reinicios"] == 1 and a.reinicios == 1 and len(a.inicios) == 2
     assert all(x["estado"] == "processado" for x in res["linhas"])
-    assert placa.tentativa[(2, 0)] == 2
+    assert placa.tentativa[(2, 0)] == 2 and a.envios[(2, 0)] == 2     # o quadro foi mandado duas vezes
+    assert next(l for l in res["linhas"] if l["id"] == 0 and l["grupo"] == 2)["tentativas"] == 1
+    assert res["conjuntos"]["hust"]["tentativas_extras"] == 0         # mas o reinício não gasta tentativa
 
 
 def test_resposta_atrasada_vira_duplicata_igual(tmp_path):
@@ -246,7 +250,7 @@ def test_saidas_e_registro(tmp_path):
     segs, _, _, a, res, _ = rodar(tmp_path)
     meta = {"captura_nome": "cap.log", "captura_sha": M.sha12(tmp_path / "cap.log"), "modelo": MODELO,
             "json": JSON, "referencia_sha": "2507e68b5489", "divisao_sha": "acff87bde3", "baud": 921600,
-            "commit": "abc1234", "proximo_exp": 303}
+            "commit": "abc1234", "data": "2026-11-05", "proximo_exp": 303}
     M.escrever_csv(res, tmp_path / "segmentos.csv")
     M.escrever_md(res, a, meta, tmp_path / "resumo.md")
     M.escrever_tex(res, tmp_path / "tabelas.tex")
@@ -263,3 +267,32 @@ def test_saidas_e_registro(tmp_path):
     assert [n["id"] for n in novas] == ["exp303", "exp304"]
     assert "conjunto=jung" in novas[0]["parametros"] and "concordancia=3/3" in novas[0]["metricas"]
     assert "divisao_hust=acff87bde3" in novas[1]["parametros"] and ";" not in novas[1]["dataset"]
+
+
+def _meta(tmp_path, a):
+    return {"captura_nome": "cap.log", "captura_sha": M.sha12(tmp_path / "cap.log"), "modelo": MODELO,
+            "json": JSON, "referencia_sha": "2507e68b5489", "divisao_sha": "acff87bde3", "baud": 921600,
+            "commit": a.cabecalho["commit"], "data": a.cabecalho["data"]}
+
+
+def test_registro_usa_o_commit_da_rodada_e_nao_registra_a_mesma_captura_duas_vezes(tmp_path):
+    _, _, _, a, res, _ = rodar(tmp_path)
+    reg = tmp_path / "registry.csv"
+    novas = M.registrar_rodada(reg, res, a, _meta(tmp_path, a), "Amanda", "")
+    assert [n["git_commit"] for n in novas] == ["abc1234", "abc1234"]           # o do cabeçalho
+    assert {n["data"] for n in novas} == {"2026-11-05"}
+    with pytest.raises(M.Abortar, match="já está no registry"):               # refazer com --captura
+        M.registrar_rodada(reg, res, a, _meta(tmp_path, a), "Amanda", "")
+    with reg.open(encoding="utf-8", newline="") as fh:
+        assert len(list(csv.DictReader(fh))) == 2
+
+
+def test_captura_interrompida_nao_e_registrada(tmp_path):
+    _, _, _, a, res, _ = rodar(tmp_path)
+    linhas = [l for l in M.ler_linhas_captura(tmp_path / "cap.log")]
+    corte = max(i for i, l in enumerate(linhas) if l.startswith("#pc envio grupo=2 id=25"))
+    a2 = M.analisar(linhas[:corte], MODELO, JSON)                 # parou antes dos dois últimos
+    res2 = M.resultado(a2, segmentos())
+    assert len(res2["divergencias_pc"]) == 2 and "captura interrompida" in res2["divergencias_pc"][0]
+    with pytest.raises(M.Abortar, match="incompleta"):
+        M.registrar_rodada(tmp_path / "registry.csv", res2, a2, _meta(tmp_path, a2), "Amanda", "")

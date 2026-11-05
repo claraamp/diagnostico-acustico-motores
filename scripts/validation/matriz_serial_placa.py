@@ -24,9 +24,10 @@ rodada" de lá:
 4. Grupos e ids: grupo 1 = Jung, com o id do segmento no conjunto (`splits.json`);
    grupo 2 = HUSTmotor, com o índice (a partir de 0) na lista `segmentos` do
    `divisao_rotacao.json`.
-5. Reinício: uma linha da demonstração (`hello`, `demo`, `ponta`, um $SEG de origem
-   C ou D) no meio da rodada é a placa que reiniciou: o PC pede o modo de novo,
-   confere o modelo de novo e retoma do segmento pendente (sem gastar tentativa).
+5. Reinício: uma linha de fora do modo (`hello`, `demo`, `ponta` ou um $SEG de origem
+   R, C, D ou A) no meio da rodada é a placa que reiniciou: o PC pede o modo de novo,
+   confere o modelo de novo e retoma do segmento pendente (sem gastar tentativa: o
+   envio refeito tem o mesmo número de tentativa na captura).
 6. A linha `rx` é parte do protocolo: o escore vem do `escore_hex` dela (o $SEG só
    tem 3 casas), e ela tem de bater com o $SEG que vem logo depois (grupo, id, o
    texto do escore e a decisão).
@@ -43,9 +44,9 @@ Fidelidade, não desempenho
 --------------------------
 Os 295 segmentos do Jung são todos do treino do modelo final (exp239): no Jung, a
 matriz "verdadeira × placa" é acurácia de treino, e o resultado é a concordância
-placa × Python. No HUSTmotor, a matriz "verdadeira × placa" é o C1 do Protocolo C
-(a LDA do Jung transferida sem recalibrar), e o que se mede é de novo a
-concordância com o Python. As duas matrizes ficam separadas, nunca as 335 juntas.
+placa × Python. No HUSTmotor, a matriz "verdadeira × placa" é a da LDA do Jung sem
+retreino (`exp274` do Protocolo C), e o que se mede é de novo a concordância com o
+Python. As duas matrizes ficam separadas, nunca as 335 juntas.
 
 Referência do Python
 --------------------
@@ -818,7 +819,8 @@ class Analise:
     plano: dict[int, list[int]] = field(default_factory=dict)
     respostas: dict[tuple[int, int], Resposta] = field(default_factory=dict)
     duplicatas: dict[tuple[int, int], list[Resposta]] = field(default_factory=dict)
-    envios: Counter = field(default_factory=Counter)
+    envios: Counter = field(default_factory=Counter)        # quadros mandados, inclusive os refeitos
+    tentativas: dict = field(default_factory=dict)          # a maior tentativa de cada segmento (regra 2)
     rejeitadas: Counter = field(default_factory=Counter)
     erros: Counter = field(default_factory=Counter)
     falhas_pc: Counter = field(default_factory=Counter)
@@ -843,7 +845,9 @@ def analisar(linhas: list[str], modelo_id: str, json_sha12: str) -> Analise:
             elif texto.startswith("plano "):
                 a.plano[int(kv["grupo"])] = de_faixas(kv["ids"])
             elif texto.startswith("envio "):
-                a.envios[(int(kv["grupo"]), int(kv["id"]))] += 1
+                chave = (int(kv["grupo"]), int(kv["id"]))
+                a.envios[chave] += 1
+                a.tentativas[chave] = max(a.tentativas.get(chave, 0), int(kv.get("tentativa", 1)))
             elif texto.startswith("falhou "):
                 a.falhas_pc[kv["motivo"].split(":")[0]] += 1
             elif texto.startswith("reinicio"):
@@ -917,7 +921,7 @@ def resultado(a: Analise, segs: list[Segmento]) -> dict:
             r = a.respostas.get(s.chave)
             x = {"conjunto": s.conjunto, "grupo": s.grupo, "id": s.id, "segmento": s.nome,
                  "classe": s.classe, "escore_python": s.escore_py, "decisao_python": s.decisao_py,
-                 "tentativas": a.envios.get(s.chave, 0),
+                 "tentativas": a.tentativas.get(s.chave, 0),
                  "duplicatas": len(a.duplicatas.get(s.chave, []))}
             if r is None:
                 x.update(estado="nao_processado")
@@ -954,8 +958,16 @@ def resultado(a: Analise, segs: list[Segmento]) -> dict:
     # tem de ser bit a bit o da flash (o PR #11 já mostrou nos 10)
     clipes = [(i, a.refs[i], a.respostas[(GRUPOS["jung"], i)].hexa) for i in sorted(a.refs)
               if (GRUPOS["jung"], i) in a.respostas]
+    # o que o PC deu como não processado tem de bater com o que a análise acha na captura
+    sem_resposta = {(x["grupo"], x["id"]) for x in linhas if x["estado"] != "processado"}
+    divergencias = (
+        [f"{g}/{i}: o PC desistiu, mas a captura tem um $SEG válido (resposta atrasada)"
+         for g, i in sorted(a.nao_processados_pc - sem_resposta)]
+        + [f"{g}/{i}: sem resposta válida e sem a desistência do PC (captura interrompida?)"
+           for g, i in sorted(sem_resposta - a.nao_processados_pc)])
     return {"linhas": linhas, "conjuntos": conjuntos, "faltam_na_referencia": faltam,
-            "clipes": clipes, "clipes_iguais": sum(r == s for _, r, s in clipes)}
+            "clipes": clipes, "clipes_iguais": sum(r == s for _, r, s in clipes),
+            "divergencias_pc": divergencias}
 
 
 # --------------------------------------------------------------------------- #
@@ -996,7 +1008,7 @@ def _md_matriz(m: dict, linhas_rot: str, colunas_rot: str) -> list[str]:
 LEITURA = {
     "jung": "Os 295 segmentos estão no treino do modelo final: a matriz \"verdadeira × placa\" é acurácia "
             "de treino; o que se mede é a fidelidade do porte (concordância e fração da tolerância).",
-    "hust": "A LDA do Jung aplicada ao HUSTmotor sem recalibrar (o C1 do Protocolo C, `exp274`): a matriz "
+    "hust": "A LDA do Jung aplicada ao HUSTmotor sem retreino (`exp274` do Protocolo C): a matriz "
             "\"verdadeira × placa\" repete a do Python, e o que se mede é a concordância. Os escores são "
             "menores que os do Jung, então a mesma diferença absoluta pesa mais na fração da tolerância.",
 }
@@ -1034,8 +1046,11 @@ def escrever_md(res: dict, a: Analise, meta: dict, destino: Path) -> None:
     erros = ", ".join(f"{k} {v}" for k, v in sorted(a.erros.items())) or "nenhum"
     rej = ", ".join(f"{k} {v}" for k, v in sorted(a.rejeitadas.items())) or "nenhuma"
     t += ["## Recepção", "",
-          f"- Envios: {sum(a.envios.values())}; $ERR da placa: {erros}; respostas rejeitadas pelo PC: {rej}; "
+          f"- Envios: {sum(a.envios.values())} (com os refeitos depois de um reinício, que não gastam "
+          f"tentativa); $ERR da placa: {erros}; respostas rejeitadas pelo PC: {rej}; "
           f"timeouts: {a.falhas_pc.get('timeout', 0)}.",
+          "- Não processados pelo PC × pela captura: "
+          + ("batem." if not res["divergencias_pc"] else "**" + "; ".join(res["divergencias_pc"]) + "**."),
           f"- Estouros do anel: {a.estouros}; linhas com checksum errado: {a.checksum_errado}; "
           f"reinícios da placa: {a.reinicios}.",
           f"- Clipes da flash pela serial: {res['clipes_iguais']}/{len(res['clipes'])} com o escore bit a bit "
@@ -1069,7 +1084,7 @@ def escrever_tex(res: dict, destino: Path) -> None:
     t += [r"\bottomrule", r"\end{tabular}", r"\end{table}", "",
           r"\begin{table}[H]", r"\centering",
           r"\caption{Matriz de confusão do sistema embarcado (segmentos pela serial) e das decisões do "
-          r"Python. No HUSTmotor, a LDA do Jung sem recalibrar (C1 do Protocolo C).}",
+          r"Python. No HUSTmotor, a LDA do Jung sem retreino (\texttt{exp274} do Protocolo C).}",
           r"\label{tab:serial_placa_matriz}", r"\small",
           r"\begin{tabular}{llrrrr}", r"\toprule",
           r" & & \multicolumn{2}{c}{\textbf{Placa}} & \multicolumn{2}{c}{\textbf{Python}} \\",
@@ -1092,7 +1107,7 @@ def linhas_registry(res: dict, a: Analise, meta: dict, responsavel: str, notas: 
         p = r["pior"]
         linhas.append({
             "id": f"exp{base + len(linhas):03d}",
-            "data": date.today().isoformat(),
+            "data": meta["data"],
             "etapa": "validacao_embarcada",
             "script": "validation/matriz_serial_placa.py",
             "git_commit": meta["commit"],
@@ -1123,9 +1138,33 @@ def linhas_registry(res: dict, a: Analise, meta: dict, responsavel: str, notas: 
             "responsavel": responsavel,
             "notas": notas or ("fidelidade do porte, não desempenho: os segmentos estão no treino do modelo final"
                                if c == "jung" else
-                               "LDA do Jung sem recalibrar (C1 do Protocolo C); mede a concordância com o Python"),
+                               "a LDA do Jung sem retreino (exp274 do Protocolo C); mede a concordância com o Python"),
         })
     return linhas
+
+
+def registrar_rodada(registry: Path, res: dict, a: Analise, meta: dict, responsavel: str,
+                     notas: str) -> list[dict]:
+    """
+    As linhas da rodada no registry, uma por conjunto. Recusa uma captura que já tem linha
+    (o mesmo captura_sha: refazer a matriz com --captura não é rodada nova) e uma captura
+    com segmento sem resposta e sem a desistência do PC (interrompida no meio).
+    """
+    if Path(registry).exists():
+        with Path(registry).open(encoding="utf-8", newline="") as fh:
+            for row in csv.DictReader(fh):
+                kv = dict(par.split("=", 1) for par in (row.get("parametros") or "").split(";") if "=" in par)
+                if kv.get("captura_sha") == meta["captura_sha"]:
+                    raise Abortar(f"a captura {meta['captura_nome']} (sha {meta['captura_sha']}) já está no "
+                                  f"registry, em {row['id']}")
+    incompletos = [d for d in res["divergencias_pc"] if "sem a desistência" in d]
+    if incompletos:
+        raise Abortar(f"a captura está incompleta ({len(incompletos)} segmentos sem resposta e sem a "
+                      "desistência do PC)")
+    meta = dict(meta, proximo_exp=experimentos.next_exp_number(registry))
+    novas = linhas_registry(res, a, meta, responsavel, notas)
+    experimentos.append_registry(registry, novas)
+    return novas
 
 
 # --------------------------------------------------------------------------- #
@@ -1236,7 +1275,10 @@ def main(argv=None) -> int:
 
     meta = {"captura_nome": caminho_cap.name, "captura_sha": sha12(caminho_cap), "modelo": modelo_id,
             "json": json_sha12, "referencia_sha": sha12(REFERENCIA), "divisao_sha": sha12(DIVISAO_HUST)[:10],
-            "baud": a.cabecalho.get("baud", args.baud), "commit": experimentos.git_short_hash()}
+            "baud": a.cabecalho.get("baud", args.baud),
+            # o commit e a data são os da rodada (cabeçalho da captura), não os da análise
+            "commit": a.cabecalho.get("commit") or experimentos.git_short_hash(),
+            "data": a.cabecalho.get("data") or date.today().isoformat()}
     out_dir.mkdir(parents=True, exist_ok=True)
     escrever_csv(res, out_dir / "segmentos.csv")
     escrever_md(res, a, meta, out_dir / "resumo.md")
@@ -1246,6 +1288,8 @@ def main(argv=None) -> int:
         print(f"{NOMES_CONJUNTO[c]}: {r['processados']}/{r['n']} processados; concordância "
               f"{r['concordancia']}/{r['processados']}"
               + (f"; pior caso {p['segmento']} com {pct(p['frac_tol'])} da tolerância" if p else ""))
+    for d in res["divergencias_pc"]:
+        print(f"ATENÇÃO: {d}")
     if res["clipes_iguais"] != len(res["clipes"]):
         print(f"ATENÇÃO: só {res['clipes_iguais']}/{len(res['clipes'])} clipes da flash com o escore pela serial "
               "bit a bit igual ao da linha ref (a placa calcula os dois com a mesma conta)")
@@ -1259,10 +1303,12 @@ def main(argv=None) -> int:
     if not completo:
         print("(a captura não tem o plano inteiro: registry não alterado)")
         return 0
-    meta["proximo_exp"] = experimentos.next_exp_number(args.registry)
-    novas = linhas_registry(res, a, meta, args.responsavel, args.notas)
-    experimentos.append_registry(args.registry, novas)
-    print(f"registrado: {novas[0]['id']}–{novas[-1]['id']}")
+    try:
+        novas = registrar_rodada(args.registry, res, a, meta, args.responsavel, args.notas)
+    except Abortar as e:
+        print(f"registry não alterado: {e}")
+        return 1
+    print(f"registrado: {novas[0]['id']}–{novas[-1]['id']} (commit {meta['commit']}, rodada de {meta['data']})")
     return 0
 
 
