@@ -491,8 +491,9 @@ class PlacaSimulada:
     def _linha(self, texto: str | bytes) -> None:
         self.saida += (texto.encode("ascii") if isinstance(texto, str) else texto) + b"\r\n"
 
-    def _escore32(self, grupo: int, id_seg: int) -> float:
-        x = np.float32(self.escore(grupo, id_seg))
+    def _escore32(self, grupo: int, id_seg: int, valor: float | None = None) -> float:
+        """O escore em float32 mais os ulps; a linha ref e a serial usam a mesma conta, como na placa."""
+        x = np.float32(self.escore(grupo, id_seg) if valor is None else valor)
         for _ in range(abs(self.ulps(grupo, id_seg))):
             x = np.nextafter(x, np.float32(np.inf if self.ulps(grupo, id_seg) > 0 else -np.inf))
         return float(x)
@@ -508,7 +509,8 @@ class PlacaSimulada:
         self._linha(f"recepcao inicio modelo={self.modelo_id} json={self.json_sha12} quadro={TAM_QUADRO} "
                     f"anel=2048 baud={BAUD_PADRAO} silencio_ms=200")
         for i, e in self.refs.items():
-            self._linha(f"ref seg={i} clipe=? k=0 escore={e:.3f} escore_hex=0x{hex_de_f32(np.float32(e))}")
+            e32 = self._escore32(GRUPOS["jung"], i, e)
+            self._linha(f"ref seg={i} clipe=? k=0 escore={e32:.3f} escore_hex=0x{hex_de_f32(e32)}")
         self._linha(assinar(f"CAB,1,{self.modelo_id},{self.json_sha12},26,100"))
         self._pedido()
 

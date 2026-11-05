@@ -128,7 +128,7 @@ def test_rodada_limpa(tmp_path):
     x = next(l for l in res["linhas"] if l["id"] == 39)
     e32 = np.nextafter(np.float32(483.386511), np.float32(np.inf))
     assert x["frac_tol"] == pytest.approx(abs(float(e32) - 483.386511) / (1e-5 * 483.386511))
-    assert res["clipes_iguais"] == 0 and len(res["clipes"]) == 2    # a simulada soma 1 ulp na serial
+    assert res["clipes_iguais"] == 2 and len(res["clipes"]) == 2    # ref e serial com a mesma conta
     # a captura guarda o plano e cada envio, e a análise sai só dela
     linhas = (tmp_path / "cap.log").read_bytes().split(b"\r\n")
     assert b"#pc plano grupo=1 ids=29,88,148" in linhas and b"#pc plano grupo=2 ids=0,25,39" in linhas
