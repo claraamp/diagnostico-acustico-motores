@@ -4,8 +4,9 @@ Testes da tabela única do Protocolo C (run_tabela_protocolo_c.py).
 Usam `metrics.json` e um `registry.csv` mínimos em tmp_path, com duas linhas no
 lugar das do HUST; não dependem de data/. Conferem que (1) a tabela sai quando
 o registry bate, (2) contagem diferente ou rodada substituída abortam antes de
-gravar, e (3) a decisão segue a regra de cada etapa: na rotação deixada de fora
-com a regra da página do D2, só 10 e 20 Hz decidem.
+gravar, (3) a decisão segue a regra de cada etapa: na rotação deixada de fora
+com a regra da página do D2, só 10 e 20 Hz decidem, e (4) a detecção não lida e
+a extrapolação saem marcadas, com a detecção não lida fora do total.
 """
 
 from __future__ import annotations
@@ -140,3 +141,23 @@ def test_rotacao_de_fora_so_le_10_e_20_hz_pela_regra_da_pagina_do_d2():
 def test_rotacao_que_a_leitura_nao_avalia_sai_como_traco():
     d1 = {"por_rotacao": {"20": {"alarme": {"k": 3, "n": 5}}, "30": {"alarme": {"k": 1, "n": 5}}}}
     assert T.por_rotacao(d1, "alarme") == ["—", "—", "3/5", "1/5"]
+
+
+def test_deteccao_nao_lida_e_extrapolacao_saem_marcadas_e_fora_do_total():
+    # pela página do D2: a detecção onde o D2 alarma os normais não conta; 5 e 30 Hz são extrapolação
+    rf = {**RF, "por_rotacao": {v: {**pr, "deteccao_lida": pr["alarme"]["decisao"] != "reprova"}
+                                for v, pr in RF["por_rotacao"].items()}}
+    assert T.por_rotacao(rf, "alarme") == ["[5/5]", "0/5", "5/5", "[5/5]"]
+    assert T.por_rotacao(rf, "deteccao") == ["(5/5)", "5/5", "(5/5)", "(5/5)"]
+    assert T.deteccao_total(rf) == "5/5"
+    # sem o campo: o total sai como traço quando o alarme reprova
+    assert T.deteccao_total(C2) == "15/20"
+    assert T.deteccao_total({**C2, "alarme": _alarme(8, 8, "reprova")}) == "—"
+
+
+def test_recalibracao_decide_uma_vez_com_o_resultado_da_pagina():
+    recal = {**C2, "deteccao_criterio": {"k": 0, "n": 15, "passa": False},
+             "deteccao_fora_do_criterio": {"k": 0, "n": 5}}
+    assert T.decisao(recal, "não funciona") == \
+        "não funciona, com o controle sem o c0 (0/15 a 10–30 Hz; 5 Hz à parte: 0/5)"
+    assert T.decisao(recal) == "0/15 a 10–30 Hz; 5 Hz à parte: 0/5"

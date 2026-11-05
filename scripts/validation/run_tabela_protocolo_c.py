@@ -12,8 +12,14 @@ registry. Lê os três `metrics.json` do `run_protocol_c.py` em
 tabela_protocolo_c.md    a tabela com o alarme falso e a detecção por rotação,
                          o total, a decisão e a rodada de cada leitura
 tab_protocoloC.tex       a mesma tabela no formato do relatório (vírgula decimal,
-                         `tabularx`/`booktabs`), sem a coluna do total e com as
-                         leituras que decidem em negrito
+                         `tabularx`/`booktabs`), sem a coluna do total, com as
+                         leituras que decidem em negrito e a nota do retreino
+
+Na detecção, a tabela segue a regra da página "Adoção do D2": numa rotação em
+que o detector alarma os normais (`deteccao_lida` falso no metrics.json), ela
+sai entre parênteses e fica fora do total; nas etapas sem esse campo, o total
+sai como traço quando a decisão do alarme reprova. Os alarmes em extrapolação
+(5 e 30 Hz na rotação deixada de fora) saem entre colchetes.
 
 Não treina nada nem escreve no registry.
 
@@ -54,6 +60,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -106,11 +113,18 @@ LINHAS = (
           "D1, rotação estimada", "reporte"),
 )
 
-RETREINO = ("Checagem do retreino da LDA (Amanda, 29/10), **fora do registry**: está só na página "
-            "\"Retreinar a LDA no HUSTmotor\" do Registro de Decisões, descartada. Acurácia balanceada "
-            "com uma rotação deixada de fora: LDA 0,65 (1,00 / 1,00 / 0,50 / 0,10 a 5 / 10 / 20 / 30 Hz), "
-            "SVM linear 0,88; o controle com rótulos trocados por arquivo chega a 0,82 no percentil 95 "
-            "(só para a LDA). Dividindo dentro do arquivo, 0,94 a 1,00, que mede reconhecer a gravação.")
+RETREINO = ("Checagem do retreino da LDA (Amanda, 29/10), fora do registry: está só no Registro de "
+            "Decisões, na página \"Retreinar a LDA no HUSTmotor\" (descartada) e na decisão 4 da página "
+            "\"Recalibrar a LDA pela normal da máquina nova\". Rodou antes de o protocolo ser aprovado e "
+            "serviu só para descartar o retreino. Acurácia balanceada com uma rotação deixada de fora: "
+            "LDA 0,65 (1,00 / 1,00 / 0,50 / 0,10 a 5 / 10 / 20 / 30 Hz), SVM linear 0,88. No controle com "
+            "rótulos trocados por arquivo, a LDA tem média 0,48 e percentil 95 de 0,82; nas 14 trocas "
+            "possíveis, 4 igualam a LDA e 2 igualam o SVM (valor-p de cerca de 0,2). Dividindo dentro do "
+            "arquivo, 0,94 a 1,00, que mede reconhecer a gravação.")
+
+LEGENDA = ("Entre colchetes, alarmes em rotação fora da faixa calibrada (extrapolação): ficam fora da "
+           "decisão e são reportados à parte. Entre parênteses, detecção numa rotação em que o detector "
+           "alarma os normais: não é lida como acerto.")
 
 
 # ---------------------------------------------------------------------------
@@ -192,18 +206,35 @@ def conferir(arquivos: dict, registry: dict[str, dict]) -> int:
 
 # ---------------------------------------------------------------------------
 
+def _celula(pr: dict, campo: str) -> str:
+    """[k/n] no alarme em extrapolação; (k/n) na detecção que a página do D2 não lê."""
+    if campo == "alarme" and pr.get("papel") == "extrapolacao":
+        return f"[{_kn(pr[campo])}]"
+    if campo == "deteccao" and pr.get("deteccao_lida") is False:
+        return f"({_kn(pr[campo])})"
+    return _kn(pr[campo])
+
+
 def por_rotacao(r: dict, campo: str) -> list[str]:
     """k/n em 5, 10, 20 e 30 Hz; — onde a leitura não avalia a rotação (o D1 a 5 e a 10 Hz)."""
     pr = r["por_rotacao"]
-    return [_kn(pr[str(v)][campo]) if str(v) in pr else "—" for v in ROTACOES]
+    return [_celula(pr[str(v)], campo) if str(v) in pr else "—" for v in ROTACOES]
 
 
-def decisao(r: dict) -> str:
-    """O que a leitura decide, na regra de cada etapa."""
-    if "deteccao_criterio" in r:               # recalibração: pelo menos 12/15 a 10–30 Hz
-        c = r["deteccao_criterio"]
-        return (f"alarme {r['alarme']['decisao']}; detecção {'passa' if c['passa'] else 'não passa'} "
-                f"({_kn(c)} a 10–30 Hz)")
+def deteccao_total(r: dict) -> str:
+    """Só a detecção lida: sem as rotações em que o detector alarma os normais; — se o alarme reprova."""
+    pr = r["por_rotacao"].values()
+    if any("deteccao_lida" in p for p in pr):
+        lidas = [p["deteccao"] for p in pr if p["deteccao_lida"]]
+        return _kn({x: sum(c[x] for c in lidas) for x in ("k", "n")}) if lidas else "—"
+    return "—" if r["alarme"]["decisao"] == "reprova" else _kn(r["deteccao"])
+
+
+def decisao(r: dict, resultado_recal: str | None = None) -> str:
+    """O que a leitura decide, na regra de cada etapa; na recalibração, `resultado_recal` só na que decide."""
+    if "deteccao_criterio" in r:               # recalibração: pelo menos 12/15 a 10–30 Hz, 5 Hz à parte
+        criterio = f"{_kn(r['deteccao_criterio'])} a 10–30 Hz; 5 Hz à parte: {_kn(r['deteccao_fora_do_criterio'])}"
+        return f"{resultado_recal}, com o controle sem o c0 ({criterio})" if resultado_recal else criterio
     pr = r["por_rotacao"]
     if "papel" not in next(iter(pr.values())):
         return r["alarme"]["decisao"]
@@ -215,6 +246,12 @@ def decisao(r: dict) -> str:
     if len(reprova) == len(pr):
         return "reprova em todas"
     return "reprova a " + " e ".join(filter(None, (", ".join(reprova[:-1]), reprova[-1]))) + " Hz"
+
+
+def _decisao(arquivos: dict, ln: Linha, r: dict) -> str:
+    """A da recalibração sai uma vez, na leitura que decide, com o resultado do metrics.json."""
+    recal = ln.arquivo == "recalibracao" and ln.papel == "decide"
+    return decisao(r, arquivos[ln.arquivo]["resultado"] if recal else None)
 
 
 def md(arquivos: dict, n_conferidas: int) -> str:
@@ -235,31 +272,37 @@ def md(arquivos: dict, n_conferidas: int) -> str:
         r = resultado(arquivos, ln)
         texto.append(f"| {ln.etapa} | {ln.nome} | {ln.papel} | {' · '.join(por_rotacao(r, 'alarme'))} "
                      f"| {' · '.join(por_rotacao(r, 'deteccao'))} | {_kn(r['alarme'])} "
-                     f"| {_kn(r['deteccao'])} | {decisao(r)} | `{ln.exp_id}` |")
+                     f"| {deteccao_total(r)} | {_decisao(arquivos, ln, r)} | `{ln.exp_id}` |")
     texto += [
+        "",
+        LEGENDA + " No total, a detecção entre parênteses fica de fora; traço quando a decisão do alarme "
+        "reprova, porque ali a detecção não é lida.",
         "",
         "- **Sem retreino e C1:** com o limiar do Jung, a LDA, o D2 e o D4 disparam nos normais do HUST; "
         "é o limite de transferência que o critério já previa. O D1 não dispara, mas detecta pouco.",
         "- **C2:** calibrado com a normal do HUST na mesma rotação, o D2 fica inconclusivo no alarme (o C2 "
         "só consegue reprovar) e detecta a 10–30 Hz. O combinado com a LDA do Jung herda os alarmes dela.",
-        "- **LDA recalibrada:** zera os alarmes, mas não detecta a falha; a direção da falha no HUST "
-        "não é a do Jung.",
+        "- **LDA recalibrada:** zera os alarmes, mas não detecta a falha, nem sem o c0: a diferença entre "
+        "as máquinas não é só de nível e microfone. A detecção do combinado com o D2 vem toda do D2.",
         "- **Rotação deixada de fora:** sem a normal da própria rotação, o D2 reprova a 20 Hz, dentro da "
-        "faixa calibrada. Na decisão, só ele conta (página \"Adoção do D2\"); o resto é reporte.",
+        "faixa calibrada. Na decisão, só ele conta (página \"Adoção do D2\"); o resto é reporte. A 5 e "
+        "a 30 Hz, os alarmes são extrapolação e não decidem; o achado é que o D2 não generaliza para fora "
+        "da faixa calibrada.",
         "",
         "**Decisão (reunião de 03/11, página \"Adoção do D2\" Definida):** opção 1, o D2 não é adotado. "
         "Ele fica só como resultado em Python no relatório.",
         "",
         "## Fora do registry",
         "",
-        RETREINO,
+        RETREINO.replace("fora do registry", "**fora do registry**", 1),
         "",
     ]
     return "\n".join(texto)
 
 
 def _tex(s: str) -> str:
-    return (s.replace("—", "---").replace("–", "--").replace(" · ", r" $\cdot$ ").replace(" Hz", "~Hz")
+    return (re.sub(r'"([^"]*)"', r"``\1''", s)
+            .replace("—", "---").replace("–", "--").replace(" · ", r" $\cdot$ ").replace(" Hz", "~Hz")
             .replace("c0", r"$c_0$").replace("D2 OU", r"D2 \textsc{ou}").replace("D4 OU", r"D4 \textsc{ou}"))
 
 
@@ -276,14 +319,15 @@ def tex(arquivos: dict) -> str:
         if ln.papel.startswith("decide"):
             nome = r"\textbf{" + nome + "}"
         linhas.append(f"{nome} & {_tex(' · '.join(por_rotacao(r, 'alarme')))} & "
-                      f"{_tex(' · '.join(por_rotacao(r, 'deteccao')))} & {_tex(decisao(r))} & "
+                      f"{_tex(' · '.join(por_rotacao(r, 'deteccao')))} & {_tex(_decisao(arquivos, ln, r))} & "
                       r"\texttt{" + ln.exp_id + r"} \\")
     return "\n".join([
         r"\begin{table}[H]",
         r"\centering",
         r"\caption{Protocolo C no HUSTmotor: alarme falso nos segmentos normais e detecção nos de falha, "
         r"a 5, 10, 20 e 30~Hz. A decisão é a do alarme (Clopper--Pearson unilateral de 95~\%), que só "
-        r"consegue reprovar. Em negrito, as leituras que decidem; as outras são reporte.}",
+        r"consegue reprovar. Em negrito, as leituras que decidem; as outras são reporte. "
+        + _tex(LEGENDA) + " Onde a decisão do alarme reprova, a detecção da leitura não é lida.}",
         r"\label{tab:protocoloC}",
         r"\footnotesize",
         r"\setlength{\tabcolsep}{4pt}",
@@ -296,6 +340,9 @@ def tex(arquivos: dict) -> str:
         *linhas,
         r"\bottomrule",
         r"\end{tabularx}",
+        "",
+        r"\smallskip",
+        r"\parbox{\textwidth}{\footnotesize " + _tex(RETREINO) + "}",
         r"\end{table}",
         "",
     ])
