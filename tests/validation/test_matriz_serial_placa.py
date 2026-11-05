@@ -13,6 +13,7 @@ contra o float64.
 """
 
 import csv
+import time
 import struct
 import zlib
 
@@ -190,7 +191,39 @@ def test_modelo_diferente_nao_deixa_sair_quadro(tmp_path):
 
 def test_placa_ja_no_modo_pede_o_reset(tmp_path):
     with pytest.raises(M.Abortar, match="não entrou no modo"):
-        _, _, _, _, _, msgs = rodar(tmp_path, inicia_no_modo=True)
+        rodar(tmp_path, inicia_no_modo=True)
+
+
+def test_rx_velha_nao_casa_com_o_seg_depois_do_ped():
+    # a rx de uma tentativa cujo $SEG se perdeu não pode emprestar o escore ao $SEG seguinte
+    rx, seg = _par()
+    linhas = ["#pc plano grupo=1 ids=88", f"recepcao inicio modelo={MODELO} json={JSON} quadro=25618",
+              rx, M.assinar("PED,1,2"), M.assinar(",".join(seg))]
+    a = M.analisar(linhas, MODELO, JSON)
+    assert a.rejeitadas == {"sem_rx": 1} and not a.respostas
+
+
+class _PortaComLinhas:
+    """Uma porta que só devolve as linhas dadas (para a rodada ver um reinício pelo marco)."""
+
+    def __init__(self, linhas):
+        self.dados = b"".join(l.encode("ascii") + b"\r\n" for l in linhas)
+
+    def write(self, dados):
+        pass
+
+    def read(self):
+        out, self.dados = self.dados, b""
+        return out
+
+
+def test_seg_do_marco_no_meio_da_rodada_e_reinicio(tmp_path):
+    cap = M.Captura(tmp_path / "cap.log")
+    porta = _PortaComLinhas(["seg seg=0 grav=normal ref=-1577.959 placa=-1577.959 dif=0.000000",
+                             M.assinar("SEG,1,0,R,0,0,N,0,-1577.959,0,,,298")])
+    rodada = M.Rodada(porta, cap, MODELO, JSON, 0, RAPIDO)
+    assert rodada.esperar_resposta(segmentos()[0], time.monotonic() + 0.2) == "reinicio"
+    cap.fechar()
 
 
 def test_captura_sem_inicio_nao_passa():

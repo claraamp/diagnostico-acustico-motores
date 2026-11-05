@@ -122,9 +122,9 @@ CAMPOS_SEG = ("versao", "n", "origem", "clipe", "segmento", "decisao", "disparou
               "escore_lda", "cod_novidade", "pont_novidade", "lim_novidade", "ciclos")
 RE_RX = re.compile(r"^rx grupo=(\d+) id=(\d+) bytes=(\d+) ms=(\d+) .*?\bciclos=(\d+) "
                    r"escore_hex=0x([0-9A-F]{8})(?: |$)")
-RE_RX_ERRO = re.compile(r"^rx erro=(\w+) grupo=(\S+) id=(\S+) ")
 RE_KV = re.compile(r"(\w+)=(\S+)")
 REINICIO = ("hello", "demo", "ponta")      # linhas que só existem fora do modo
+ORIGENS_FORA_DO_MODO = ("R", "C", "D", "A")  # $SEG do marco, dos clipes, decimado e ao vivo
 
 # Pastas padrão
 REFERENCIA = Path("reports/modelo_final/escores_referencia.csv")
@@ -339,15 +339,15 @@ def carregar_hust(pesos, bias, divisao: Path = DIVISAO_HUST, pcm_dir: Path = PCM
         raise Abortar(f"os .bin de {pcm_dir} não batem com o manifest versionado")
     pcm = {c.rotulo: c.pcm for c in clipes}
     d = json.loads(Path(divisao).read_text(encoding="utf-8"))
-    conferencia = {}
-    if Path(escores).exists():
-        with Path(escores).open(encoding="utf-8", newline="") as fh:
-            conferencia = {r["segmento"]: float(r["escore_sem_recal"]) for r in csv.DictReader(fh)}
+    if not Path(escores).exists():
+        raise Abortar(f"não achei {escores} (versionado): sem ele, a referência do HUST não é conferida")
+    with Path(escores).open(encoding="utf-8", newline="") as fh:
+        conferencia = {r["segmento"]: float(r["escore_sem_recal"]) for r in csv.DictReader(fh)}
     segs, problemas = [], []
     for i, s in enumerate(d["segmentos"]):                     # regra 4: o índice, a partir de 0
         x = pcm[s["arquivo"]][s["amostra_inicio"]:s["amostra_fim"]]
         e = escore_python(x, pesos, bias)
-        if conferencia and abs(e - conferencia.get(s["id"], np.inf)) > 1e-5:
+        if abs(e - conferencia.get(s["id"], np.inf)) > 1e-5:
             problemas.append(f"HUST {s['id']}: escore {e:.6f} e o da recalibração "
                              f"{conferencia.get(s['id'])}")
         segs.append(Segmento("hust", GRUPOS["hust"], i, s["id"], s["binario"],
@@ -366,20 +366,16 @@ class Captura:
 
     def __init__(self, caminho: Path | None):
         self.fh = open(caminho, "wb") if caminho else None
-        self.linhas: list[str] = []
 
     def placa(self, bruta: bytes) -> str:
         if self.fh:
             self.fh.write(bruta + b"\n")
-        txt = bruta.decode("ascii", errors="replace").rstrip("\r")
-        self.linhas.append(txt)
-        return txt
+        return bruta.decode("ascii", errors="replace").rstrip("\r")
 
     def pc(self, texto: str) -> None:
         if self.fh:
             self.fh.write(f"#pc {texto}\r\n".encode("ascii"))
             self.fh.flush()
-        self.linhas.append(f"#pc {texto}")
 
     def fechar(self) -> None:
         if self.fh:
@@ -732,7 +728,7 @@ class Rodada:
             if campos is None:
                 continue                             # checksum errado: a análise conta
             if campos[0] == "SEG":
-                if len(campos) > 3 and campos[3] in ("C", "D"):
+                if len(campos) > 3 and campos[3] in ORIGENS_FORA_DO_MODO:
                     return "reinicio"
                 resp, motivo = validar_resposta(rx, campos)
                 rx = None
@@ -742,13 +738,16 @@ class Rodada:
                     achado = ("ok", resp)
                 # um $SEG de outro segmento (atrasado, de um reenvio anterior) só vai para a captura
             elif campos[0] == "ERR":
+                rx = None
                 do_mandado = len(campos) == 5 and (campos[2:4] == ["", ""]
                                                    or campos[2:4] == [str(s.grupo), str(s.id)])
                 if do_mandado and not (achado and achado[0] == "ok"):
                     achado = ("err", campos[-1])
-            elif campos[0] == "PED" and achado is not None:
-                self.viu_ped = True
-                break
+            elif campos[0] == "PED":
+                rx = None                            # uma rx velha não casa com o próximo $SEG
+                if achado is not None:
+                    self.viu_ped = True
+                    break
         if achado is None:
             return "timeout"
         return "ok" if achado[0] == "ok" else f"{achado[0]}:{achado[1]}"
@@ -794,6 +793,9 @@ class Rodada:
                     if self.esperar_silencio():
                         self.reinicios += 1
                         self.cap.pc(f"reinicio grupo={s.grupo} id={s.id}")
+                        self.mostrar(f"  a placa reiniciou em {s.nome}: pedindo o modo de novo")
+                        if self.reinicios > MAX_REINICIOS:
+                            raise Abortar(f"a placa reiniciou {self.reinicios} vezes; a rodada parou")
                         precisa_modo = True
             if k % 25 == 0 or k == len(segs):
                 self.mostrar(f"  {k}/{len(segs)} ({s.nome})")
@@ -868,8 +870,10 @@ def analisar(linhas: list[str], modelo_id: str, json_sha12: str) -> Analise:
             if campos[0] == "CAB" and len(campos) > 3 and a.inicios \
                     and (campos[2], campos[3]) != (modelo_id, json_sha12):
                 a.problemas.append(f"linha {num}: $CAB com o modelo {campos[2]} (JSON {campos[3]})")
-            elif campos[0] == "ERR":
-                a.erros[campos[-1]] += 1
+            elif campos[0] in ("ERR", "PED"):
+                rx = None                            # uma rx velha não casa com o próximo $SEG
+                if campos[0] == "ERR":
+                    a.erros[campos[-1]] += 1
             elif campos[0] == "SEG" and len(campos) > 3 and campos[3] == "S":
                 resp, motivo = validar_resposta(rx, campos)
                 rx = None
@@ -1009,13 +1013,15 @@ def escrever_md(res: dict, a: Analise, meta: dict, destino: Path) -> None:
         if r["pior"]:
             p = r["pior"]
             t.append(f"- Fração da tolerância: pior caso {pct(p['frac_tol'])} ({p['segmento']}, dif "
-                     f"{p['dif']:.2e} de {br(p['tol'], 6)}), mediana {pct(r['frac_mediana'])}"
+                     f"{br(p['dif'], 6)} de {br(p['tol'], 6)}), mediana {pct(r['frac_mediana'])}"
                      + (f"; **fora da tolerância: {', '.join(r['fora_da_tolerancia'])}**"
                         if r["fora_da_tolerancia"] else "") + ".")
             ciclos = (f"mediana de {br(r['ciclos_mediana'], 0)} ciclos ({br(r['ciclos_mediana'] / 1e5, 1)} ms "
                       "a 100 MHz)" if r["ciclos_mediana"] else "sem medida (sem o DWT: emulador ou simulada)")
             t.append(f"- Recepção: mediana de {br(r['ms_mediana'], 0)} ms por quadro, da mágica ao último "
                      f"byte; processamento, {ciclos}.")
+        t.append(f"- Menor |escore| do Python: {br(r['menor_abs_escore'], 1)} (a tolerância é "
+                 f"10⁻⁵ dele).")
         t.append(f"- Não processados: {len(r['nao_processados'])}"
                  + (f" ({', '.join(r['nao_processados'])})" if r["nao_processados"] else "")
                  + f"; tentativas a mais: {r['tentativas_extras']}; duplicatas: {r['duplicatas']}.")
@@ -1031,7 +1037,9 @@ def escrever_md(res: dict, a: Analise, meta: dict, destino: Path) -> None:
           f"- Estouros do anel: {a.estouros}; linhas com checksum errado: {a.checksum_errado}; "
           f"reinícios da placa: {a.reinicios}.",
           f"- Clipes da flash pela serial: {res['clipes_iguais']}/{len(res['clipes'])} com o escore bit a bit "
-          "igual ao da linha `ref` (a mesma conta da demonstração).", ""]
+          "igual ao da linha `ref` (a mesma conta da demonstração)"
+          + ("." if res["clipes_iguais"] == len(res["clipes"]) else
+             "; **diferem: " + ", ".join(str(i) for i, r_, s_ in res["clipes"] if r_ != s_) + "**."), ""]
     destino.write_text("\n".join(t), encoding="utf-8", newline="\n")
 
 
@@ -1162,6 +1170,7 @@ def main(argv=None) -> int:
     else:
         out_dir = Path("reports/embarcado") / f"serial_{hoje.replace('-', '_')}"
 
+    caminho_cap = None
     try:
         modelo_id, json_sha12, pesos, bias = info_modelo(MODELO)
         print("referência do Python: recalculando os escores do int16 dos quadros...")
@@ -1215,6 +1224,13 @@ def main(argv=None) -> int:
     except Abortar as e:
         print(f"Abortado: {e}")
         return 1
+    except OSError as e:                       # porta ocupada (picocom aberto?) ou inexistente
+        print(f"Abortado: não deu para usar a porta ou ler um arquivo: {e}")
+        return 1
+    except KeyboardInterrupt:
+        print(f"\ninterrompido: a captura parcial ficou em {caminho_cap}; a matriz pode ser refeita "
+              "dela com --captura (os segmentos que faltam entram como não processados)")
+        return 1
 
     meta = {"captura_nome": caminho_cap.name, "captura_sha": sha12(caminho_cap), "modelo": modelo_id,
             "json": json_sha12, "referencia_sha": sha12(REFERENCIA), "divisao_sha": sha12(DIVISAO_HUST)[:10],
@@ -1228,6 +1244,9 @@ def main(argv=None) -> int:
         print(f"{NOMES_CONJUNTO[c]}: {r['processados']}/{r['n']} processados; concordância "
               f"{r['concordancia']}/{r['processados']}"
               + (f"; pior caso {p['segmento']} com {pct(p['frac_tol'])} da tolerância" if p else ""))
+    if res["clipes_iguais"] != len(res["clipes"]):
+        print(f"ATENÇÃO: só {res['clipes_iguais']}/{len(res['clipes'])} clipes da flash com o escore pela serial "
+              "bit a bit igual ao da linha ref (a placa calcula os dois com a mesma conta)")
     print(f"saídas: {out_dir}/ (captura {caminho_cap})")
 
     completo = all(len(a.plano.get(GRUPOS[c], [])) == n for c, n in (("jung", 295), ("hust", 40))
