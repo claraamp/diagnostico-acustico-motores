@@ -139,7 +139,8 @@ def test_rotacao_de_fora_so_le_10_e_20_hz_pela_regra_da_pagina_do_d2():
 
 
 def test_rotacao_que_a_leitura_nao_avalia_sai_como_traco():
-    d1 = {"por_rotacao": {"20": {"alarme": {"k": 3, "n": 5}}, "30": {"alarme": {"k": 1, "n": 5}}}}
+    d1 = {"alarme": _alarme(4, 10, "reprova"),
+          "por_rotacao": {"20": {"alarme": {"k": 3, "n": 5}}, "30": {"alarme": {"k": 1, "n": 5}}}}
     assert T.por_rotacao(d1, "alarme") == ["—", "—", "3/5", "1/5"]
 
 
@@ -150,9 +151,12 @@ def test_deteccao_nao_lida_e_extrapolacao_saem_marcadas_e_fora_do_total():
     assert T.por_rotacao(rf, "alarme") == ["[5/5]", "0/5", "5/5", "[5/5]"]
     assert T.por_rotacao(rf, "deteccao") == ["(5/5)", "5/5", "(5/5)", "(5/5)"]
     assert T.deteccao_total(rf) == "5/5"
-    # sem o campo: o total sai como traço quando o alarme reprova
+    # sem o campo: decide o alarme do total; se reprova, toda a detecção sai entre parênteses e o total é traço
+    assert T.por_rotacao(C2, "deteccao") == ["0/5", "5/5", "5/5", "5/5"]
     assert T.deteccao_total(C2) == "15/20"
-    assert T.deteccao_total({**C2, "alarme": _alarme(8, 8, "reprova")}) == "—"
+    reprova = {**C2, "alarme": _alarme(8, 8, "reprova")}
+    assert T.por_rotacao(reprova, "deteccao") == ["(0/5)", "(5/5)", "(5/5)", "(5/5)"]
+    assert T.deteccao_total(reprova) == "—"
 
 
 def test_recalibracao_decide_uma_vez_com_o_resultado_da_pagina():

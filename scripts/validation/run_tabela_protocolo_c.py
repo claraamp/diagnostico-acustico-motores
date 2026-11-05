@@ -17,8 +17,9 @@ tab_protocoloC.tex       a mesma tabela no formato do relatório (vírgula decim
 
 Na detecção, a tabela segue a regra da página "Adoção do D2": numa rotação em
 que o detector alarma os normais (`deteccao_lida` falso no metrics.json), ela
-sai entre parênteses e fica fora do total; nas etapas sem esse campo, o total
-sai como traço quando a decisão do alarme reprova. Os alarmes em extrapolação
+sai entre parênteses e fica fora do total; nas etapas sem esse campo, que só
+têm a decisão do alarme no total, toda a detecção da leitura sai entre
+parênteses e o total sai como traço quando essa decisão reprova. Os alarmes em extrapolação
 (5 e 30 Hz na rotação deixada de fora) saem entre colchetes.
 
 Não treina nada nem escreve no registry.
@@ -121,14 +122,15 @@ RETREINO = ("Checagem do retreino da LDA (Amanda, 29/10), fora do registry: est�
             "rótulos trocados por arquivo, a LDA tem média 0,48 e percentil 95 de 0,82; nas 14 trocas "
             "possíveis, 4 igualam ou superam a LDA (valor-p ≈ 0,33) e 2 igualam o SVM (≈ 0,2). As trocas "
             "formam 7 pares com o mesmo valor (inverter todos os rótulos não muda a acurácia balanceada), "
-            "então o valor-p nunca cairia abaixo de cerca de 0,12: o controle não teria como mostrar "
-            "significância. Dividindo dentro do "
+            "e o valor-p nunca cai abaixo de 1/15 ≈ 0,07: o controle não teria como mostrar "
+            "significância a 5 %. Dividindo dentro do "
             "arquivo, 0,94 a 1,00, que mede reconhecer a gravação.")
 
 LEGENDA = ("Entre colchetes, alarmes em rotação fora da faixa calibrada (extrapolação): ficam fora da "
            "decisão e são reportados à parte; no D2 OU LDA não há colchetes, porque a LDA do Jung alarma "
-           "em qualquer rotação, sem depender da calibração. Entre parênteses, detecção numa rotação em que o detector "
-           "alarma os normais: não é lida como acerto.")
+           "em qualquer rotação, sem depender da calibração. Entre parênteses, detecção onde o detector "
+           "alarma os normais (na rotação deixada de fora, rotação a rotação; nas outras etapas, pela "
+           "decisão do total): não é lida como acerto.")
 
 
 # ---------------------------------------------------------------------------
@@ -210,19 +212,23 @@ def conferir(arquivos: dict, registry: dict[str, dict]) -> int:
 
 # ---------------------------------------------------------------------------
 
-def _celula(pr: dict, campo: str) -> str:
-    """[k/n] no alarme em extrapolação; (k/n) na detecção que a página do D2 não lê."""
+def _celula(pr: dict, campo: str, reprova: bool) -> str:
+    """[k/n] no alarme em extrapolação; (k/n) na detecção que a página do D2 não lê.
+
+    Sem `deteccao_lida`, a única decisão do alarme é a do total: se ela reprova,
+    nenhuma rotação da leitura tem a detecção lida.
+    """
     if campo == "alarme" and pr.get("papel") == "extrapolacao":
         return f"[{_kn(pr[campo])}]"
-    if campo == "deteccao" and pr.get("deteccao_lida") is False:
+    if campo == "deteccao" and not pr.get("deteccao_lida", not reprova):
         return f"({_kn(pr[campo])})"
     return _kn(pr[campo])
 
 
 def por_rotacao(r: dict, campo: str) -> list[str]:
     """k/n em 5, 10, 20 e 30 Hz; — onde a leitura não avalia a rotação (o D1 a 5 e a 10 Hz)."""
-    pr = r["por_rotacao"]
-    return [_celula(pr[str(v)], campo) if str(v) in pr else "—" for v in ROTACOES]
+    pr, reprova = r["por_rotacao"], r["alarme"]["decisao"] == "reprova"
+    return [_celula(pr[str(v)], campo, reprova) if str(v) in pr else "—" for v in ROTACOES]
 
 
 def deteccao_total(r: dict) -> str:
@@ -279,8 +285,7 @@ def md(arquivos: dict, n_conferidas: int) -> str:
                      f"| {deteccao_total(r)} | {_decisao(arquivos, ln, r)} | `{ln.exp_id}` |")
     texto += [
         "",
-        LEGENDA + " No total, a detecção entre parênteses fica de fora; traço quando a decisão do alarme "
-        "reprova, porque ali a detecção não é lida.",
+        LEGENDA + " No total, a detecção entre parênteses fica de fora; traço quando não sobra nenhuma.",
         "",
         "- **Sem retreino e C1:** com o limiar do Jung, a LDA, o D2 e o D4 disparam nos normais do HUST; "
         "é o limite de transferência que o critério já previa. O D1 não dispara, mas detecta pouco.",
@@ -307,7 +312,7 @@ def md(arquivos: dict, n_conferidas: int) -> str:
 def _tex(s: str) -> str:
     return (re.sub(r'"([^"]*)"', r"``\1''", s)
             .replace("≈ ", r"$\approx$ ").replace("—", "---").replace("–", "--").replace(" · ", r" $\cdot$ ").replace(" Hz", "~Hz")
-            .replace("c0", r"$c_0$").replace("D2 OU", r"D2 \textsc{ou}").replace("D4 OU", r"D4 \textsc{ou}"))
+            .replace("c0", r"$c_0$").replace("D2 OU", r"D2 \textsc{ou}").replace("D4 OU", r"D4 \textsc{ou}").replace(" %", r"~\%"))
 
 
 def tex(arquivos: dict) -> str:
@@ -331,7 +336,7 @@ def tex(arquivos: dict) -> str:
         r"\caption{Protocolo C no HUSTmotor: alarme falso nos segmentos normais e detecção nos de falha, "
         r"a 5, 10, 20 e 30~Hz. A decisão é a do alarme (Clopper--Pearson unilateral de 95~\%), que só "
         r"consegue reprovar. Em negrito, as leituras que decidem; as outras são reporte. "
-        + _tex(LEGENDA) + " Onde a decisão do alarme reprova, a detecção da leitura não é lida.}",
+        + _tex(LEGENDA) + "}",
         r"\label{tab:protocoloC}",
         r"\footnotesize",
         r"\setlength{\tabcolsep}{4pt}",
