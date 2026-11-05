@@ -1,0 +1,45 @@
+\begin{table}[H]
+\centering
+\caption{Protocolo C no HUSTmotor: alarme falso nos segmentos normais e detecção nos de falha, a 5, 10, 20 e 30~Hz. A decisão é a do alarme (Clopper--Pearson unilateral de 95~\%), que só consegue reprovar. Em negrito, as leituras que decidem; as outras são reporte. Entre colchetes, alarmes em rotação fora da faixa calibrada (extrapolação): ficam fora da decisão e são reportados à parte; no D2 \textsc{ou} LDA não há colchetes, porque a LDA do Jung alarma em qualquer rotação, sem depender da calibração. Entre parênteses, detecção onde o detector alarma os normais (na rotação deixada de fora, rotação a rotação; nas outras etapas, pela decisão do total): não é lida como acerto.}
+\label{tab:protocoloC}
+\footnotesize
+\setlength{\tabcolsep}{4pt}
+\begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}p{3.3cm} C{2.6cm} C{2.6cm} >{\raggedright\arraybackslash}X C{1.1cm}}
+\toprule
+\textbf{Leitura} & \textbf{Alarme falso} & \textbf{Detecção} & \textbf{Decisão} & \textbf{Rodada} \\
+\midrule
+\multicolumn{5}{l}{\textbf{Sem retreino}} \\
+LDA do Jung & 5/5 $\cdot$ 5/5 $\cdot$ 5/5 $\cdot$ 5/5 & (5/5) $\cdot$ (5/5) $\cdot$ (5/5) $\cdot$ (5/5) & reprova & \texttt{exp274} \\
+\midrule
+\multicolumn{5}{l}{\textbf{C1, limiar do Jung}} \\
+D2 & 5/5 $\cdot$ 5/5 $\cdot$ 5/5 $\cdot$ 5/5 & (5/5) $\cdot$ (5/5) $\cdot$ (5/5) $\cdot$ (5/5) & reprova & \texttt{exp275} \\
+D2 \textsc{ou} LDA & 5/5 $\cdot$ 5/5 $\cdot$ 5/5 $\cdot$ 5/5 & (5/5) $\cdot$ (5/5) $\cdot$ (5/5) $\cdot$ (5/5) & reprova & \texttt{exp275} \\
+D1, rotação nominal & --- $\cdot$ --- $\cdot$ 0/5 $\cdot$ 0/5 & --- $\cdot$ --- $\cdot$ 0/5 $\cdot$ 5/5 & inconclusivo & \texttt{exp276} \\
+D1, rotação estimada & --- $\cdot$ --- $\cdot$ 0/5 $\cdot$ 0/5 & --- $\cdot$ --- $\cdot$ 1/5 $\cdot$ 3/5 & inconclusivo & \texttt{exp277} \\
+D4 & 5/5 $\cdot$ 5/5 $\cdot$ 5/5 $\cdot$ 5/5 & (5/5) $\cdot$ (5/5) $\cdot$ (5/5) $\cdot$ (5/5) & reprova & \texttt{exp278} \\
+\midrule
+\multicolumn{5}{l}{\textbf{C2, normal do HUST}} \\
+D2 & 0/2 $\cdot$ 0/2 $\cdot$ 0/2 $\cdot$ 0/2 & 0/5 $\cdot$ 5/5 $\cdot$ 5/5 $\cdot$ 5/5 & inconclusivo & \texttt{exp279} \\
+D2 \textsc{ou} LDA & 2/2 $\cdot$ 2/2 $\cdot$ 2/2 $\cdot$ 2/2 & (5/5) $\cdot$ (5/5) $\cdot$ (5/5) $\cdot$ (5/5) & reprova & \texttt{exp279} \\
+D1, rotação nominal & --- $\cdot$ --- $\cdot$ 2/2 $\cdot$ 1/2 & --- $\cdot$ --- $\cdot$ (5/5) $\cdot$ (5/5) & reprova & \texttt{exp280} \\
+D1, rotação estimada & --- $\cdot$ --- $\cdot$ 1/2 $\cdot$ 1/2 & --- $\cdot$ --- $\cdot$ (5/5) $\cdot$ (5/5) & reprova & \texttt{exp281} \\
+\midrule
+\multicolumn{5}{l}{\textbf{LDA recalibrada (C2)}} \\
+\textbf{só as 13 médias} & 0/2 $\cdot$ 0/2 $\cdot$ 0/2 $\cdot$ 0/2 & 0/5 $\cdot$ 0/5 $\cdot$ 0/5 $\cdot$ 0/5 & não funciona, com o controle sem o $c_0$ (0/15 a 10--30~Hz; 5~Hz à parte: 0/5) & \texttt{exp287} \\
+\textbf{sem o $c_0$} & 0/2 $\cdot$ 0/2 $\cdot$ 0/2 $\cdot$ 0/2 & 0/5 $\cdot$ 0/5 $\cdot$ 0/5 $\cdot$ 0/5 & 0/15 a 10--30~Hz; 5~Hz à parte: 0/5 & \texttt{exp288} \\
+as 26 médias & 0/2 $\cdot$ 0/2 $\cdot$ 0/2 $\cdot$ 0/2 & 0/5 $\cdot$ 0/5 $\cdot$ 0/5 $\cdot$ 0/5 & 0/15 a 10--30~Hz; 5~Hz à parte: 0/5 & \texttt{exp289} \\
+com o desvio & 0/2 $\cdot$ 0/2 $\cdot$ 0/2 $\cdot$ 0/2 & 0/5 $\cdot$ 0/5 $\cdot$ 0/5 $\cdot$ 0/5 & 0/15 a 10--30~Hz; 5~Hz à parte: 0/5 & \texttt{exp290} \\
+D2 \textsc{ou} LDA recalibrada & 0/2 $\cdot$ 0/2 $\cdot$ 0/2 $\cdot$ 0/2 & 0/5 $\cdot$ 5/5 $\cdot$ 5/5 $\cdot$ 5/5 & 15/15 a 10--30~Hz; 5~Hz à parte: 0/5 & \texttt{exp291} \\
+\midrule
+\multicolumn{5}{l}{\textbf{Rotação deixada de fora}} \\
+\textbf{D2} & [5/5] $\cdot$ 0/5 $\cdot$ 5/5 $\cdot$ [5/5] & (5/5) $\cdot$ 5/5 $\cdot$ (5/5) $\cdot$ (5/5) & reprova a 20~Hz & \texttt{exp296} \\
+D2 sem o $c_0$ & [5/5] $\cdot$ 0/5 $\cdot$ 5/5 $\cdot$ [5/5] & (5/5) $\cdot$ 5/5 $\cdot$ (5/5) $\cdot$ (5/5) & reprova a 20~Hz & \texttt{exp297} \\
+D2 \textsc{ou} LDA & 5/5 $\cdot$ 5/5 $\cdot$ 5/5 $\cdot$ 5/5 & (5/5) $\cdot$ (5/5) $\cdot$ (5/5) $\cdot$ (5/5) & reprova em todas & \texttt{exp298} \\
+D1, rotação nominal & --- $\cdot$ --- $\cdot$ 3/5 $\cdot$ 1/5 & --- $\cdot$ --- $\cdot$ (5/5) $\cdot$ 5/5 & reprova a 20~Hz & \texttt{exp299} \\
+D1, rotação estimada & --- $\cdot$ --- $\cdot$ 1/5 $\cdot$ 1/5 & --- $\cdot$ --- $\cdot$ 5/5 $\cdot$ 5/5 & inconclusivo & \texttt{exp300} \\
+\bottomrule
+\end{tabularx}
+
+\smallskip
+\parbox{\textwidth}{\footnotesize Checagem do retreino da LDA (Amanda, 29/10), fora do registry: está só no Registro de Decisões, na página ``Retreinar a LDA no HUSTmotor'' (descartada) e na decisão 4 da página ``Recalibrar a LDA pela normal da máquina nova''. Rodou antes de o protocolo ser aprovado e serviu só para descartar o retreino. Acurácia balanceada com uma rotação deixada de fora: LDA 0,65 (1,00 / 1,00 / 0,50 / 0,10 a 5 / 10 / 20 / 30~Hz), SVM linear 0,88. No controle com rótulos trocados por arquivo, a LDA tem média 0,48 e percentil 95 de 0,82; nas 14 trocas possíveis, 4 igualam ou superam a LDA (valor-p $\approx$ 0,33) e 2 igualam o SVM ($\approx$ 0,2). As trocas formam 7 pares com o mesmo valor (inverter todos os rótulos não muda a acurácia balanceada), e o valor-p nunca cai abaixo de 1/15 $\approx$ 0,07: o controle não teria como mostrar significância a 5~\%. Dividindo dentro do arquivo, 0,94 a 1,00, que mede reconhecer a gravação.}
+\end{table}

@@ -60,7 +60,9 @@ segmentos de falha, com o intervalo bilateral de 95 %.
 Decisão (`decidir`, contra X = 5 %): aprova se o limite superior unilateral de 95 % ficar
 em até X; reprova se o limite inferior unilateral de 95 % passar de X; senão, inconclusivo.
 Os dois limites unilaterais de 95 % equivalem a um intervalo bilateral de 90 %. Pelo
-critério, decide o combinado (o detector OU a LDA); o detector sozinho é reportado à parte.
+critério v4, decidia o combinado (o detector OU a LDA); desde a página "Adoção do D2",
+decide o D2 sozinho, e os combinados ficam só como reporte (mudança registrada na página
+do critério).
 
 Decisões do Registro (22/10): normal do C2 junta (as quatro rotações), descarte do bloco 3
 e a regra da `decidir()` acima, que completa o "alarme falso ≤ X" do critério v4.
