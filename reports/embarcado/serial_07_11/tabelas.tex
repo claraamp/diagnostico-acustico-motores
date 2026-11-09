@@ -1,0 +1,34 @@
+\begin{table}[H]
+\centering
+\caption{MFCC e LDA na placa, com os segmentos já decimados a 12,8~kHz mandados pela serial (a decimação fica fora desta rodada; na placa, ela é testada pelo recorte de 1~s a 51,2~kHz do segmento 29, no boot da mesma captura, e no PC, nas 5 gravações inteiras): concordância com o Python e diferença do escore em fração da tolerância encadeada ($10^{-5}$ relativo, contra o float64). No Jung, todos os segmentos são do treino do modelo final: mede a fidelidade do porte, e não o desempenho.}
+\label{tab:serial_placa_resumo}
+\small
+\begin{tabular}{lrrrrl}
+\toprule
+\textbf{Conjunto} & \textbf{Processados} & \textbf{Concordância} & \textbf{\% da tol. (mediana)} & \textbf{\% da tol. (máx.)} & \textbf{Pior segmento} \\
+\midrule
+Jung & 295/295 & 295/295 & 2,2 & 9,8 & \texttt{bpfi\_1.0mm\_seg0127} \\
+HUSTmotor & 40/40 & 40/40 & 1,3 & 7,6 & \texttt{bf\_20hz\_a4} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[H]
+\centering
+\caption{Matriz de confusão do sistema embarcado (segmentos pela serial) e das decisões do Python. No HUSTmotor, a LDA do Jung sem retreino (\texttt{exp274} do Protocolo C).}
+\label{tab:serial_placa_matriz}
+\small
+\begin{tabular}{llrrrr}
+\toprule
+ & & \multicolumn{2}{c}{\textbf{Placa}} & \multicolumn{2}{c}{\textbf{Python}} \\
+\cmidrule(lr){3-4}\cmidrule(lr){5-6}
+\textbf{Conjunto} & \textbf{Classe verdadeira} & normal & falha & normal & falha \\
+\midrule
+Jung & normal & 59 & 0 & 59 & 0 \\
+ & falha & 0 & 236 & 0 & 236 \\
+\midrule
+HUSTmotor & normal & 0 & 20 & 0 & 20 \\
+ & falha & 0 & 20 & 0 & 20 \\
+\bottomrule
+\end{tabular}
+\end{table}

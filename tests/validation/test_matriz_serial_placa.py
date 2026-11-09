@@ -267,6 +267,9 @@ def test_saidas_e_registro(tmp_path):
     assert [n["id"] for n in novas] == ["exp303", "exp304"]
     assert "conjunto=jung" in novas[0]["parametros"] and "concordancia=3/3" in novas[0]["metricas"]
     assert "divisao_hust=acff87bde3" in novas[1]["parametros"] and ";" not in novas[1]["dataset"]
+    assert novas[0]["notas"] == M.NOTAS_PADRAO["jung"]                       # sem --notas: a padrão
+    com = M.linhas_registry(res, a, meta, "Amanda", "rodada de teste")
+    assert [n["notas"] for n in com] == [M.NOTAS_PADRAO[c] + "; rodada de teste" for c in ("jung", "hust")]
 
 
 def _meta(tmp_path, a):

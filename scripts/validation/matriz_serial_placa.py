@@ -995,7 +995,7 @@ def escrever_csv(res: dict, destino: Path) -> None:
         for x in res["linhas"]:
             y = dict(x, escore_python=f"{x['escore_python']:.6f}")
             if x["estado"] == "processado":
-                y.update(escore_placa=f32_txt(x["escore_placa"]), dif=f"{x['dif']:.6g}",
+                y.update(escore_placa=f32_txt(x["escore_placa"]), dif=f"{x['dif']:.4g}",
                          tol=f"{x['tol']:.6f}", frac_tol=f"{x['frac_tol']:.4f}")
             w.writerow(y)
 
@@ -1017,7 +1017,11 @@ LEITURA = {
 def escrever_md(res: dict, a: Analise, meta: dict, destino: Path) -> None:
     t = [f"# Matriz do sistema embarcado pela serial ({meta['captura_nome']})", "",
          f"Modelo {meta['modelo']} (JSON {meta['json']}); captura sha {meta['captura_sha']}; "
-         f"{meta.get('baud', '?')} bit/s. Escore da placa pelo `escore_hex` da linha `rx` (float32 exato), "
+         f"{meta.get('baud', '?')} bit/s. Os quadros vão já decimados a 12,8 kHz: a placa roda o MFCC e a "
+         f"LDA. A decimação fica fora desta rodada; na placa, ela é testada pelo recorte de 1 s a 51,2 kHz "
+         f"do segmento 29 (`DECIMACAO OK` e a linha `ponta` no boot desta captura), e no PC, nas 5 "
+         f"gravações inteiras (`decimar_gravacao.c` do firmware). "
+         f"Escore da placa pelo `escore_hex` da linha `rx` (float32 exato), "
          f"contra o float64 do Python; tolerância encadeada de 10⁻⁵ relativo (A4).", ""]
     for c, r in res["conjuntos"].items():
         nome = NOMES_CONJUNTO[c]
@@ -1033,7 +1037,8 @@ def escrever_md(res: dict, a: Analise, meta: dict, destino: Path) -> None:
             ciclos = (f"mediana de {br(r['ciclos_mediana'], 0)} ciclos ({br(r['ciclos_mediana'] / 1e5, 1)} ms "
                       "a 100 MHz)" if r["ciclos_mediana"] else "sem medida (sem o DWT: emulador ou simulada)")
             t.append(f"- Recepção: mediana de {br(r['ms_mediana'], 0)} ms por quadro, da mágica ao último "
-                     f"byte; processamento, {ciclos}.")
+                     f"byte; processamento (MFCC e LDA, sem a decimação: o quadro já chega a 12,8 kHz), "
+                     f"{ciclos}.")
         t.append(f"- Menor |escore| do Python: {br(r['menor_abs_escore'], 1)} (a tolerância é "
                  f"10⁻⁵ dele).")
         t.append(f"- Não processados: {len(r['nao_processados'])}"
@@ -1063,7 +1068,9 @@ def escrever_md(res: dict, a: Analise, meta: dict, destino: Path) -> None:
 def escrever_tex(res: dict, destino: Path) -> None:
     cj = res["conjuntos"]
     t = [r"\begin{table}[H]", r"\centering",
-         r"\caption{Cadeia completa na placa com os segmentos mandados pela serial: concordância com o "
+         r"\caption{MFCC e LDA na placa, com os segmentos já decimados a 12,8~kHz mandados pela serial "
+         r"(a decimação fica fora desta rodada; na placa, ela é testada pelo recorte de 1~s a 51,2~kHz do "
+         r"segmento 29, no boot da mesma captura, e no PC, nas 5 gravações inteiras): concordância com o "
          r"Python e diferença do escore em fração da tolerância encadeada ($10^{-5}$ relativo, contra o "
          r"float64). No Jung, todos os segmentos são do treino do modelo final: mede a fidelidade do "
          r"porte, e não o desempenho.}",
@@ -1101,6 +1108,12 @@ def escrever_tex(res: dict, destino: Path) -> None:
     destino.write_text("\n".join(t), encoding="utf-8", newline="\n")
 
 
+NOTAS_PADRAO = {
+    "jung": "fidelidade do porte, não desempenho: os segmentos estão no treino do modelo final",
+    "hust": "a LDA do Jung sem retreino (exp274 do Protocolo C); mede a concordância com o Python",
+}
+
+
 def linhas_registry(res: dict, a: Analise, meta: dict, responsavel: str, notas: str) -> list[dict]:
     linhas, base = [], meta["proximo_exp"]
     for c, r in res["conjuntos"].items():
@@ -1136,9 +1149,7 @@ def linhas_registry(res: dict, a: Analise, meta: dict, responsavel: str, notas: 
                 "erros_recepcao": sum(a.erros.values()), "estouros": a.estouros,
                 "reinicios": a.reinicios}),
             "responsavel": responsavel,
-            "notas": notas or ("fidelidade do porte, não desempenho: os segmentos estão no treino do modelo final"
-                               if c == "jung" else
-                               "a LDA do Jung sem retreino (exp274 do Protocolo C); mede a concordância com o Python"),
+            "notas": NOTAS_PADRAO[c] + (f"; {notas}" if notas else ""),     # --notas acrescenta, não substitui
         })
     return linhas
 
@@ -1192,7 +1203,7 @@ def main(argv=None) -> int:
     ap.add_argument("--registry", type=Path, default=Path("experiments/registry.csv"))
     ap.add_argument("--sem-registro", action="store_true", help="ensaio: saídas fora do Git, registry intocado")
     ap.add_argument("--responsavel", default="")
-    ap.add_argument("--notas", default="")
+    ap.add_argument("--notas", default="", help="acrescentado às notas padrão de cada conjunto")
     args = ap.parse_args(argv)
 
     conjuntos = [c.strip() for c in args.conjuntos.split(",") if c.strip()]
