@@ -1,6 +1,6 @@
 \begin{table}[H]
 \centering
-\caption{MFCC e LDA na placa, com os segmentos já decimados a 12,8~kHz mandados pela serial (a decimação fica fora desta rodada e é testada pelos 10 clipes da flash): concordância com o Python e diferença do escore em fração da tolerância encadeada ($10^{-5}$ relativo, contra o float64). No Jung, todos os segmentos são do treino do modelo final: mede a fidelidade do porte, e não o desempenho.}
+\caption{MFCC e LDA na placa, com os segmentos já decimados a 12,8~kHz mandados pela serial (a decimação fica fora desta rodada; na placa, ela é testada pelo recorte de 1~s a 51,2~kHz do segmento 29, no boot da mesma captura, e no PC, nas 5 gravações inteiras): concordância com o Python e diferença do escore em fração da tolerância encadeada ($10^{-5}$ relativo, contra o float64). No Jung, todos os segmentos são do treino do modelo final: mede a fidelidade do porte, e não o desempenho.}
 \label{tab:serial_placa_resumo}
 \small
 \begin{tabular}{lrrrrl}

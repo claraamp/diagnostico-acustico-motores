@@ -1,6 +1,6 @@
 # Matriz do sistema embarcado pela serial (serial-07-11.log)
 
-Modelo exp239 (JSON ee0c3e088366); captura sha 6a8dbee33272; 921600 bit/s. Os quadros vão já decimados a 12,8 kHz: a placa roda o MFCC e a LDA, e a decimação só é testada pelos 10 clipes da flash. Escore da placa pelo `escore_hex` da linha `rx` (float32 exato), contra o float64 do Python; tolerância encadeada de 10⁻⁵ relativo (A4).
+Modelo exp239 (JSON ee0c3e088366); captura sha 6a8dbee33272; 921600 bit/s. Os quadros vão já decimados a 12,8 kHz: a placa roda o MFCC e a LDA. A decimação fica fora desta rodada; na placa, ela é testada pelo recorte de 1 s a 51,2 kHz do segmento 29 (`DECIMACAO OK` e a linha `ponta` no boot desta captura), e no PC, nas 5 gravações inteiras (`decimar_gravacao.c` do firmware). Escore da placa pelo `escore_hex` da linha `rx` (float32 exato), contra o float64 do Python; tolerância encadeada de 10⁻⁵ relativo (A4).
 
 ## Jung (295/295 processados)
 
