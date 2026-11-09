@@ -1017,7 +1017,9 @@ LEITURA = {
 def escrever_md(res: dict, a: Analise, meta: dict, destino: Path) -> None:
     t = [f"# Matriz do sistema embarcado pela serial ({meta['captura_nome']})", "",
          f"Modelo {meta['modelo']} (JSON {meta['json']}); captura sha {meta['captura_sha']}; "
-         f"{meta.get('baud', '?')} bit/s. Escore da placa pelo `escore_hex` da linha `rx` (float32 exato), "
+         f"{meta.get('baud', '?')} bit/s. Os quadros vão já decimados a 12,8 kHz: a placa roda o MFCC e a "
+         f"LDA, e a decimação só é testada pelos 10 clipes da flash. "
+         f"Escore da placa pelo `escore_hex` da linha `rx` (float32 exato), "
          f"contra o float64 do Python; tolerância encadeada de 10⁻⁵ relativo (A4).", ""]
     for c, r in res["conjuntos"].items():
         nome = NOMES_CONJUNTO[c]
@@ -1033,7 +1035,8 @@ def escrever_md(res: dict, a: Analise, meta: dict, destino: Path) -> None:
             ciclos = (f"mediana de {br(r['ciclos_mediana'], 0)} ciclos ({br(r['ciclos_mediana'] / 1e5, 1)} ms "
                       "a 100 MHz)" if r["ciclos_mediana"] else "sem medida (sem o DWT: emulador ou simulada)")
             t.append(f"- Recepção: mediana de {br(r['ms_mediana'], 0)} ms por quadro, da mágica ao último "
-                     f"byte; processamento, {ciclos}.")
+                     f"byte; processamento (MFCC e LDA, sem a decimação: o quadro já chega a 12,8 kHz), "
+                     f"{ciclos}.")
         t.append(f"- Menor |escore| do Python: {br(r['menor_abs_escore'], 1)} (a tolerância é "
                  f"10⁻⁵ dele).")
         t.append(f"- Não processados: {len(r['nao_processados'])}"
@@ -1063,7 +1066,8 @@ def escrever_md(res: dict, a: Analise, meta: dict, destino: Path) -> None:
 def escrever_tex(res: dict, destino: Path) -> None:
     cj = res["conjuntos"]
     t = [r"\begin{table}[H]", r"\centering",
-         r"\caption{Cadeia completa na placa com os segmentos mandados pela serial: concordância com o "
+         r"\caption{MFCC e LDA na placa, com os segmentos já decimados a 12,8~kHz mandados pela serial "
+         r"(a decimação fica fora desta rodada e é testada pelos 10 clipes da flash): concordância com o "
          r"Python e diferença do escore em fração da tolerância encadeada ($10^{-5}$ relativo, contra o "
          r"float64). No Jung, todos os segmentos são do treino do modelo final: mede a fidelidade do "
          r"porte, e não o desempenho.}",
