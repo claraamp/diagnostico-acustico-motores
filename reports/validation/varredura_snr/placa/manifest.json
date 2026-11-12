@@ -1,0 +1,32 @@
+{
+  "bin": "data/processed/robustez_placa/segmentos_ruido.bin",
+  "sha256": "14b3ecccb654bb6e33f1fe95963817dd146360009185cb5c52bf1109a7660427",
+  "n_segmentos": 1770,
+  "amostras_por_segmento": 12800,
+  "dtype": "int16 little-endian",
+  "fs_hz": 12800,
+  "ordem": "a do referencias.csv",
+  "modelo": "exp239",
+  "json_sha12": "ee0c3e088366",
+  "ruidos": [
+    "branco",
+    "rosa"
+  ],
+  "snrs_db": [
+    10,
+    5,
+    0
+  ],
+  "semente": 20260925,
+  "grupos": {
+    "branco": 3,
+    "rosa": 4
+  },
+  "id": "snr_db*1000 + segmento",
+  "ponto_do_ruido": "int16_51200Hz",
+  "git_commit": "ce18ce5",
+  "decisoes": {
+    "normal": 252,
+    "falha": 1518
+  }
+}
