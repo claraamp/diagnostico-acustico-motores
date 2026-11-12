@@ -4,8 +4,9 @@ Testes da varredura de SNR (run_varredura_snr.py).
 Não dependem de data/. Conferem que (1) o ruído tem a SNR pedida no segmento e o
 rosa cai com 1/f, (2) o recorte a 51,2 kHz decimado reproduz o `resample_clip`
 do `02`, (3) a saturação no int16 é contada, (4) o limite E do escore segue a
-fórmula da página de 05/11, (5) o escore da emulação é julgado por E e não pela
-tolerância relativa, (6) as duas regras decidem como estão escritas, e (7) o
+fórmula da página de 05/11, (5) o escore da emulação sai pela tolerância relativa
+do A4 e por |Δs|/E, (6) as duas regras decidem como estão escritas (a do aumento,
+pareada, com o empate, o sinal limpo e o ponto ausente), e (7) o
 recorte exportado para a placa dá, no script de envio, o escore e a decisão gravados.
 """
 
@@ -80,7 +81,7 @@ def test_limite_do_escore_segue_a_formula_da_pagina():
     assert V.limite_escore(x, pesos, bias)[0] == pytest.approx(esperado, rel=1e-12)
 
 
-def test_escore_perto_do_limiar_e_julgado_pelo_limite_absoluto():
+def test_escore_perto_do_limiar_sai_pelas_duas_medidas():
     # escore de -0,68 com erro de 4e-4: 59× a tolerância relativa, 0,1 % de E
     pesos = np.zeros(2 * config.MFCC_N_COEFS)
     pesos[0] = 1.0
@@ -99,49 +100,91 @@ def test_escore_perto_do_limiar_e_julgado_pelo_limite_absoluto():
     ref = {e: um for e in ("entrada", "escala", "janela", "espectro", "mel", "logmel", "mfcc")}
     ref |= {"media": um[0], "desvio": um[1], "escore": np.array([-0.6765])}
     r = V.emular(Cadeia(), ref, E=0.41)
-    assert r["escore_rel"] > 50
-    assert r["escore"] == pytest.approx(4e-4 / 0.41)
+    assert r["escore"] > 50                                # a tolerância relativa do A4
+    assert r["escore_E"] == pytest.approx(4e-4 / 0.41)
 
 
-def _curva(acc_com, esp_com, dp=0.01):
+def _curva(valor, sem_pontos=()):
+    """Curva com todos os pontos e sementes; valor(modelo, ruido, snr, k) → (acc. bal., especificidade)."""
     linhas = []
-    for ruido in V.RUIDOS:
-        for snr in V.SNRS_DB:
-            for k, sem in enumerate(V.SEMENTES):
-                d = dp * (k - 1)
-                linhas.append({"modelo": "sem_aumento", "ruido": ruido, "snr_db": snr,
-                               "acuracia_balanceada": 0.6 + d, "especificidade": 0.5 + d})
-                linhas.append({"modelo": "com_aumento", "ruido": ruido, "snr_db": snr,
-                               "acuracia_balanceada": acc_com(ruido, snr) + d,
-                               "especificidade": esp_com(ruido, snr) + d})
+    pontos = [(None, None)] + [(r, s) for r in V.RUIDOS for s in V.SNRS_DB]
+    for ruido, snr in pontos:
+        if (ruido, snr) in sem_pontos:
+            continue
+        for k, sem in enumerate(V.SEMENTES):
+            for m in V.MODELOS:
+                acc, esp = valor(m, ruido, snr, k)
+                linhas.append({"modelo": m, "ruido": ruido, "snr_db": snr, "semente": sem,
+                               "acuracia_balanceada": acc, "especificidade": esp})
     return linhas
 
 
-def test_aumento_so_troca_o_modelo_se_ganhar_em_todos_os_pontos_ate_10_db():
-    # o desvio entre sementes é 0,01: ganhar por 0,05 passa
-    d = V.decidir_aumento(_curva(lambda r, s: 0.65, lambda r, s: 0.55))
+def _ganho(g, ruido=0.01):
+    """O com aumento ganha `g` em todo ponto; o ruído de semente entra igual nos dois modelos."""
+    def valor(m, r, s, k):
+        d = ruido * (k % 3 - 1) + (g if m == "com_aumento" else 0.0)
+        return 0.6 + d, 0.5 + d
+    return valor
+
+
+def test_regra_pareada_passa_com_ganho_constante_por_semente():
+    # dₖ = 0,005 em toda semente: desvio pareado 0, passa; a regra antiga (0,005 < desvio 0,01) não passaria
+    d = V.decidir_aumento(_curva(_ganho(0.005)))
     assert d["modelo_final"] == "com_aumento"
     assert len(d["pontos"]) == 2 * 3 * 2                 # 2 ruídos × (10, 5, 0 dB) × 2 métricas
-    # perder um ponto (especificidade a 5 dB, rosa) mantém o modelo; 30 dB não conta
-    d = V.decidir_aumento(_curva(lambda r, s: 0.4 if s == 30 else 0.65,
-                                 lambda r, s: 0.5 if (r, s) == ("rosa", 5) else 0.55))
-    assert d["modelo_final"] == "sem_aumento (exp239)"
-    assert d["nao_passa"] == ["especificidade a 5 dB (rosa)"]
-    # ganhar por menos que um desvio não basta
-    d = V.decidir_aumento(_curva(lambda r, s: 0.605, lambda r, s: 0.505))
-    assert d["modelo_final"] == "sem_aumento (exp239)"
+    assert d["limpo"]["passa"]
 
 
-def test_placa_necessaria_onde_ha_segmento_perto_do_limiar_ou_emulacao_fora():
-    base = {"perto_limiar": 0, "emul_frac_tol_max": 0.1, "decisoes_diferentes": 0}
+def test_regra_pareada_falha_quando_o_desvio_pareado_passa_da_media():
+    # sem e com variam em sentidos opostos: a diferença das médias (0,05) passa do maior desvio (0,03),
+    # mas dₖ alterna entre −0,01 e 0,11, e o desvio de dₖ (0,06) passa da média (0,05)
+    def valor(m, r, s, k):
+        e = 0.03 if k % 2 else -0.03
+        return (0.65 - e, 0.55 - e) if m == "com_aumento" else (0.6 + e, 0.5 + e)
+    d = V.decidir_aumento(_curva(valor))
+    assert d["modelo_final"] == "sem_aumento (exp239)"
+    assert all(not p["passa"] for p in d["pontos"])
+
+
+def test_empate_exato_falha():
+    d = V.decidir_aumento(_curva(_ganho(0.0)))
+    assert d["modelo_final"] == "sem_aumento (exp239)"
+    assert all(p["media_d"] == 0 and p["desvio_d"] == 0 and not p["passa"] for p in d["pontos"])
+    assert "empatam" in V.frase_aumento(d)
+
+
+def test_com_aumento_pior_sem_ruido_falha():
+    def valor(m, r, s, k):
+        acc, esp = _ganho(0.05)(m, r, s, k)
+        return (acc - 0.2, esp) if (r is None and m == "com_aumento") else (acc, esp)
+    d = V.decidir_aumento(_curva(valor))
+    assert d["modelo_final"] == "sem_aumento (exp239)"
+    assert d["nao_passa"] == ["acuracia_balanceada sem ruído menor com aumento"]
+
+
+def test_ponto_ausente_conta_como_falha():
+    d = V.decidir_aumento(_curva(_ganho(0.05), sem_pontos={("rosa", 5)}))
+    assert d["modelo_final"] == "sem_aumento (exp239)"
+    assert d["nao_passa"] == ["acuracia_balanceada a 5 dB (rosa): sem dados",
+                              "especificidade a 5 dB (rosa): sem dados"]
+    # 30 dB não entra na regra: faltar não muda nada
+    assert V.decidir_aumento(_curva(_ganho(0.05), sem_pontos={("rosa", 30)}))["modelo_final"] == "com_aumento"
+
+
+def test_placa_pela_tolerancia_do_a4_e_proposta_por_e():
+    base = {"perto_limiar": 0, "emul_frac_tol_max": 0.1, "emul_frac_tol_max_E": 0.1, "decisoes_diferentes": 0}
     margem = [{"ruido": None, "snr_db": None, **base, "perto_limiar": 3},   # o limpo não decide
               {"ruido": "branco", "snr_db": 10, **base},
               {"ruido": "rosa", "snr_db": 0, **base}]
-    assert V.decidir_placa(margem) == {"placa": "só confirmação (opcional)", "pontos": []}
-    margem[1]["perto_limiar"] = 1
-    margem[2]["emul_frac_tol_max"] = 1.2
-    assert V.decidir_placa(margem) == {"placa": "necessária",
-                                       "pontos": [("branco", 10), ("rosa", 0)]}
+    d = V.decidir_placa(margem)
+    assert (d["placa"], d["pontos"]) == ("só confirmação (opcional)", [])
+    # escore fora da tolerância relativa e dentro de E: a regra manda, a proposta não
+    margem[2] |= {"emul_frac_tol_max": 65.0, "emul_frac_tol_max_E": 0.1}
+    d = V.decidir_placa(margem)
+    assert (d["placa"], d["pontos"]) == ("necessária", [("rosa", 0)])
+    assert d["proposta_E"] == {"placa": "só confirmação (opcional)", "pontos": []}
+    margem[1]["perto_limiar"] = 1                      # |s| < E vale nos dois critérios
+    assert V.decidir_placa(margem)["proposta_E"]["pontos"] == [("branco", 10)]
 
 
 def test_exportacao_para_a_placa_grava_o_int16_e_as_referencias(tmp_path):

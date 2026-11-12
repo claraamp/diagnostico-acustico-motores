@@ -40,19 +40,25 @@ O que mede
    - amostras saturadas no int16, a 51,2 kHz e a 12,8 kHz;
    - a cadeia em float32 (a mesma emulação do exp253) contra a referência em
      float64: erro de cada estágio em fração da tolerância encadeada, e
-     decisões diferentes. O escore é julgado por |Δs|/E, e não pela tolerância
-     relativa dele, que vai a zero perto do limiar (`emular`).
+     decisões diferentes. O escore sai pelas duas medidas: a tolerância
+     relativa do A4 (10⁻⁵ do próprio escore), que é a da regra, e |Δs|/E, que
+     não vai a zero perto do limiar (`emular`).
 
 Regras, fixadas antes dos números
 ---------------------------------
 - Placa (página "Robustez ao ruído também na placa", 05/11): nenhum segmento
   com |s| < E em nenhum ponto e a emulação dentro da tolerância → a placa é só
   confirmação; senão, a rodada na placa é necessária nos pontos em que isso
-  aconteceu (`decidir_placa`).
-- Modelo final (card, 09/11): o modelo com aumento só substitui o exp239 se,
-  em todos os pontos com SNR ≤ 10 dB, a acurácia balanceada e a especificidade
-  médias forem maiores, com diferença maior que um desvio (o maior dos dois
-  desvios entre sementes); senão, fica o modelo sem aumento (`decidir_aumento`).
+  aconteceu (`decidir_placa`). A tolerância do escore é a do A4, relativa, como
+  a regra foi escrita. O critério com o escore por |Δs|/E sai ao lado, como
+  proposta para o grupo, sem decidir nada.
+- Modelo final (regra fixada no card em 12/11), com as 10 sementes dos
+  exp224–exp233: para cada ponto com SNR ≤ 10 dB, ruído e métrica (acurácia
+  balanceada e especificidade), dₖ = com − sem aumento na semente k; o ponto
+  passa se a média de dₖ for maior que o desvio de dₖ (ddof = 1), estrito, de
+  modo que um empate (dₖ = 0) falha. Sem ruído, o modelo com aumento não pode
+  ter acurácia balanceada média menor. Um ponto sem dados conta como falha. O
+  modelo com aumento só substitui o exp239 se tudo passar (`decidir_aumento`).
 
 Saídas
 ------
@@ -117,7 +123,7 @@ from validation.run_protocol import novo_modelo
 
 SNRS_DB = (30, 25, 20, 15, 10, 5, 0)
 RUIDOS = ("branco", "rosa")
-SEMENTES = (config.SEMENTE, 1, 2)
+SEMENTES = (config.SEMENTE, *range(1, 10))   # as do aumento nos exp224–exp233
 COPIAS_AUMENTO = 4
 SNR_MAX_REGRA_AUMENTO = 10          # dB: a regra do aumento olha os pontos com SNR ≤ 10 dB
 MODELOS = ("sem_aumento", "com_aumento")
@@ -235,9 +241,9 @@ def caracteristicas(estagios: dict) -> np.ndarray:
 def emular(cadeia: CadeiaFloat32, ref: dict, E: float) -> dict:
     """
     Cadeia em float32 desde o int16; erro de cada estágio em fração da tolerância
-    encadeada. O escore é julgado pelo limite absoluto E do segmento, |Δs|/E: a
-    tolerância relativa dele (10⁻⁵ do próprio escore) vai a zero perto do limiar,
-    que é onde o ruído põe os segmentos. A relativa sai à parte, em `escore_rel`.
+    encadeada do A4 (no escore, a relativa: 10⁻⁵ do próprio escore). O escore sai
+    também por |Δs|/E, em `escore_E`: a relativa vai a zero perto do limiar, que é
+    onde o ruído põe os segmentos.
     """
     enc = {"escala": cadeia.escala(ref["entrada"])}
     anterior = "escala"
@@ -249,8 +255,7 @@ def emular(cadeia: CadeiaFloat32, ref: dict, E: float) -> dict:
     frac = {e: dsp.erro_estagio(enc[e], ref[e], TOL_ENCADEADA[e][0]) / TOL_ENCADEADA[e][1]
             for e in ESTAGIOS_EMULADOS}
     s32 = float(enc["escore"][0])
-    return frac | {"escore_rel": frac["escore"], "escore": abs(s32 - float(ref["escore"][0])) / E,
-                   "escore32": s32}
+    return frac | {"escore_E": abs(s32 - float(ref["escore"][0])) / E, "escore32": s32}
 
 
 def ponto(dec: Decimador, segmentos, ruido: str | None, snr_db: float | None, semente: int,
@@ -291,7 +296,7 @@ def ponto(dec: Decimador, segmentos, ruido: str | None, snr_db: float | None, se
         out["pcm"] = pcms
     if cadeia is not None:
         frac = {e: float(max(l[e] for l in linhas)) for e in ESTAGIOS_EMULADOS}
-        out["emul_escore_rel_max"] = float(max(l["escore_rel"] for l in linhas))
+        out["emul_escore_E_max"] = float(max(l["escore_E"] for l in linhas))
         dec32 = np.array([l["escore32"] >= 0 for l in linhas])
         out |= {"emul_frac_tol": frac,
                 "decisoes_diferentes": int(np.count_nonzero(dec32 != (escore >= 0)))}
@@ -307,7 +312,10 @@ def resumo_margem(p: dict) -> dict:
     if "emul_frac_tol" in p:
         out |= {"emul_frac_tol_max": max(p["emul_frac_tol"].values()),
                 "emul_estagio_max": max(p["emul_frac_tol"], key=p["emul_frac_tol"].get),
-                "emul_escore_rel_max": p["emul_escore_rel_max"],
+                "emul_escore_rel_max": p["emul_frac_tol"]["escore"],
+                "emul_escore_E_max": p["emul_escore_E_max"],
+                "emul_frac_tol_max_E": max([v for e, v in p["emul_frac_tol"].items() if e != "escore"]
+                                           + [p["emul_escore_E_max"]]),
                 "decisoes_diferentes": p["decisoes_diferentes"]}
     return out
 
@@ -355,37 +363,62 @@ def media_dp(valores) -> tuple[float, float]:
     return float(v.mean()), float(v.std(ddof=1)) if len(v) > 1 else 0.0
 
 
-def decidir_aumento(curva: list[dict]) -> dict:
+def _por_semente(curva: list[dict], ruido, snr, k: str) -> dict[str, dict]:
+    return {m: {c["semente"]: c[k] for c in curva
+                if c["modelo"] == m and c["ruido"] == ruido and c["snr_db"] == snr} for m in MODELOS}
+
+
+def decidir_aumento(curva: list[dict], sementes=SEMENTES) -> dict:
     """
-    Regra do card (09/11): o modelo com aumento só substitui o atual se, em todos os
-    pontos com SNR ≤ 10 dB, a acurácia balanceada e a especificidade médias forem
-    maiores, com diferença maior que o maior dos dois desvios entre sementes.
+    Regra fixada no card em 12/11 (ver o docstring do módulo): diferença pareada
+    dₖ = com − sem aumento por semente, média de dₖ > desvio de dₖ (ddof = 1),
+    estrito, em todo ponto com SNR ≤ 10 dB, nos dois ruídos e nas duas métricas;
+    sem ruído, acurácia balanceada média do com aumento ≥ a do sem. Um ponto sem
+    os dois modelos em todas as sementes conta como falha ("sem dados").
     """
     pontos, falhas = [], []
     for ruido in RUIDOS:
         for snr in (s for s in SNRS_DB if s <= SNR_MAX_REGRA_AUMENTO):
-            sel = {m: [c for c in curva if c["modelo"] == m and c["ruido"] == ruido and c["snr_db"] == snr]
-                   for m in MODELOS}
-            if not all(sel.values()):
-                continue
             for k in ("acuracia_balanceada", "especificidade"):
-                (ms, ds), (ma, da) = (media_dp(c[k] for c in sel[m]) for m in MODELOS)
-                ok = ma - ms > max(ds, da)
-                pontos.append({"ruido": ruido, "snr_db": snr, "metrica": k, "sem": ms, "com": ma,
-                               "desvio": max(ds, da), "passa": ok})
+                v = _por_semente(curva, ruido, snr, k)
+                if not all(set(sementes) <= set(v[m]) for m in MODELOS):
+                    pontos.append({"ruido": ruido, "snr_db": snr, "metrica": k, "passa": False,
+                                   "sem_dados": True})
+                    falhas.append(f"{k} a {snr} dB ({ruido}): sem dados")
+                    continue
+                d = [v["com_aumento"][sem] - v["sem_aumento"][sem] for sem in sementes]
+                media, dp = media_dp(d)
+                ok = media > dp
+                pontos.append({"ruido": ruido, "snr_db": snr, "metrica": k, "media_d": media,
+                               "desvio_d": dp, "passa": ok})
                 if not ok:
                     falhas.append(f"{k} a {snr} dB ({ruido})")
-    troca = bool(pontos) and not falhas
-    return {"modelo_final": "com_aumento" if troca else "sem_aumento (exp239)",
-            "pontos": pontos, "nao_passa": falhas}
+    v = _por_semente(curva, None, None, "acuracia_balanceada")
+    if all(set(sementes) <= set(v[m]) for m in MODELOS):
+        ms, ma = (float(np.mean([v[m][sem] for sem in sementes])) for m in MODELOS)
+        limpo = {"sem": ms, "com": ma, "passa": ma >= ms}
+        if not limpo["passa"]:
+            falhas.append("acuracia_balanceada sem ruído menor com aumento")
+    else:
+        limpo = {"passa": False, "sem_dados": True}
+        falhas.append("sem ruído: sem dados")
+    return {"modelo_final": "com_aumento" if not falhas else "sem_aumento (exp239)",
+            "pontos": pontos, "limpo": limpo, "nao_passa": falhas}
 
 
 def decidir_placa(margem: list[dict]) -> dict:
-    """Regra da página de 05/11: |s| < E em algum ponto, ou emulação fora da tolerância → necessária."""
-    pontos = [m for m in margem if m["ruido"] is not None and
-              (m["perto_limiar"] > 0 or m["emul_frac_tol_max"] > 1 or m["decisoes_diferentes"] > 0)]
-    return {"placa": "necessária" if pontos else "só confirmação (opcional)",
-            "pontos": sorted({(m["ruido"], m["snr_db"]) for m in pontos})}
+    """
+    Regra da página de 05/11: |s| < E em algum ponto, ou emulação fora da tolerância
+    do A4 (escore pela relativa), ou decisão diferente → necessária nesses pontos.
+    `proposta_E` aplica a mesma regra com o escore por |Δs|/E: é só a proposta a
+    levar ao grupo, e não decide.
+    """
+    def avaliar(chave):
+        pontos = [m for m in margem if m["ruido"] is not None and
+                  (m["perto_limiar"] > 0 or m[chave] > 1 or m["decisoes_diferentes"] > 0)]
+        return {"placa": "necessária" if pontos else "só confirmação (opcional)",
+                "pontos": sorted({(m["ruido"], m["snr_db"]) for m in pontos})}
+    return avaliar("emul_frac_tol_max") | {"proposta_E": avaliar("emul_frac_tol_max_E")}
 
 
 # --------------------------------------------------------------------------- #
@@ -419,38 +452,90 @@ def gravar_csv(caminho: Path, linhas: list[dict]) -> None:
         w.writerows(linhas)
 
 
-def resumo_md(agregado, margem_ag, dec_aumento, dec_placa, ids: str) -> str:
+def _lista(itens) -> str:
+    itens = list(itens)
+    return ", ".join(itens[:-1]) + (" e " if len(itens) > 1 else "") + itens[-1] if itens else ""
+
+
+def frase_aumento(dec: dict) -> str:
+    """A decisão do aumento em frase: onde empata, onde perde e onde o com aumento é melhor."""
+    if dec["modelo_final"] == "com_aumento":
+        return "o modelo com aumento passa em todos os pontos e substitui o exp239."
+    def onde(pts):
+        return _lista(dict.fromkeys(f"{p['ruido']} a {p['snr_db']} dB" for p in pts))
+    empate = [p for p in dec["pontos"] if not p["passa"] and not p.get("sem_dados")
+              and p["media_d"] == 0 and p["desvio_d"] == 0]
+    sem_dados = [p for p in dec["pontos"] if p.get("sem_dados")]
+    outras = [p for p in dec["pontos"] if not p["passa"] and p not in empate and p not in sem_dados]
+    melhor = [p for p in dec["pontos"] if p["passa"]]
+    partes = []
+    if empate:
+        partes.append(f"os dois modelos empatam em {onde(empate)} (dₖ = 0 em todas as sementes: os dois "
+                      "ficam no teto, como sem ruído)")
+    if outras:
+        partes.append(f"o ganho não passa do desvio pareado em {onde(outras)}")
+    if sem_dados:
+        partes.append(f"faltam os pontos {onde(sem_dados)}, que contam como falha")
+    if dec["limpo"].get("sem_dados"):
+        partes.append("falta o sinal limpo, que conta como falha")
+    elif not dec["limpo"]["passa"]:
+        partes.append("sem ruído, o com aumento fica abaixo")
+    texto = "fica o exp239, sem aumento: a regra pede todos os pontos, e " + "; ".join(partes) + "."
+    melhor_pts = [p for p in melhor if p["metrica"] == "acuracia_balanceada"]
+    if melhor_pts:
+        texto += (" Nos pontos em que passa, o modelo com aumento é melhor; ganho de acurácia balanceada "
+                  "(média ± desvio de dₖ): "
+                  + _lista(f"{p['ruido']} a {p['snr_db']} dB, +{_f(p['media_d'])} ± {_f(p['desvio_d'])}"
+                           for p in melhor_pts) + ".")
+    return texto
+
+
+def resumo_md(agregado, margem_ag, dec_aumento, dec_placa, ids: str, sementes=SEMENTES) -> str:
     def rotulo(r, s):
         return "limpo" if r is None else f"{r}, {s} dB"
+    ganho = {r: [m["snr_banda_mediana"] - m["snr_db"] for m in margem_ag if m["ruido"] == r] for r in RUIDOS}
     t = ["# Robustez ao ruído: varredura de SNR", "",
          f"Rodadas {ids}. Ruído somado no int16 a 51,2 kHz, antes da decimação; SNR da entrada, "
-         f"por segmento. Sementes: {', '.join(map(str, SEMENTES))}.", "",
+         f"por segmento. {len(sementes)} sementes: {', '.join(map(str, sementes))} (as do aumento nos "
+         "exp224–exp233).", "",
          "## Protocolo B com o teste ruidoso (média ± desvio entre sementes)", "",
          "| Ponto | Modelo | Acurácia balanceada | Sensibilidade | Especificidade |",
          "|---|---|---:|---:|---:|"]
     for a in agregado:
         t.append(f"| {rotulo(a['ruido'], a['snr_db'])} | {a['modelo'].replace('_', ' ')} | "
                  + " | ".join(f"{_f(a[k])} ± {_f(a[k + '_dp'])}" for k in METRICAS_B) + " |")
-    t += ["", "## Passo 0: análise de margem com o modelo final (exp239), 295 segmentos", "",
+    t += ["", "O eixo é a SNR da entrada, a 51,2 kHz. O filtro de decimação tira o ruído acima de 5,76 kHz, "
+          "então a SNR na banda que a cadeia vê é maior: "
+          + _lista(f"{_f(float(np.median(g)), 1)} dB a mais no {r}" for r, g in ganho.items() if g)
+          + ". O mesmo número de dB não é o mesmo nível de ruído para a cadeia nos dois ruídos.", "",
+          "## Passo 0: análise de margem com o modelo final (exp239), 295 segmentos", "",
           "| Ponto | SNR na banda (mediana) | Segmentos com \\|s\\| < E | Menor \\|s\\|/E | "
-          "Saturadas 51,2 kHz | Saturadas 12,8 kHz | Emulação float32 (fração da tol.) | "
-          "Escore pela tol. relativa | Decisões diferentes |",
+          "Saturadas por semente, 51,2 kHz | Saturadas por semente, 12,8 kHz | Emulação float32, tol. do A4 "
+          "(fração; estágio) | Escore por \\|Δs\\|/E | Decisões diferentes |",
           "|---|---:|---:|---:|---:|---:|---:|---:|---:|"]
     for m in margem_ag:
         banda = "—" if m["snr_banda_mediana"] is None else f"{_f(m['snr_banda_mediana'], 1)} dB"
         t.append(f"| {rotulo(m['ruido'], m['snr_db'])} | {banda} | {m['perto_limiar']} | "
-                 f"{_f(m['margem_min_E'], 1)} | {m['sat_51k2']} | {m['sat_12k8']} | "
+                 f"{_f(m['margem_min_E'], 1)} | {m['sat_51k2_por_semente']:.0f} | {m['sat_12k8_por_semente']:.0f} | "
                  f"{_f(m['emul_frac_tol_max'], 4)} ({m['emul_estagio_max']}) | "
-                 f"{_f(m['emul_escore_rel_max'], 2)} | {m['decisoes_diferentes']} |")
-    t += ["", "Contagens somadas nas sementes; menor razão e maior fração, o pior caso entre elas. "
-          "Na emulação, o escore entra por |Δs|/E; a coluna da tolerância relativa (10⁻⁵ do próprio "
-          "escore) é só informativa, porque ela vai a zero perto do limiar.", "",
+                 f"{_f(m['emul_escore_E_max'], 4)} | {m['decisoes_diferentes']} |")
+    fora = [m for m in margem_ag if m["ruido"] is not None and m["emul_frac_tol_max"] > 1]
+    t += ["", "Segmentos perto do limiar e decisões diferentes, somados nas sementes; menor razão e maior "
+          "fração, o pior caso entre elas. Na emulação, a tolerância é a encadeada do A4; no escore, a "
+          "relativa (10⁻⁵ do próprio escore), que vai a zero perto do limiar. A coluna |Δs|/E mede o mesmo "
+          "erro do escore contra o limite absoluto E."
+          + (" Fora da tolerância relativa: " + _lista(f"{m['ruido']} a {m['snr_db']} dB "
+             f"({_f(m['emul_frac_tol_max'], 2)}×, {m['emul_estagio_max']}; |Δs|/E = "
+             f"{_f(m['emul_escore_E_max'], 4)})" for m in fora) + "." if fora else ""), "",
           "## Decisões pelas regras fixadas antes de rodar", "",
-          f"- **Placa com ruído:** {dec_placa['placa']}"
-          + (f", nos pontos {', '.join(f'{r} a {s} dB' for r, s in dec_placa['pontos'])}." if dec_placa["pontos"]
+          f"- **Placa com ruído (regra de 05/11):** {dec_placa['placa']}"
+          + (f" em {_lista(f'{r} a {s} dB' for r, s in dec_placa['pontos'])}." if dec_placa["pontos"]
              else ": nenhum segmento com |s| < E e a emulação em float32 dentro da tolerância em todos os pontos."),
-          f"- **Modelo final:** {dec_aumento['modelo_final']}"
-          + (f"; não passa em: {'; '.join(dec_aumento['nao_passa'])}." if dec_aumento["nao_passa"] else "."),
+          f"- **Proposta para o grupo (não decide):** com o escore julgado por |Δs|/E, a placa seria "
+          f"{dec_placa['proposta_E']['placa']}"
+          + (f" em {_lista(f'{r} a {s} dB' for r, s in dec_placa['proposta_E']['pontos'])}."
+             if dec_placa["proposta_E"]["pontos"] else "."),
+          f"- **Modelo final (regra fixada em 12/11):** {frase_aumento(dec_aumento)}",
           ""]
     return "\n".join(t)
 
@@ -660,14 +745,19 @@ def main(argv=None) -> int:
             margem_ag.append({
                 "ruido": ruido, "snr_db": snr,
                 **{k: sum(m[k] for m in sel) for k in ("perto_limiar", "sat_51k2", "sat_12k8", "decisoes_diferentes")},
+                "sat_51k2_por_semente": sum(m["sat_51k2"] for m in sel) / len(sel),
+                "sat_12k8_por_semente": sum(m["sat_12k8"] for m in sel) / len(sel),
                 "margem_min_E": pior["margem_min_E"], "segmento_margem_min": pior["segmento_margem_min"],
                 "snr_banda_mediana": (None if ruido is None else float(np.median([m["snr_banda_mediana"] for m in sel]))),
                 "emul_frac_tol_max": max(m["emul_frac_tol_max"] for m in sel),
                 "emul_estagio_max": max(sel, key=lambda m: m["emul_frac_tol_max"])["emul_estagio_max"],
-                "emul_escore_rel_max": max(m["emul_escore_rel_max"] for m in sel)})
-    dec_aumento = decidir_aumento(curva)
+                "emul_escore_rel_max": max(m["emul_escore_rel_max"] for m in sel),
+                "emul_escore_E_max": max(m["emul_escore_E_max"] for m in sel),
+                "emul_frac_tol_max_E": max(m["emul_frac_tol_max_E"] for m in sel)})
+    dec_aumento = decidir_aumento(curva, sementes)
     dec_placa = decidir_placa(margem_ag)
-    print(f"\nplaca com ruído: {dec_placa['placa']} {dec_placa['pontos'] or ''}")
+    print(f"\nplaca com ruído: {dec_placa['placa']} {dec_placa['pontos'] or ''} "
+          f"(proposta com |Δs|/E: {dec_placa['proposta_E']['placa']})")
     print(f"modelo final: {dec_aumento['modelo_final']}")
 
     # ------------------------------------------------ gravação
@@ -682,7 +772,8 @@ def main(argv=None) -> int:
         "sementes": "-".join(map(str, sementes)), "aumento": "+".join(config.AUMENTO_TECNICAS),
         "aumento_copias": COPIAS_AUMENTO, "aumento_snr_db": "-".join(map(str, config.AUMENTO_SNR_DB)),
         "modelo_margem": modelo.get("id"), "splits": particao.hash_arquivo(args.splits),
-        "fs_hz": config.FS_TRABALHO, "regra_aumento_snr_max_db": SNR_MAX_REGRA_AUMENTO,
+        "fs_hz": config.FS_TRABALHO, "regra_aumento": "pareada_12_11", "regra_aumento_snr_max_db": SNR_MAX_REGRA_AUMENTO,
+        "regra_placa": "pagina_05_11_tol_A4",
     }
     out_dir.mkdir(parents=True, exist_ok=True)
     gravar_csv(out_dir / "curva.csv", curva)
@@ -692,7 +783,7 @@ def main(argv=None) -> int:
         "git_commit": commit, "parametros": parametros, "variantes_aumento": info_aumento,
         "curva": agregado, "margem": margem_ag, "decisao_aumento": dec_aumento, "decisao_placa": dec_placa,
     }, ensure_ascii=False, indent=2) + "\n", encoding="utf-8", newline="\n")
-    (out_dir / "resumo.md").write_text(resumo_md(agregado, margem_ag, dec_aumento, dec_placa, faixa),
+    (out_dir / "resumo.md").write_text(resumo_md(agregado, margem_ag, dec_aumento, dec_placa, faixa, sementes),
                                        encoding="utf-8", newline="\n")
     (out_dir / "tab_varredura_snr.tex").write_text(tabela_tex(agregado), encoding="utf-8", newline="\n")
     figura(agregado, out_dir / "curva_snr.png")
@@ -713,7 +804,8 @@ def main(argv=None) -> int:
         met |= {"perto_limiar": m["perto_limiar"], "margem_min_E": f"{m['margem_min_E']:.0f}",
                 "sat_51k2": m["sat_51k2"], "sat_12k8": m["sat_12k8"],
                 "snr_banda_mediana_db": None if m["snr_banda_mediana"] is None else f"{m['snr_banda_mediana']:.1f}",
-                "emul_frac_tol_max": f"{m['emul_frac_tol_max']:.4f}", "decisoes_diferentes": m["decisoes_diferentes"]}
+                "emul_frac_tol_max": f"{m['emul_frac_tol_max']:.4f}", "emul_estagio_max": m["emul_estagio_max"],
+                "emul_escore_E_max": f"{m['emul_escore_E_max']:.4f}", "decisoes_diferentes": m["decisoes_diferentes"]}
         linhas.append({
             "id": exp_id, "data": date.today().isoformat(), "etapa": "robustez_ruido",
             "script": "validation/run_varredura_snr.py", "git_commit": commit,
