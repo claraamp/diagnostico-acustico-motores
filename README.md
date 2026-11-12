@@ -223,6 +223,7 @@ diagnostico-acustico-motores/
 │       ├── run_tabela_aumento.py          # executável: tabela do B com e sem aumento de dados
 │       ├── run_tabela_taxas.py            # executável: tabela do B em duas taxas de amostragem
 │       ├── run_tabela_protocolo_c.py      # executável: tabela única do Protocolo C, conferida contra o registry
+│       ├── run_varredura_snr.py           # executável: robustez ao ruído (varredura de SNR no B e análise de margem)
 │       └── run_consolidacao.py            # executável: tabelas .tex e figuras finais para o relatório
 │
 ├── tests/                    # pytest; não dependem de data/
@@ -254,7 +255,8 @@ diagnostico-acustico-motores/
 │       ├── test_consolidacao.py           # consolidação: número sem registry ou rodada no papel errado aborta
 │       ├── test_particao.py               # inclui: outra taxa dá os mesmos segmentos em segundos
 │       ├── test_protocol_c.py             # Protocolo C: limites binomiais, D2 do C2, recalibração (variantes, critério 12/15, só o bias), divisão conferida
-│       └── test_selecao.py                # folds internos não leem o teste externo; escolher fica com o mais barato na margem
+│       ├── test_selecao.py                # folds internos não leem o teste externo; escolher fica com o mais barato na margem
+│       └── test_varredura_snr.py          # SNR exata no segmento, ruído rosa 1/f, recorte decimado igual ao 02, limite E e as duas regras
 │
 ├── notebooks/                # notebooks de análise/visualização
 │
@@ -358,6 +360,11 @@ python scripts/validation/run_protocol_c.py --recalibracao --sem-registro  # tes
 python scripts/validation/run_protocol_c.py --rotacao-fora --sintetico   # rotação deixada de fora: auto-teste
 python scripts/validation/run_protocol_c.py --rotacao-fora --responsavel <nome>   # D2 nos 4 folds; D1 a 20 e 30 Hz
 python scripts/validation/run_tabela_protocolo_c.py   # tabela única do Protocolo C (só lê; confere o registry)
+
+# robustez ao ruído: ruído no int16 a 51,2 kHz, B sem e com aumento, margem do escore e emulação em float32
+python scripts/validation/run_varredura_snr.py --sem-registro --rapido   # teste: 1 semente, 30, 10 e 0 dB
+python scripts/validation/run_varredura_snr.py --sem-registro            # teste: a grade inteira (~3 min)
+python scripts/validation/run_varredura_snr.py --responsavel <nome>      # uma linha por ponto da grade
 
 # sistema embarcado: os 295 + 40 segmentos pela serial e a matriz contra o Python (precisa do pyserial)
 python scripts/validation/matriz_serial_placa.py --simulada                       # sem a placa (placa simulada em Python)
