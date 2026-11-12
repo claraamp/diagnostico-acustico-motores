@@ -24,7 +24,7 @@
   },
   "id": "snr_db*1000 + segmento",
   "ponto_do_ruido": "int16_51200Hz",
-  "git_commit": "ce18ce5",
+  "git_commit": "37e6a8e",
   "decisoes": {
     "normal": 252,
     "falha": 1518
