@@ -5,7 +5,8 @@ Não dependem de data/. Conferem que (1) o ruído tem a SNR pedida no segmento e
 rosa cai com 1/f, (2) o recorte a 51,2 kHz decimado reproduz o `resample_clip`
 do `02`, (3) a saturação no int16 é contada, (4) o limite E do escore segue a
 fórmula da página de 05/11, (5) o escore da emulação é julgado por E e não pela
-tolerância relativa, e (6) as duas regras decidem como estão escritas.
+tolerância relativa, (6) as duas regras decidem como estão escritas, e (7) o
+recorte exportado para a placa dá, no script de envio, o escore e a decisão gravados.
 """
 
 from __future__ import annotations
@@ -141,3 +142,29 @@ def test_placa_necessaria_onde_ha_segmento_perto_do_limiar_ou_emulacao_fora():
     margem[2]["emul_frac_tol_max"] = 1.2
     assert V.decidir_placa(margem) == {"placa": "necessária",
                                        "pontos": [("branco", 10), ("rosa", 0)]}
+
+
+def test_exportacao_para_a_placa_grava_o_int16_e_as_referencias(tmp_path):
+    import csv
+    import json
+
+    from validation import matriz_serial_placa as envio
+    n_seg, fs12 = 3, config.FS_TRABALHO
+    pcm = (8000 * np.sin(np.arange((n_seg + 1) * 4 * fs12) * 0.003)).astype(np.int16)
+    clipe = pcm_io.Clip(rotulo="normal", binario="normal", fs=config.FS_ORIGINAL, pcm=pcm)
+    segs = [particao.Segmento(i, "normal", "normal", i, 0, i * fs12, (i + 1) * fs12) for i in range(n_seg)]
+    pesos = np.random.default_rng(4).normal(0, 1, 2 * config.MFCC_N_COEFS)
+    modelo = tmp_path / "lda.json"
+    modelo.write_text(json.dumps({"id": "expX", "dobrada": {"pesos": pesos.tolist(), "bias": 0.5}}))
+    m = V.exportar_placa(V.Decimador({"normal": clipe}, segs), segs, pesos, 0.5, modelo,
+                         bin_path=tmp_path / "seg.bin", out_dir=tmp_path / "placa")
+    linhas = list(csv.DictReader((tmp_path / "placa" / "referencias.csv").open(encoding="utf-8")))
+    assert m["n_segmentos"] == len(linhas) == len(V.RUIDOS) * len(V.RECORTE_SNRS_DB) * n_seg
+    corpo = np.fromfile(tmp_path / "seg.bin", dtype="<i2").reshape(len(linhas), fs12)
+    for l, x in zip(linhas, corpo):     # o .bin, na ordem do CSV, dá o escore e a decisão gravados
+        e = envio.escore_python(x, pesos, 0.5)
+        assert e == pytest.approx(float(l["escore"]), abs=1e-6)
+        assert l["decisao"] == envio.decisao_de(e)
+        assert int(l["grupo"]) == V.GRUPO_PLACA[l["ruido"]]
+        assert int(l["id"]) == int(l["snr_db"]) * 1000 + int(l["segmento"])
+    assert len({(l["grupo"], l["id"]) for l in linhas}) == len(linhas)

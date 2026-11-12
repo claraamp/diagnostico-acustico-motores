@@ -65,11 +65,29 @@ reports/validation/varredura_snr/ (com --sem-registro, teste_varredura_snr/):
   curva_snr.png   acurácia balanceada e especificidade por SNR
 e uma linha no registry por ponto da grade (ruído × SNR), mais a do sinal limpo.
 
+Com --exportar-placa, só exporta o recorte para a rodada na placa (opção 2 da
+página de 05/11) e não roda a grade nem registra: os 295 segmentos do Jung com
+ruído branco e rosa a 10, 5 e 0 dB, semente 20260925, 1.770 segmentos em int16
+a 12,8 kHz, os mesmos que a varredura usou nesses pontos. 10 dB é onde a curva
+ainda não caiu; 5 e 0 dB são onde ela cai e onde fica o segmento mais perto do
+limiar (|s| = 1,6 E, branco a 0 dB). Cada segmento leva os campos do `Segmento`
+do `matriz_serial_placa.py`: grupo 3 = branco, 4 = rosa; id = SNR·1000 + id do
+segmento no splits.json (0 dB, segmento 48 → 48; 5 dB → 5048); a classe, o int16,
+o escore em float64 e a decisão. O int16 de cada segmento é conferido com o
+`escore_python` do script de envio antes de gravar.
+  data/processed/robustez_placa/segmentos_ruido.bin   os 1.770 × 12.800 int16
+      (little-endian, na ordem do CSV; não versionado, refeito por este script)
+  reports/validation/varredura_snr/placa/referencias.csv  grupo, id, nome, classe,
+      ruído, SNR, escore, decisão, E e |s|/E de cada segmento
+  reports/validation/varredura_snr/placa/manifest.json    o sha256 do .bin, o
+      modelo (id e sha256[:12] do JSON) e os parâmetros do recorte
+
 Uso
 ---
     python scripts/validation/run_varredura_snr.py --responsavel <nome>
     python scripts/validation/run_varredura_snr.py --sem-registro             # teste
     python scripts/validation/run_varredura_snr.py --sem-registro --rapido    # 1 semente, 3 SNRs
+    python scripts/validation/run_varredura_snr.py --exportar-placa           # recorte para a placa
 """
 
 from __future__ import annotations
@@ -111,6 +129,13 @@ ESTAGIOS_EMULADOS = ("escala", "janela", "espectro", "mel", "logmel", "mfcc", "m
 METRICAS_B = ("acuracia_balanceada", "sensibilidade", "especificidade")
 SAIDA = Path("reports/validation/varredura_snr")
 SAIDA_TESTE = Path("reports/validation/teste_varredura_snr")
+
+# recorte para a placa (opção 2 da página de 05/11)
+RECORTE_SNRS_DB = (10, 5, 0)
+RECORTE_SEMENTE = config.SEMENTE
+GRUPO_PLACA = {"branco": 3, "rosa": 4}          # 1 = Jung, 2 = HUSTmotor, 9 = clipes (regra 4)
+BIN_PLACA = Path("data/processed/robustez_placa/segmentos_ruido.bin")
+SAIDA_PLACA = SAIDA / "placa"
 
 
 # --------------------------------------------------------------------------- #
@@ -229,9 +254,10 @@ def emular(cadeia: CadeiaFloat32, ref: dict, E: float) -> dict:
 
 
 def ponto(dec: Decimador, segmentos, ruido: str | None, snr_db: float | None, semente: int,
-          pesos: np.ndarray, bias: float, cadeia: CadeiaFloat32 | None) -> dict:
+          pesos: np.ndarray, bias: float, cadeia: CadeiaFloat32 | None,
+          guardar_pcm: bool = False) -> dict:
     """Características e passo 0 dos segmentos num ponto (ruído None = limpo)."""
-    X, sat51, sat12, snr_banda, linhas = [], 0, 0, [], []
+    X, sat51, sat12, snr_banda, linhas, pcms = [], 0, 0, [], [], []
     for s in segmentos:
         entrada, parte = dec.entrada(s)
         if ruido is None:
@@ -248,6 +274,8 @@ def ponto(dec: Decimador, segmentos, ruido: str | None, snr_db: float | None, se
             limpo = dec.decimar(s, entrada)
             p_r = float(np.mean((y - limpo) ** 2))
             snr_banda.append(10 * math.log10(float(np.mean(limpo ** 2)) / p_r) if p_r > 0 else math.inf)
+        if guardar_pcm:
+            pcms.append(pcm)
         ref = dsp.estagios_mfcc(pcm)
         x = caracteristicas(ref)
         X.append(x)
@@ -259,6 +287,8 @@ def ponto(dec: Decimador, segmentos, ruido: str | None, snr_db: float | None, se
     E = limite_escore(X, pesos, bias)
     out = {"X": X, "escore": escore, "E": E, "sat_51k2": sat51, "sat_12k8": sat12,
            "snr_banda_mediana": float(np.median(snr_banda)) if snr_banda else None}
+    if guardar_pcm:
+        out["pcm"] = pcms
     if cadeia is not None:
         frac = {e: float(max(l[e] for l in linhas)) for e in ESTAGIOS_EMULADOS}
         out["emul_escore_rel_max"] = float(max(l["escore_rel"] for l in linhas))
@@ -474,6 +504,54 @@ def figura(agregado, caminho: Path) -> None:
 
 
 # --------------------------------------------------------------------------- #
+# Recorte para a placa
+# --------------------------------------------------------------------------- #
+def id_placa(snr_db: int, segmento: int) -> int:
+    """O id do quadro: SNR·1000 + id do segmento (os 295 do Jung cabem em 0–294)."""
+    return int(snr_db) * 1000 + int(segmento)
+
+
+def exportar_placa(dec: Decimador, segmentos, pesos: np.ndarray, bias: float, modelo_path: Path,
+                   bin_path: Path = BIN_PLACA, out_dir: Path = SAIDA_PLACA) -> dict:
+    """Grava o .bin com os int16 e o CSV e o manifesto das referências (ver o docstring)."""
+    import hashlib
+    from validation import matriz_serial_placa as envio
+    linhas, blocos = [], []
+    for ruido in RUIDOS:
+        for snr in RECORTE_SNRS_DB:
+            p = ponto(dec, segmentos, ruido, snr, RECORTE_SEMENTE, pesos, bias, None, guardar_pcm=True)
+            for s, pcm, e, lim in zip(segmentos, p["pcm"], p["escore"], p["E"]):
+                e_envio = envio.escore_python(pcm, pesos, bias)
+                if abs(e_envio - e) > 1e-9 * max(1.0, abs(e)):
+                    raise SystemExit(f"Abortado: segmento {s.id} ({ruido}, {snr} dB): escore {e} "
+                                     f"aqui e {e_envio} no escore_python do script de envio.")
+                linhas.append({"ordem": len(linhas), "grupo": GRUPO_PLACA[ruido], "id": id_placa(snr, s.id),
+                               "nome": f"{s.rotulo}_seg{s.id:04d}_{ruido}_{snr}db", "classe": s.binario,
+                               "ruido": ruido, "snr_db": snr, "semente": RECORTE_SEMENTE, "segmento": s.id,
+                               "escore": f"{e:.9f}", "decisao": envio.decisao_de(e), "E": f"{lim:.6f}",
+                               "margem_E": f"{abs(e) / lim:.1f}"})
+                blocos.append(np.asarray(pcm, dtype="<i2"))
+    corpo = np.concatenate(blocos).tobytes()
+    bin_path.parent.mkdir(parents=True, exist_ok=True)
+    bin_path.write_bytes(corpo)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    gravar_csv(out_dir / "referencias.csv", linhas)
+    manifesto = {
+        "bin": bin_path.as_posix(), "sha256": hashlib.sha256(corpo).hexdigest(),
+        "n_segmentos": len(linhas), "amostras_por_segmento": config.AMOSTRAS_POR_SEGMENTO,
+        "dtype": "int16 little-endian", "fs_hz": config.FS_TRABALHO, "ordem": "a do referencias.csv",
+        "modelo": json.loads(modelo_path.read_text(encoding="utf-8")).get("id"),
+        "json_sha12": envio.sha12(modelo_path), "ruidos": list(RUIDOS), "snrs_db": list(RECORTE_SNRS_DB),
+        "semente": RECORTE_SEMENTE, "grupos": GRUPO_PLACA, "id": "snr_db*1000 + segmento",
+        "ponto_do_ruido": "int16_51200Hz", "git_commit": experimentos.git_short_hash(),
+        "decisoes": {d: sum(l["decisao"] == d for l in linhas) for d in ("normal", "falha")},
+    }
+    (out_dir / "manifest.json").write_text(json.dumps(manifesto, ensure_ascii=False, indent=2) + "\n",
+                                           encoding="utf-8", newline="\n")
+    return manifesto
+
+
+# --------------------------------------------------------------------------- #
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -486,10 +564,12 @@ def main(argv=None) -> int:
     ap.add_argument("--sem-registro", action="store_true", help="teste: registry intocado")
     ap.add_argument("--rapido", action="store_true",
                     help="teste: 1 semente e 3 SNRs (30, 10 e 0 dB); não registra")
+    ap.add_argument("--exportar-placa", action="store_true",
+                    help="só exporta o recorte de 1.770 segmentos para a placa; não roda a grade")
     ap.add_argument("--responsavel", default="")
     ap.add_argument("--notas", default="")
     args = ap.parse_args(argv)
-    registrar = not (args.sem_registro or args.rapido)
+    registrar = not (args.sem_registro or args.rapido or args.exportar_placa)
     if registrar and not args.responsavel:
         ap.error("--responsavel é obrigatório numa rodada registrada (ou use --sem-registro)")
     sementes = SEMENTES[:1] if args.rapido else SEMENTES
@@ -521,6 +601,11 @@ def main(argv=None) -> int:
             print(f"Abortado: o recorte decimado do segmento {s.id} não reproduz o PCM do 02.")
             return 1
     print(f"{len(segmentos)} segmentos, {len(folds)} folds do B; recorte a 51,2 kHz confere com o 02")
+    if args.exportar_placa:
+        m = exportar_placa(dec, segmentos, pesos, bias, args.modelo)
+        print(f"{m['n_segmentos']} segmentos em {m['bin']} (sha256 {m['sha256'][:12]}); "
+              f"referências em {SAIDA_PLACA}/; decisões {m['decisoes']}")
+        return 0
 
     cadeia = CadeiaFloat32(config.FS_TRABALHO, pesos, bias)
     limpo = ponto(dec, segmentos, None, None, 0, pesos, bias, cadeia)
