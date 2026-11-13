@@ -133,6 +133,28 @@ O escore do Python é recalculado do mesmo `int16` que vai no quadro (`dsp.mfcc`
 
 Os quadros vão já decimados a 12,8 kHz, então a rodada testa o MFCC e a LDA, e não a decimação. Na placa, a decimação é testada pelo recorte de 1 s a 51,2 kHz do segmento 29, no boot da mesma captura (`DECIMACAO OK` e a linha `ponta`: escore a 8,3 % da tolerância, 174,4 ms para a cadeia inteira, dos quais 115,9 ms de decimação, ou 17,4 % do tempo real); no PC, nas 5 gravações inteiras (`decimar_gravacao.c` do firmware). Para o critério de tempo real vale o número da cadeia inteira, e não os 58,5 ms. Saídas em `reports/embarcado/serial_07_11/`, captura em `reports/embarcado/capturas/serial-07-11.log`.
 
+### Robustez ao ruído: varredura de SNR (`exp305`–`exp319`)
+
+O `run_varredura_snr.py` (card "Rodar os testes de robustez com ruído sintético (varredura de SNR)", com o escopo da decisão "Robustez ao ruído também na placa, pela serial", de 05/11) soma ruído **no int16 a 51,2 kHz, antes da decimação**, com a SNR definida nessa entrada, segmento a segmento: o trecho da gravação original que o decimador lê (`dsp.recorte_para_decimar`) recebe o ruído, volta para int16 com saturação, passa pelo FIR do `02` e volta para int16 a 12,8 kHz, que é o que a placa recebe pela serial. Sem ruído, esse caminho reproduz bit a bit o PCM do `02`, e o script confere isso antes de rodar. A grade tem 7 SNRs (30 a 0 dB, de 5 em 5), ruído branco e rosa (1/f) e 10 sementes, as do aumento nos `exp224`–`exp233` (20260925 e 1 a 9); numa semente, o ruído de um segmento é o mesmo em todas as SNRs, com outra escala. O eixo é a SNR da entrada. O filtro de decimação tira o ruído acima de 5,76 kHz, então a SNR na banda que a cadeia vê é 6,3 dB maior que a da entrada no branco e só 0,4 dB maior no rosa: o mesmo número de dB não é o mesmo nível de ruído para a cadeia nos dois ruídos.
+
+- **Curva do Protocolo B:** em cada fold, a LDA treinada nos segmentos limpos, sem e com aumento (4 variantes, deslocamento + estiramento + ruído, como nos `exp224`–`exp233`), avaliada no teste com ruído. A semente fixa o ruído do teste e o sorteio do aumento, então os dois modelos são comparados no mesmo ruído.
+- **Passo 0 (análise de margem):** com o modelo final (`exp239`) nos 295 segmentos, os segmentos com |s| < E, com E o limite absoluto do erro do escore do porte da página de 05/11 (as tolerâncias encadeadas da média e do desvio pesadas pelos |w|, mais a cota γ₂₇ do arredondamento da soma em float32); as amostras saturadas no int16 a 51,2 e a 12,8 kHz; e a cadeia em float32 (a emulação do `exp253`) contra o float64, com o erro de cada estágio em fração da tolerância encadeada do A4 e as decisões diferentes. O escore sai pelas duas medidas: a tolerância relativa do A4 (10⁻⁵ do próprio escore), que é a da regra, e |Δs|/E, que não vai a zero perto do limiar.
+
+**Resultado (12/11, 10 sementes):** até 10 dB nos dois ruídos, e a 5 dB no branco, os dois modelos ficam em 0,875 de acurácia balanceada e 1,000 de especificidade, como no sinal limpo. A queda vem depois e é só de especificidade, com alarmes falsos: a sensibilidade fica em 0,750 em todos os pontos (a `bpfo_0.3mm` continua sem ser detectada, e o resto continua detectado). Sem aumento, a acurácia balanceada cai para 0,753 ± 0,005 no rosa a 5 dB e, a 0 dB, para 0,629 ± 0,005 (branco) e 0,505 ± 0,004 (rosa); com aumento, 0,851 ± 0,018, 0,805 ± 0,028 e 0,526 ± 0,020. A 0 dB, cerca de 73 mil amostras por semente (0,5 %) saturam no int16 a 51,2 kHz, então ali a SNR efetiva fica diferente da nominal; a saturação começa a 25 dB, com uma ou duas amostras nas 10 sementes.
+
+No passo 0, nenhum segmento fica com |s| < E em nenhum ponto (o mais perto, no branco a 0 dB, com |s| = 1,3 E), e nenhuma decisão do float32 difere da do float64. Os estágios até as 26 características ficam abaixo de 16 % da tolerância. O escore sai da tolerância relativa em dois pontos: no branco a 0 dB, nas 10 sementes, e no rosa a 5 dB, em 8 de 10. O pior caso dos dois fica na semente 20260925: 64,96× no branco a 0 dB (no `normal_seg0048`, com escore −0,676 e |s| = 1,6 E) e 7,28× no rosa a 5 dB. Pelo limite absoluto, o mesmo erro é |Δs|/E ≤ 0,0045 em todos os pontos.
+
+**Decisões pelas regras fixadas antes de rodar:**
+
+- **Placa com ruído (regra da página de 05/11):** **necessária** no branco a 0 dB e no rosa a 5 dB, porque a regra pede a emulação dentro da tolerância, e a do escore no A4 é a relativa. Com o escore julgado por |Δs|/E, a placa seria só confirmação; isso fica como proposta para o grupo, e não decide. Os dois pontos estão no recorte exportado abaixo, com os mesmos int16 da semente 20260925 e o segmento mais perto do limiar de cada uma das outras sementes.
+- **Modelo final (regra fixada no card em 12/11):** para cada ponto com SNR ≤ 10 dB, ruído e métrica (acurácia balanceada e especificidade), dₖ = com − sem aumento na semente k, e o ponto passa se a média de dₖ for maior que o desvio de dₖ (ddof = 1), estrito; sem ruído, o com aumento não pode ter acurácia balanceada menor; um ponto sem dados conta como falha. O modelo final **continua o `exp239`, sem aumento**: a regra pede todos os pontos, e os dois modelos empatam no teto (dₖ = 0 em todas as sementes) a 10 dB nos dois ruídos e a 5 dB no branco. Onde há queda, o com aumento é melhor: +0,1762 ± 0,0296 de acurácia balanceada no branco a 0 dB, +0,0979 ± 0,0176 no rosa a 5 dB e +0,0213 ± 0,0208 no rosa a 0 dB (média ± desvio de dₖ; no rosa a 0 dB, passa por pouco).
+
+Os números da análise exploratória da 4/6 não são comparáveis ponto a ponto, porque lá o ruído entrou depois da decimação.
+
+**Recorte para a placa (`--exportar-placa`):** o recorte da opção 2 da página de 05/11, para a rodada na placa: os 295 segmentos do Jung com ruído branco e rosa a 10, 5 e 0 dB, semente 20260925 (1.770 segmentos), os mesmos int16 que a varredura usou nesses pontos. 10 dB é onde a curva ainda não caiu; 5 e 0 dB, onde ela cai e onde a placa saiu necessária. Nos dois pontos em que a placa saiu necessária (branco a 0 dB e rosa a 5 dB), entra também o segmento de menor |s|/E de cada uma das outras 9 sementes, porque o mais perto do limiar nem sempre é o da semente 20260925 (no branco a 0 dB, o 57 da semente 5, a 1,3 E, e o 3 da semente 6, a 1,4 E; no rosa a 5 dB, o 16 da semente 8, a 4,8 E): são 18 segmentos a mais, 1.788 ao todo. Cada segmento leva os campos do `Segmento` do `matriz_serial_placa.py`: grupo 3 (branco) ou 4 (rosa), id = SNR·1000 + id do segmento no `splits.json` (nas sementes 1 a 9, mais semente·100.000), a classe, o escore em float64 e a decisão, conferidos com o `escore_python` do script de envio. O int16 vai para `data/processed/robustez_placa/segmentos_ruido.bin` (45 MB, não versionado; o script refaz em ~30 s, e o `sha256` tem de ser `11f26bb8bfe42b5dfaf71523afe5c5d6bc690187d6791cb52880cd0f424066f8`, o do manifesto), e as referências, para `reports/validation/varredura_snr/placa/` (`referencias.csv` e `manifest.json`). O script de envio ainda não lê uma lista de segmentos de um arquivo. Critério proposto para essa rodada, a fixar antes dela: as 1.788 decisões iguais às do Python e |Δs| < E em todos os segmentos, com a fração pela tolerância relativa só como informação.
+
+Saídas em `reports/validation/varredura_snr/`: `resumo.md`, `curva.csv` (um ponto por modelo, ruído, SNR e semente), `margem.csv`, `metrics.json` (com as duas decisões), `tab_varredura_snr.tex` e `curva_snr.png`. O registry tem uma linha por ponto da grade (`exp306`–`exp319`) e a do sinal limpo (`exp305`).
+
 ## Dataset
 
 Jung, W.; Kim, S.-H.; Yun, S.-H.; Bae, J.; Park, Y.-H. (2023), *Data in Brief* 48, 109049. Subconjunto acústico (microfone), 5 classes — `0Nm_Normal`, `0Nm_BPFI_03`, `0Nm_BPFI_10`, `0Nm_BPFO_03`, `0Nm_BPFO_10` — 60 s cada, 51,2 kHz, formato `.mat`.
@@ -223,6 +245,7 @@ diagnostico-acustico-motores/
 │       ├── run_tabela_aumento.py          # executável: tabela do B com e sem aumento de dados
 │       ├── run_tabela_taxas.py            # executável: tabela do B em duas taxas de amostragem
 │       ├── run_tabela_protocolo_c.py      # executável: tabela única do Protocolo C, conferida contra o registry
+│       ├── run_varredura_snr.py           # executável: robustez ao ruído (varredura de SNR no B e análise de margem)
 │       └── run_consolidacao.py            # executável: tabelas .tex e figuras finais para o relatório
 │
 ├── tests/                    # pytest; não dependem de data/
@@ -254,7 +277,8 @@ diagnostico-acustico-motores/
 │       ├── test_consolidacao.py           # consolidação: número sem registry ou rodada no papel errado aborta
 │       ├── test_particao.py               # inclui: outra taxa dá os mesmos segmentos em segundos
 │       ├── test_protocol_c.py             # Protocolo C: limites binomiais, D2 do C2, recalibração (variantes, critério 12/15, só o bias), divisão conferida
-│       └── test_selecao.py                # folds internos não leem o teste externo; escolher fica com o mais barato na margem
+│       ├── test_selecao.py                # folds internos não leem o teste externo; escolher fica com o mais barato na margem
+│       └── test_varredura_snr.py          # SNR exata no segmento, ruído rosa 1/f, recorte decimado igual ao 02, limite E e as duas regras
 │
 ├── notebooks/                # notebooks de análise/visualização
 │
@@ -358,6 +382,12 @@ python scripts/validation/run_protocol_c.py --recalibracao --sem-registro  # tes
 python scripts/validation/run_protocol_c.py --rotacao-fora --sintetico   # rotação deixada de fora: auto-teste
 python scripts/validation/run_protocol_c.py --rotacao-fora --responsavel <nome>   # D2 nos 4 folds; D1 a 20 e 30 Hz
 python scripts/validation/run_tabela_protocolo_c.py   # tabela única do Protocolo C (só lê; confere o registry)
+
+# robustez ao ruído: ruído no int16 a 51,2 kHz, B sem e com aumento, margem do escore e emulação em float32
+python scripts/validation/run_varredura_snr.py --sem-registro --rapido   # teste: 1 semente, 30, 10 e 0 dB
+python scripts/validation/run_varredura_snr.py --sem-registro            # teste: a grade inteira, 10 sementes (~10 min)
+python scripts/validation/run_varredura_snr.py --responsavel <nome>      # uma linha por ponto da grade
+python scripts/validation/run_varredura_snr.py --exportar-placa          # recorte para a placa; sha256 do .bin: 11f26bb8bfe42b5dfaf71523afe5c5d6bc690187d6791cb52880cd0f424066f8
 
 # sistema embarcado: os 295 + 40 segmentos pela serial e a matriz contra o Python (precisa do pyserial)
 python scripts/validation/matriz_serial_placa.py --simulada                       # sem a placa (placa simulada em Python)
