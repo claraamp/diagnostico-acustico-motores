@@ -81,7 +81,14 @@ do `matriz_serial_placa.py`: grupo 3 = branco, 4 = rosa; id = SNR·1000 + id do
 segmento no splits.json (0 dB, segmento 48 → 48; 5 dB → 5048); a classe, o int16,
 o escore em float64 e a decisão. O int16 de cada segmento é conferido com o
 `escore_python` do script de envio antes de gravar.
-  data/processed/robustez_placa/segmentos_ruido.bin   os 1.770 × 12.800 int16
+
+Nos dois pontos em que a placa saiu necessária pela regra de 05/11 (branco a
+0 dB e rosa a 5 dB, `PERTO_DO_LIMIAR`), entra também o segmento de menor |s|/E
+de cada uma das outras 9 sementes, porque o mais perto do limiar nem sempre é o
+da semente 20260925 (no branco a 0 dB, o 57 da semente 5, a 1,3 E). Esses 18 têm
+id = semente·100000 + SNR·1000 + segmento (semente 5, 0 dB, segmento 57 →
+500057), e a semente sai na coluna `semente`. São 1.788 segmentos ao todo.
+  data/processed/robustez_placa/segmentos_ruido.bin   os 1.788 × 12.800 int16
       (little-endian, na ordem do CSV; não versionado, refeito por este script)
   reports/validation/varredura_snr/placa/referencias.csv  grupo, id, nome, classe,
       ruído, SNR, escore, decisão, E e |s|/E de cada segmento
@@ -139,6 +146,7 @@ SAIDA_TESTE = Path("reports/validation/teste_varredura_snr")
 # recorte para a placa (opção 2 da página de 05/11)
 RECORTE_SNRS_DB = (10, 5, 0)
 RECORTE_SEMENTE = config.SEMENTE
+PERTO_DO_LIMIAR = (("branco", 0), ("rosa", 5))  # onde a placa saiu necessária (exp312 e exp318)
 GRUPO_PLACA = {"branco": 3, "rosa": 4}          # 1 = Jung, 2 = HUSTmotor, 9 = clipes (regra 4)
 BIN_PLACA = Path("data/processed/robustez_placa/segmentos_ruido.bin")
 SAIDA_PLACA = SAIDA / "placa"
@@ -485,7 +493,7 @@ def frase_aumento(dec: dict) -> str:
     if melhor_pts:
         texto += (" Nos pontos em que passa, o modelo com aumento é melhor; ganho de acurácia balanceada "
                   "(média ± desvio de dₖ): "
-                  + _lista(f"{p['ruido']} a {p['snr_db']} dB, +{_f(p['media_d'])} ± {_f(p['desvio_d'])}"
+                  + _lista(f"{p['ruido']} a {p['snr_db']} dB, +{_f(p['media_d'], 4)} ± {_f(p['desvio_d'], 4)}"
                            for p in melhor_pts) + ".")
     return texto
 
@@ -524,8 +532,9 @@ def resumo_md(agregado, margem_ag, dec_aumento, dec_placa, ids: str, sementes=SE
           "fração, o pior caso entre elas. Na emulação, a tolerância é a encadeada do A4; no escore, a "
           "relativa (10⁻⁵ do próprio escore), que vai a zero perto do limiar. A coluna |Δs|/E mede o mesmo "
           "erro do escore contra o limite absoluto E."
-          + (" Fora da tolerância relativa: " + _lista(f"{m['ruido']} a {m['snr_db']} dB "
-             f"({_f(m['emul_frac_tol_max'], 2)}×, {m['emul_estagio_max']}; |Δs|/E = "
+          + (" Fora da tolerância relativa: " + _lista(f"{m['ruido']} a {m['snr_db']} dB, em "
+             f"{m['sementes_fora_tol']} de {m['n_sementes']} sementes (pior caso {_f(m['emul_frac_tol_max'], 2)}×, "
+             f"{m['emul_estagio_max']}, na semente {m['semente_pior_tol']}; |Δs|/E ≤ "
              f"{_f(m['emul_escore_E_max'], 4)})" for m in fora) + "." if fora else ""), "",
           "## Decisões pelas regras fixadas antes de rodar", "",
           f"- **Placa com ruído (regra de 05/11):** {dec_placa['placa']}"
@@ -591,9 +600,13 @@ def figura(agregado, caminho: Path) -> None:
 # --------------------------------------------------------------------------- #
 # Recorte para a placa
 # --------------------------------------------------------------------------- #
-def id_placa(snr_db: int, segmento: int) -> int:
-    """O id do quadro: SNR·1000 + id do segmento (os 295 do Jung cabem em 0–294)."""
-    return int(snr_db) * 1000 + int(segmento)
+def id_placa(snr_db: int, segmento: int, semente: int = RECORTE_SEMENTE) -> int:
+    """
+    O id do quadro: SNR·1000 + id do segmento (os 295 do Jung cabem em 0–294); nas
+    sementes 1 a 9, mais semente·100000.
+    """
+    extra = 0 if semente == RECORTE_SEMENTE else int(semente) * 100000
+    return extra + int(snr_db) * 1000 + int(segmento)
 
 
 def exportar_placa(dec: Decimador, segmentos, pesos: np.ndarray, bias: float, modelo_path: Path,
@@ -602,20 +615,30 @@ def exportar_placa(dec: Decimador, segmentos, pesos: np.ndarray, bias: float, mo
     import hashlib
     from validation import matriz_serial_placa as envio
     linhas, blocos = [], []
+
+    def acrescentar(s, pcm, e, lim, ruido, snr, semente):
+        e_envio = envio.escore_python(pcm, pesos, bias)
+        if abs(e_envio - e) > 1e-9 * max(1.0, abs(e)):
+            raise SystemExit(f"Abortado: segmento {s.id} ({ruido}, {snr} dB, semente {semente}): escore {e} "
+                             f"aqui e {e_envio} no escore_python do script de envio.")
+        sufixo = "" if semente == RECORTE_SEMENTE else f"_s{semente}"
+        linhas.append({"ordem": len(linhas), "grupo": GRUPO_PLACA[ruido], "id": id_placa(snr, s.id, semente),
+                       "nome": f"{s.rotulo}_seg{s.id:04d}_{ruido}_{snr}db{sufixo}", "classe": s.binario,
+                       "ruido": ruido, "snr_db": snr, "semente": semente, "segmento": s.id,
+                       "escore": f"{e:.9f}", "decisao": envio.decisao_de(e), "E": f"{lim:.6f}",
+                       "margem_E": f"{abs(e) / lim:.1f}"})
+        blocos.append(np.asarray(pcm, dtype="<i2"))
+
     for ruido in RUIDOS:
         for snr in RECORTE_SNRS_DB:
             p = ponto(dec, segmentos, ruido, snr, RECORTE_SEMENTE, pesos, bias, None, guardar_pcm=True)
             for s, pcm, e, lim in zip(segmentos, p["pcm"], p["escore"], p["E"]):
-                e_envio = envio.escore_python(pcm, pesos, bias)
-                if abs(e_envio - e) > 1e-9 * max(1.0, abs(e)):
-                    raise SystemExit(f"Abortado: segmento {s.id} ({ruido}, {snr} dB): escore {e} "
-                                     f"aqui e {e_envio} no escore_python do script de envio.")
-                linhas.append({"ordem": len(linhas), "grupo": GRUPO_PLACA[ruido], "id": id_placa(snr, s.id),
-                               "nome": f"{s.rotulo}_seg{s.id:04d}_{ruido}_{snr}db", "classe": s.binario,
-                               "ruido": ruido, "snr_db": snr, "semente": RECORTE_SEMENTE, "segmento": s.id,
-                               "escore": f"{e:.9f}", "decisao": envio.decisao_de(e), "E": f"{lim:.6f}",
-                               "margem_E": f"{abs(e) / lim:.1f}"})
-                blocos.append(np.asarray(pcm, dtype="<i2"))
+                acrescentar(s, pcm, e, lim, ruido, snr, RECORTE_SEMENTE)
+    for ruido, snr in PERTO_DO_LIMIAR:       # o mais perto do limiar de cada uma das outras sementes
+        for semente in (sem for sem in SEMENTES if sem != RECORTE_SEMENTE):
+            p = ponto(dec, segmentos, ruido, snr, semente, pesos, bias, None, guardar_pcm=True)
+            i = int(np.argmin(np.abs(p["escore"]) / p["E"]))
+            acrescentar(segmentos[i], p["pcm"][i], p["escore"][i], p["E"][i], ruido, snr, semente)
     corpo = np.concatenate(blocos).tobytes()
     bin_path.parent.mkdir(parents=True, exist_ok=True)
     bin_path.write_bytes(corpo)
@@ -627,7 +650,11 @@ def exportar_placa(dec: Decimador, segmentos, pesos: np.ndarray, bias: float, mo
         "dtype": "int16 little-endian", "fs_hz": config.FS_TRABALHO, "ordem": "a do referencias.csv",
         "modelo": json.loads(modelo_path.read_text(encoding="utf-8")).get("id"),
         "json_sha12": envio.sha12(modelo_path), "ruidos": list(RUIDOS), "snrs_db": list(RECORTE_SNRS_DB),
-        "semente": RECORTE_SEMENTE, "grupos": GRUPO_PLACA, "id": "snr_db*1000 + segmento",
+        "semente": RECORTE_SEMENTE, "grupos": GRUPO_PLACA,
+        "id": "snr_db*1000 + segmento; nas sementes 1 a 9, + semente*100000",
+        "perto_do_limiar": {"pontos": [f"{r}_{s}db" for r, s in PERTO_DO_LIMIAR],
+                            "sementes": [sem for sem in SEMENTES if sem != RECORTE_SEMENTE],
+                            "criterio": "o segmento de menor |s|/E de cada semente"},
         "ponto_do_ruido": "int16_51200Hz", "git_commit": experimentos.git_short_hash(),
         "decisoes": {d: sum(l["decisao"] == d for l in linhas) for d in ("normal", "falha")},
     }
@@ -752,6 +779,9 @@ def main(argv=None) -> int:
                 "emul_frac_tol_max": max(m["emul_frac_tol_max"] for m in sel),
                 "emul_estagio_max": max(sel, key=lambda m: m["emul_frac_tol_max"])["emul_estagio_max"],
                 "emul_escore_rel_max": max(m["emul_escore_rel_max"] for m in sel),
+                "n_sementes": len(sel),
+                "sementes_fora_tol": sum(m["emul_frac_tol_max"] > 1 for m in sel),
+                "semente_pior_tol": max(sel, key=lambda m: m["emul_frac_tol_max"])["semente"],
                 "emul_escore_E_max": max(m["emul_escore_E_max"] for m in sel),
                 "emul_frac_tol_max_E": max(m["emul_frac_tol_max_E"] for m in sel)})
     dec_aumento = decidir_aumento(curva, sementes)

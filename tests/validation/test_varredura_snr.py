@@ -202,12 +202,20 @@ def test_exportacao_para_a_placa_grava_o_int16_e_as_referencias(tmp_path):
     m = V.exportar_placa(V.Decimador({"normal": clipe}, segs), segs, pesos, 0.5, modelo,
                          bin_path=tmp_path / "seg.bin", out_dir=tmp_path / "placa")
     linhas = list(csv.DictReader((tmp_path / "placa" / "referencias.csv").open(encoding="utf-8")))
-    assert m["n_segmentos"] == len(linhas) == len(V.RUIDOS) * len(V.RECORTE_SNRS_DB) * n_seg
+    outras = [sem for sem in V.SEMENTES if sem != V.RECORTE_SEMENTE]
+    assert m["n_segmentos"] == len(linhas) == (len(V.RUIDOS) * len(V.RECORTE_SNRS_DB) * n_seg
+                                               + len(V.PERTO_DO_LIMIAR) * len(outras))
     corpo = np.fromfile(tmp_path / "seg.bin", dtype="<i2").reshape(len(linhas), fs12)
     for l, x in zip(linhas, corpo):     # o .bin, na ordem do CSV, dá o escore e a decisão gravados
         e = envio.escore_python(x, pesos, 0.5)
         assert e == pytest.approx(float(l["escore"]), abs=1e-6)
         assert l["decisao"] == envio.decisao_de(e)
         assert int(l["grupo"]) == V.GRUPO_PLACA[l["ruido"]]
-        assert int(l["id"]) == int(l["snr_db"]) * 1000 + int(l["segmento"])
+        extra = 0 if int(l["semente"]) == V.RECORTE_SEMENTE else int(l["semente"]) * 100000
+        assert int(l["id"]) == extra + int(l["snr_db"]) * 1000 + int(l["segmento"])
     assert len({(l["grupo"], l["id"]) for l in linhas}) == len(linhas)
+    # nos pontos perto do limiar, uma linha por semente a mais: a de menor |s|/E daquela semente
+    for ruido, snr in V.PERTO_DO_LIMIAR:
+        extras = [l for l in linhas if l["ruido"] == ruido and int(l["snr_db"]) == snr
+                  and int(l["semente"]) != V.RECORTE_SEMENTE]
+        assert sorted(int(l["semente"]) for l in extras) == outras
