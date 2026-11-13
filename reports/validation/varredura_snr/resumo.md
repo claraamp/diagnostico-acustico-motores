@@ -59,10 +59,10 @@ O eixo é a SNR da entrada, a 51,2 kHz. O filtro de decimação tira o ruído ac
 | rosa, 5 dB | 5,4 dB | 0 | 4,8 | 5844 | 576 | 7,2791 (escore) | 0,0031 | 0 |
 | rosa, 0 dB | 0,4 dB | 0 | 54,3 | 72391 | 5903 | 0,8019 (escore) | 0,0025 | 0 |
 
-Segmentos perto do limiar e decisões diferentes, somados nas sementes; menor razão e maior fração, o pior caso entre elas. Na emulação, a tolerância é a encadeada do A4; no escore, a relativa (10⁻⁵ do próprio escore), que vai a zero perto do limiar. A coluna |Δs|/E mede o mesmo erro do escore contra o limite absoluto E. Fora da tolerância relativa: branco a 0 dB (64,96×, escore; |Δs|/E = 0,0026) e rosa a 5 dB (7,28×, escore; |Δs|/E = 0,0031).
+Segmentos perto do limiar e decisões diferentes, somados nas sementes; menor razão e maior fração, o pior caso entre elas. Na emulação, a tolerância é a encadeada do A4; no escore, a relativa (10⁻⁵ do próprio escore), que vai a zero perto do limiar. A coluna |Δs|/E mede o mesmo erro do escore contra o limite absoluto E. Fora da tolerância relativa: branco a 0 dB, em 10 de 10 sementes (pior caso 64,96×, escore, na semente 20260925; |Δs|/E ≤ 0,0026) e rosa a 5 dB, em 8 de 10 sementes (pior caso 7,28×, escore, na semente 20260925; |Δs|/E ≤ 0,0031).
 
 ## Decisões pelas regras fixadas antes de rodar
 
 - **Placa com ruído (regra de 05/11):** necessária em branco a 0 dB e rosa a 5 dB.
 - **Proposta para o grupo (não decide):** com o escore julgado por |Δs|/E, a placa seria só confirmação (opcional).
-- **Modelo final (regra fixada em 12/11):** fica o exp239, sem aumento: a regra pede todos os pontos, e os dois modelos empatam em branco a 10 dB, branco a 5 dB e rosa a 10 dB (dₖ = 0 em todas as sementes: os dois ficam no teto, como sem ruído). Nos pontos em que passa, o modelo com aumento é melhor; ganho de acurácia balanceada (média ± desvio de dₖ): branco a 0 dB, +0,176 ± 0,030, rosa a 5 dB, +0,098 ± 0,018 e rosa a 0 dB, +0,021 ± 0,021.
+- **Modelo final (regra fixada em 12/11):** fica o exp239, sem aumento: a regra pede todos os pontos, e os dois modelos empatam em branco a 10 dB, branco a 5 dB e rosa a 10 dB (dₖ = 0 em todas as sementes: os dois ficam no teto, como sem ruído). Nos pontos em que passa, o modelo com aumento é melhor; ganho de acurácia balanceada (média ± desvio de dₖ): branco a 0 dB, +0,1762 ± 0,0296, rosa a 5 dB, +0,0979 ± 0,0176 e rosa a 0 dB, +0,0213 ± 0,0208.

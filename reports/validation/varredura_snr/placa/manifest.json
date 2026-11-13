@@ -1,7 +1,7 @@
 {
   "bin": "data/processed/robustez_placa/segmentos_ruido.bin",
-  "sha256": "14b3ecccb654bb6e33f1fe95963817dd146360009185cb5c52bf1109a7660427",
-  "n_segmentos": 1770,
+  "sha256": "11f26bb8bfe42b5dfaf71523afe5c5d6bc690187d6791cb52880cd0f424066f8",
+  "n_segmentos": 1788,
   "amostras_por_segmento": 12800,
   "dtype": "int16 little-endian",
   "fs_hz": 12800,
@@ -22,11 +22,29 @@
     "branco": 3,
     "rosa": 4
   },
-  "id": "snr_db*1000 + segmento",
+  "id": "snr_db*1000 + segmento; nas sementes 1 a 9, + semente*100000",
+  "perto_do_limiar": {
+    "pontos": [
+      "branco_0db",
+      "rosa_5db"
+    ],
+    "sementes": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9
+    ],
+    "criterio": "o segmento de menor |s|/E de cada semente"
+  },
   "ponto_do_ruido": "int16_51200Hz",
-  "git_commit": "37e6a8e",
+  "git_commit": "d85d094",
   "decisoes": {
-    "normal": 252,
-    "falha": 1518
+    "normal": 261,
+    "falha": 1527
   }
 }
