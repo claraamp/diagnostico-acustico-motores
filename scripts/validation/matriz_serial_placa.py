@@ -1249,8 +1249,9 @@ def escrever_md(res: dict, a: Analise, meta: dict, destino: Path) -> None:
                  + f"; tentativas a mais: {r['tentativas_extras']}; duplicatas: {r['duplicatas']}.")
         if "por_snr" in r:
             t += ["", "**Por SNR**", "",
-                  "| SNR | segmentos | sementes | processados | decisões iguais | |Δs|/E máx. | "
-                  "fração da tol. rel. máx. | acima da tol. rel. | menor |s|/E |",
+                  # as barras de |Δs| e |s| escapadas: sem isso, viram separadores de coluna
+                  "| SNR | segmentos | sementes | processados | decisões iguais | \\|Δs\\|/E máx. | "
+                  "fração da tol. rel. máx. | acima da tol. rel. | menor \\|s\\|/E |",
                   "|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
                   *(f"| {q['snr_db']} dB | {q['n']} | {q['sementes']} | {q['processados']} | "
                     f"{q['concordancia']}/{q['processados']} | "

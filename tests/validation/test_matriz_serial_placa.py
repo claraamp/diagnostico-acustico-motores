@@ -263,6 +263,7 @@ def test_saidas_e_registro(tmp_path):
     md = (tmp_path / "resumo.md").read_text(encoding="utf-8")
     assert "## Jung (3/3 processados)" in md and "## HUSTmotor (3/3 processados)" in md
     assert md.count("- Concordância placa × Python: **3/3**.") == 2 and "Critério" not in md
+    assert_tabelas_md(md)
     tex = (tmp_path / "tabelas.tex").read_text(encoding="utf-8")
     assert "\\label{tab:serial_placa_matriz}" in tex
     assert "\\texttt{hust\\_" in tex and "\\texttt{jung\\_" in tex      # o _ escapado no nome do pior
@@ -425,6 +426,22 @@ def test_lista_criterio_e_E_e_nao_a_tolerancia_relativa(tmp_path):
     assert r2["motivos"] == ["1 com |Δs| ≥ E"] and r2["concordancia"] == 2               # mesma decisão
 
 
+def assert_tabelas_md(md: str) -> None:
+    """Cada tabela do Markdown tem o mesmo número de colunas em todas as linhas (| escapado não conta)."""
+    import re
+    blocos, atual = [], []
+    for l in md.splitlines() + [""]:
+        if l.startswith("|"):
+            atual.append(l)
+        elif atual:
+            blocos.append(atual)
+            atual = []
+    assert blocos
+    for b in blocos:
+        colunas = {len(re.split(r"(?<!\\)\|", l)) for l in b}
+        assert len(colunas) == 1, b[:2]
+
+
 def test_lista_saidas_e_registro(tmp_path):
     _, a, res = _rodar_lista(tmp_path)
     meta = {"captura_nome": "cap.log", "captura_sha": M.sha12(tmp_path / "cap.log"), "modelo": MODELO,
@@ -440,6 +457,7 @@ def test_lista_saidas_e_registro(tmp_path):
     assert rows[2]["segmento"] == "normal_seg0057_branco_0db" and rows[2]["id_jung"] == "57"
     md = (tmp_path / "resumo.md").read_text(encoding="utf-8")
     assert "**Critério da rodada: aprovado**" in md and "| 0 dB | 2 | 2 |" in md and "Clipes" not in md
+    assert_tabelas_md(md)
     tex = (tmp_path / "tabelas.tex").read_text(encoding="utf-8")
     assert "\\label{tab:serial_placa_ruido}" in tex and "branco & 10~dB & 1 & 1/1" in tex
     novas = M.linhas_registry(res, a, meta, "Amanda", "")
