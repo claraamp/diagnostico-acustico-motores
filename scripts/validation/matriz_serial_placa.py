@@ -23,7 +23,8 @@ rodada" de lá:
    e têm de ter o mesmo escore, bit a bit.
 4. Grupos e ids: grupo 1 = Jung, com o id do segmento no conjunto (`splits.json`);
    grupo 2 = HUSTmotor, com o índice (a partir de 0) na lista `segmentos` do
-   `divisao_rotacao.json`.
+   `divisao_rotacao.json`; com `--lista`, os grupos e os ids do `referencias.csv`
+   (na robustez ao ruído, 3 = branco e 4 = rosa; ver "Lista de segmentos" abaixo).
 5. Reinício: uma linha de fora do modo (`hello`, `demo`, `ponta` ou um $SEG de origem
    R, C, D ou A) no meio da rodada é a placa que reiniciou: o PC pede o modo de novo,
    confere o modelo de novo e retoma do segmento pendente (sem gastar tentativa: o
@@ -56,12 +57,41 @@ ele tem de bater com o `escores_referencia.csv` (o CSV tem 5 casas) e a decisão
 com a do CSV; no HUST, com o `escore_sem_recal` do `decisoes_por_segmento.csv` da
 recalibração (6 casas). Se não bater, o script aborta antes de mandar qualquer coisa.
 
+Lista de segmentos (`--lista`)
+------------------------------
+Em vez do Jung e do HUSTmotor, manda os segmentos de uma lista exportada: uma pasta
+com o `manifest.json` e o `referencias.csv`, e o `.bin` com os int16 na ordem do CSV
+(o `bin` do manifesto; `--bin` aponta outro lugar). É o recorte da robustez ao ruído
+(`run_varredura_snr.py --exportar-placa`, opção 2 da página de 05/11), o padrão de
+`--lista` sem pasta. Antes de mandar qualquer quadro, o script confere:
+
+- o sha256 do `.bin` inteiro contra o do manifesto, e o tamanho;
+- o modelo e o JSON do manifesto contra o `lda_final.json`;
+- o CSV: a ordem 0..n-1, n linhas como no manifesto, grupos do manifesto, (grupo, id)
+  sem repetição e E > 0;
+- o escore de cada segmento, recalculado do int16 do `.bin` (`escore_python`),
+  contra o do CSV (9 casas), e a decisão.
+
+Cada grupo vira um conjunto (branco e rosa), com matriz e linha de registry
+próprias. Além da fração da tolerância relativa do A4, cada segmento sai com
+|Δs|/E, com E o limite absoluto do erro do escore do CSV. O critério da rodada (fixado
+antes dela, discussão da página "Robustez ao ruído também na placa, pela serial") é
+o dos conjuntos da lista: todos os segmentos processados, as decisões iguais às do
+Python e |Δs| < E em todos. A fração pela tolerância relativa entra só como
+informação (perto do limiar, |s| pequeno, ela cresce sem que o erro do porte cresça).
+A captura leva o sha256[:12] do manifesto no cabeçalho, e `--captura` só refaz a
+análise com a mesma lista. Numa rodada registrada, a captura é a
+`capturas/serial-ruido-DD-MM.log` e as saídas vão para `reports/embarcado/serial_ruido_DD_MM/`,
+separadas das do Jung e do HUST.
+
 Uso (da raiz do repositório)
 ----------------------------
     python scripts/validation/matriz_serial_placa.py --simulada            # sem placa (eco simulado)
     python scripts/validation/matriz_serial_placa.py --porta COM5 --sem-registro   # ensaio com a placa
     python scripts/validation/matriz_serial_placa.py --porta COM5 --responsavel Amanda   # a rodada
     python scripts/validation/matriz_serial_placa.py --captura reports/embarcado/capturas/serial-07-11.log --sem-registro
+    python scripts/validation/matriz_serial_placa.py --lista --porta COM5 --sem-registro --limite 10   # ensaio da lista
+    python scripts/validation/matriz_serial_placa.py --lista --porta COM5 --responsavel Amanda          # a rodada da robustez
 
 Com a placa: feche o picocom (só um programa abre a porta) e grave o firmware com a
 recepção. A porta abre a 921.600 bit/s (o padrão do firmware desde 03/11);
@@ -115,8 +145,9 @@ TOL_REL = 1e-5                             # tolerância encadeada do escore no 
 MEIA_UNIDADE = 0.5e-3                      # o escore do $SEG tem 3 casas
 FOLGA_TEXTO = 2.5e-4                       # meio ulp do float32 até 4096, com folga
 
-GRUPOS = {"jung": 1, "hust": 2}
-NOMES_CONJUNTO = {"jung": "Jung", "hust": "HUSTmotor"}
+GRUPOS = {"jung": 1, "hust": 2, "branco": 3, "rosa": 4}
+NOMES_CONJUNTO = {"jung": "Jung", "hust": "HUSTmotor", "branco": "Ruído branco", "rosa": "Ruído rosa"}
+CONJUNTOS_FIXOS = ("jung", "hust")         # os de --conjuntos; os outros vêm de --lista
 CLASSES = ("normal", "falha")
 
 CAMPOS_SEG = ("versao", "n", "origem", "clipe", "segmento", "decisao", "disparou",
@@ -135,6 +166,7 @@ PCM_JUNG = Path("data/processed/pcm_decimated/12800")
 PCM_HUST = Path("data/processed/hustmotor/pcm_decimated/12800")
 DIVISAO_HUST = Path("data/processed/hustmotor/divisao_rotacao.json")
 ESCORES_HUST = Path("reports/validation/protocolo_c/recalibracao/decisoes_por_segmento.csv")
+LISTA_PADRAO = Path("reports/validation/varredura_snr/placa")   # recorte da robustez ao ruído
 CAPTURAS = Path("reports/embarcado/capturas")
 SAIDA_TESTE = Path("reports/embarcado/teste_serial")          # fora do Git (.gitignore)
 SAIDA_SIMULADA = Path("reports/embarcado/sintetico/serial")   # fora do Git (.gitignore)
@@ -280,6 +312,8 @@ class Segmento:
     pcm: np.ndarray        # int16, 12.800 amostras: o que vai no quadro
     escore_py: float       # float64
     decisao_py: str
+    E: float | None = None                       # limite absoluto do erro do escore (só na --lista)
+    extra: dict = field(default_factory=dict)    # ruido, snr_db, semente, id_jung (só na --lista)
 
     @property
     def chave(self) -> tuple[int, int]:
@@ -357,6 +391,92 @@ def carregar_hust(pesos, bias, divisao: Path = DIVISAO_HUST, pcm_dir: Path = PCM
         raise Abortar("a referência do HUST não bate com o decisoes_por_segmento.csv:\n  "
                       + "\n  ".join(problemas[:10]))
     return segs
+
+
+@dataclass
+class Lista:
+    segmentos: list[Segmento]
+    manifesto: dict
+    manifesto_sha: str     # sha256[:12] do manifest.json: vai no cabeçalho da captura
+    referencias_sha: str   # sha256[:12] do referencias.csv
+    bin_sha256: str        # o do .bin inteiro, conferido contra o do manifesto
+
+
+def sha256_arquivo(caminho: Path) -> str:
+    h = hashlib.sha256()
+    with Path(caminho).open("rb") as fh:
+        for bloco in iter(lambda: fh.read(1 << 20), b""):
+            h.update(bloco)
+    return h.hexdigest()
+
+
+def carregar_lista(pasta: Path, modelo_id: str, json_sha12: str, pesos, bias, bin_path: Path | None = None,
+                   escore=escore_python) -> Lista:
+    """Os segmentos de uma lista exportada (manifest.json, referencias.csv e o .bin), conferidos."""
+    pasta = Path(pasta)
+    man_path, ref_path = pasta / "manifest.json", pasta / "referencias.csv"
+    for c in (man_path, ref_path):
+        if not c.exists():
+            raise Abortar(f"--lista: não achei {c}")
+    man = json.loads(man_path.read_text(encoding="utf-8"))
+    problemas = []
+    if (str(man.get("modelo")), man.get("json_sha12")) != (modelo_id, json_sha12):
+        problemas.append(f"a lista é do modelo {man.get('modelo')} (JSON {man.get('json_sha12')}); "
+                         f"o Python, {modelo_id} (JSON {json_sha12})")
+    if man.get("amostras_por_segmento") != N_AMOSTRAS or man.get("fs_hz") != 12800 \
+            or man.get("dtype") != "int16 little-endian":
+        problemas.append("o manifesto não descreve segmentos de 12.800 amostras int16 little-endian a 12,8 kHz")
+    grupos_man = {int(g): str(r) for r, g in (man.get("grupos") or {}).items()}
+    if not grupos_man or any(g in (GRUPOS["jung"], GRUPOS["hust"]) or GRUPOS.get(r) not in (None, g)
+                             for g, r in grupos_man.items()):
+        problemas.append(f"grupos do manifesto inválidos: {man.get('grupos')} (1 e 2 são do Jung e do HUST)")
+    if problemas:
+        raise Abortar("--lista: " + "; ".join(problemas))
+
+    bin_path = Path(bin_path or man["bin"])
+    if not bin_path.exists():
+        raise Abortar(f"--lista: não achei {bin_path} (não versionado; refaça com "
+                      "scripts/validation/run_varredura_snr.py --exportar-placa)")
+    n = int(man["n_segmentos"])
+    tam = bin_path.stat().st_size
+    if tam != n * N_AMOSTRAS * 2:
+        raise Abortar(f"--lista: {bin_path} tem {tam} B; o manifesto pede {n} × {N_AMOSTRAS} amostras int16")
+    sha = sha256_arquivo(bin_path)
+    if sha != man.get("sha256"):
+        raise Abortar(f"--lista: o sha256 de {bin_path} é {sha[:12]}…, e o do manifesto, "
+                      f"{str(man.get('sha256'))[:12]}…: o .bin não é o desta lista")
+    pcm = np.fromfile(bin_path, dtype="<i2").reshape(n, N_AMOSTRAS)
+
+    with ref_path.open(encoding="utf-8", newline="") as fh:
+        linhas = list(csv.DictReader(fh))
+    if len(linhas) != n:
+        raise Abortar(f"--lista: o referencias.csv tem {len(linhas)} linhas, e o manifesto, {n} segmentos")
+    segs, vistos = [], set()
+    for k, r in enumerate(linhas):
+        g, i = int(r["grupo"]), int(r["id"])
+        if int(r["ordem"]) != k:
+            problemas.append(f"linha {k}: ordem {r['ordem']} (o .bin segue a ordem do CSV)")
+        if g not in grupos_man or grupos_man[g] != r["ruido"]:
+            problemas.append(f"{r['nome']}: grupo {g} com o ruído {r['ruido']} (manifesto: {man.get('grupos')})")
+        if (g, i) in vistos:
+            problemas.append(f"{r['nome']}: (grupo, id) = ({g}, {i}) repetido")
+        vistos.add((g, i))
+        lim = float(r["E"])
+        if not lim > 0:
+            problemas.append(f"{r['nome']}: E = {r['E']}")
+        x = np.ascontiguousarray(pcm[k], dtype=np.int16)
+        e = escore(x, pesos, bias)
+        e_csv = float(r["escore"])
+        if abs(e - e_csv) > 1e-6 * max(1.0, abs(e_csv)) or r["decisao"] != decisao_de(e):
+            problemas.append(f"{r['nome']}: escore {e:.9f} ({decisao_de(e)}) do int16 e o CSV "
+                             f"{r['escore']} ({r['decisao']})")
+        segs.append(Segmento(r["ruido"], g, i, r["nome"], r["classe"], x, e, decisao_de(e), E=lim,
+                             extra={"ruido": r["ruido"], "snr_db": int(r["snr_db"]),
+                                    "semente": int(r["semente"]), "id_jung": int(r["segmento"])}))
+    if problemas:
+        raise Abortar(f"--lista: {len(problemas)} problema(s) no referencias.csv:\n  "
+                      + "\n  ".join(problemas[:10]))
+    return Lista(segs, man, sha12(man_path), sha12(ref_path), sha)
 
 
 # --------------------------------------------------------------------------- #
@@ -901,6 +1021,38 @@ def analisar(linhas: list[str], modelo_id: str, json_sha12: str) -> Analise:
     return a
 
 
+def criterio_lista(ls: list[dict]) -> dict:
+    """
+    Os conjuntos da --lista: |Δs|/E por segmento e por SNR, e o critério da rodada (todos
+    processados, decisões iguais às do Python e |Δs| < E em todos). A fração pela tolerância
+    relativa do A4 continua nas linhas, só como informação.
+    """
+    ok = [x for x in ls if x["estado"] == "processado"]
+    por_snr = []
+    for snr in sorted({x["snr_db"] for x in ls}, reverse=True):
+        lp = [x for x in ls if x["snr_db"] == snr]
+        okp = [x for x in lp if x["estado"] == "processado"]
+        por_snr.append({
+            "snr_db": snr, "n": len(lp), "processados": len(okp),
+            "sementes": len({x["semente"] for x in lp}),
+            "concordancia": sum(x["decisao_placa"] == x["decisao_python"] for x in okp),
+            "difE_max": max((x["dif_E"] for x in okp), default=None),
+            "frac_max": max((x["frac_tol"] for x in okp), default=None),
+            "fora_da_tolerancia": sum(x["frac_tol"] > 1.0 for x in okp),
+            "menor_margem_E": min(abs(x["escore_python"]) / x["E"] for x in lp),
+        })
+    pior_E = max(ok, key=lambda x: x["dif_E"]) if ok else None
+    fora_de_E = [x["segmento"] for x in ok if x["dif_E"] >= 1.0]
+    discord = [x["segmento"] for x in ok if x["decisao_placa"] != x["decisao_python"]]
+    nao = [x["segmento"] for x in ls if x["estado"] != "processado"]
+    motivos = ([f"{len(nao)} não processado(s)"] if nao else []) \
+        + ([f"{len(discord)} decisão(ões) diferente(s)"] if discord else []) \
+        + ([f"{len(fora_de_E)} com |Δs| ≥ E"] if fora_de_E else [])
+    return {"por_snr": por_snr, "pior_E": pior_E, "fora_de_E": fora_de_E,
+            "difE_mediana": float(np.median([x["dif_E"] for x in ok])) if ok else None,
+            "aprovado": not motivos, "motivos": motivos}
+
+
 def matriz(pares) -> dict[tuple[str, str], int]:
     m = {(x, y): 0 for x in CLASSES for y in CLASSES}
     for x, y in pares:
@@ -930,9 +1082,13 @@ def resultado(a: Analise, segs: list[Segmento]) -> dict:
                 dif = abs(r.escore - s.escore_py)
                 x.update(estado="processado", escore_placa=r.escore, escore_hex=r.hexa, dif=dif, tol=tol,
                          frac_tol=dif / tol, decisao_placa=r.decisao, n=r.n, ms=r.ms, ciclos=r.ciclos)
+                if s.E is not None:
+                    x["dif_E"] = dif / s.E
+            if s.E is not None:
+                x.update(s.extra, E=s.E)
             linhas.append(x)
     conjuntos = {}
-    for c in ("jung", "hust"):
+    for c in dict.fromkeys(x["conjunto"] for x in linhas):          # na ordem dos grupos
         ls = [x for x in linhas if x["conjunto"] == c]
         if not ls:
             continue
@@ -954,6 +1110,8 @@ def resultado(a: Analise, segs: list[Segmento]) -> dict:
             "duplicatas": sum(x["duplicatas"] for x in ls),
             "menor_abs_escore": min(abs(x["escore_python"]) for x in ls),
         }
+        if "E" in ls[0]:
+            conjuntos[c].update(criterio_lista(ls))
     # os segmentos dos clipes da flash (linhas ref) estão no Jung: o escore pela serial
     # tem de ser bit a bit o da flash (o PR #11 já mostrou nos 10)
     clipes = [(i, a.refs[i], a.respostas[(GRUPOS["jung"], i)].hexa) for i in sorted(a.refs)
@@ -989,14 +1147,22 @@ def escrever_csv(res: dict, destino: Path) -> None:
     campos = ["conjunto", "grupo", "id", "segmento", "classe", "estado", "escore_python", "escore_placa",
               "escore_hex", "dif", "tol", "frac_tol", "decisao_python", "decisao_placa", "tentativas",
               "duplicatas", "n", "ms", "ciclos"]
+    lista = any("E" in x for x in res["linhas"])
+    if lista:                                   # só na --lista: o CSV do Jung e do HUST não muda
+        campos[campos.index("frac_tol") + 1:campos.index("frac_tol") + 1] = ["E", "dif_E"]
+        campos[campos.index("classe") + 1:campos.index("classe") + 1] = ["ruido", "snr_db", "semente", "id_jung"]
     with destino.open("w", encoding="utf-8", newline="") as fh:
         w = csv.DictWriter(fh, fieldnames=campos, extrasaction="ignore")
         w.writeheader()
         for x in res["linhas"]:
             y = dict(x, escore_python=f"{x['escore_python']:.6f}")
+            if "E" in x:
+                y["E"] = f"{x['E']:.6f}"
             if x["estado"] == "processado":
                 y.update(escore_placa=f32_txt(x["escore_placa"]), dif=f"{x['dif']:.4g}",
                          tol=f"{x['tol']:.6f}", frac_tol=f"{x['frac_tol']:.4f}")
+                if "dif_E" in x:
+                    y["dif_E"] = f"{x['dif_E']:.3g}"
             w.writerow(y)
 
 
@@ -1012,6 +1178,11 @@ LEITURA = {
             "\"verdadeira × placa\" repete a do Python, e o que se mede é a concordância. Os escores são "
             "menores que os do Jung, então a mesma diferença absoluta pesa mais na fração da tolerância.",
 }
+LEITURA_LISTA = ("Os segmentos do Jung com ruído somado no int16 a 51,2 kHz, antes da decimação (recorte da "
+                 "varredura de SNR para a placa). O critério da rodada é o das decisões iguais às do Python e "
+                 "|Δs| < E em todos os segmentos, com E o limite absoluto do erro do escore do porte; a "
+                 "fração da tolerância relativa do A4 é só informação, porque perto do limiar (|s| pequeno) "
+                 "ela cresce sem que o erro do porte cresça.")
 
 
 def escrever_md(res: dict, a: Analise, meta: dict, destino: Path) -> None:
@@ -1025,15 +1196,30 @@ def escrever_md(res: dict, a: Analise, meta: dict, destino: Path) -> None:
          f"contra o float64 do Python; tolerância encadeada de 10⁻⁵ relativo (A4).", ""]
     for c, r in res["conjuntos"].items():
         nome = NOMES_CONJUNTO[c]
-        t += [f"## {nome} ({r['processados']}/{r['n']} processados)", "", LEITURA[c], "",
-              f"- Concordância placa × Python: **{r['concordancia']}/{r['processados']}**"
-              + (f"; discordantes: {', '.join(r['discordantes'])}" if r["discordantes"] else "") + "."]
+        t += [f"## {nome} ({r['processados']}/{r['n']} processados)", "", LEITURA.get(c, LEITURA_LISTA), ""]
+        if "aprovado" in r:
+            t.append("- **Critério da rodada: " + ("aprovado" if r["aprovado"] else "reprovado") + "**"
+                     + (f" ({'; '.join(r['motivos'])})" if r["motivos"] else "")
+                     + ": todos processados, decisões iguais às do Python e |Δs| < E em todos.")
+            if r["pior_E"]:
+                p = r["pior_E"]
+                t.append(f"- |Δs|/E: pior caso {br(p['dif_E'], 4)} ({p['segmento']}, |s| = "
+                         f"{br(abs(p['escore_python']), 3)}, E = {br(p['E'], 4)}), mediana "
+                         f"{br(r['difE_mediana'], 4)}"
+                         + (f"; **|Δs| ≥ E: {', '.join(r['fora_de_E'])}**" if r["fora_de_E"] else "") + ".")
+        t.append(f"- Concordância placa × Python: **{r['concordancia']}/{r['processados']}**"
+                 + (f"; discordantes: {', '.join(r['discordantes'])}" if r["discordantes"] else "") + ".")
         if r["pior"]:
             p = r["pior"]
-            t.append(f"- Fração da tolerância: pior caso {pct(p['frac_tol'])} ({p['segmento']}, dif "
-                     f"{br(p['dif'], 6)} de {br(p['tol'], 6)}), mediana {pct(r['frac_mediana'])}"
-                     + (f"; **fora da tolerância: {', '.join(r['fora_da_tolerancia'])}**"
-                        if r["fora_da_tolerancia"] else "") + ".")
+            if "aprovado" in r:
+                t.append(f"- Fração da tolerância relativa (só informação): pior caso {pct(p['frac_tol'])} "
+                         f"({p['segmento']}, |s| = {br(abs(p['escore_python']), 3)}), mediana "
+                         f"{pct(r['frac_mediana'])}; acima dela: {len(r['fora_da_tolerancia'])}.")
+            else:
+                t.append(f"- Fração da tolerância: pior caso {pct(p['frac_tol'])} ({p['segmento']}, dif "
+                         f"{br(p['dif'], 6)} de {br(p['tol'], 6)}), mediana {pct(r['frac_mediana'])}"
+                         + (f"; **fora da tolerância: {', '.join(r['fora_da_tolerancia'])}**"
+                            if r["fora_da_tolerancia"] else "") + ".")
             ciclos = (f"mediana de {br(r['ciclos_mediana'], 0)} ciclos ({br(r['ciclos_mediana'] / 1e5, 1)} ms "
                       "a 100 MHz)" if r["ciclos_mediana"] else "sem medida (sem o DWT: emulador ou simulada)")
             t.append(f"- Recepção: mediana de {br(r['ms_mediana'], 0)} ms por quadro, da mágica ao último "
@@ -1044,6 +1230,16 @@ def escrever_md(res: dict, a: Analise, meta: dict, destino: Path) -> None:
         t.append(f"- Não processados: {len(r['nao_processados'])}"
                  + (f" ({', '.join(r['nao_processados'])})" if r["nao_processados"] else "")
                  + f"; tentativas a mais: {r['tentativas_extras']}; duplicatas: {r['duplicatas']}.")
+        if "por_snr" in r:
+            t += ["", "**Por SNR**", "",
+                  "| SNR | segmentos | sementes | processados | decisões iguais | |Δs|/E máx. | "
+                  "fração da tol. rel. máx. | acima da tol. rel. | menor |s|/E |",
+                  "|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+                  *(f"| {q['snr_db']} dB | {q['n']} | {q['sementes']} | {q['processados']} | "
+                    f"{q['concordancia']}/{q['processados']} | "
+                    + (f"{br(q['difE_max'], 4)} | {pct(q['frac_max'])} | " if q["difE_max"] is not None
+                       else "— | — | ")
+                    + f"{q['fora_da_tolerancia']} | {br(q['menor_margem_E'], 1)} |" for q in r["por_snr"])]
         t += ["", "**Placa**", "", *_md_matriz(r["m_placa"], "verdadeira", "placa"), "",
               "**Python**", "", *_md_matriz(r["m_python"], "verdadeira", "Python"), "",
               "**Concordância (linhas: Python; colunas: placa)**", "",
@@ -1057,16 +1253,51 @@ def escrever_md(res: dict, a: Analise, meta: dict, destino: Path) -> None:
           "- Não processados pelo PC × pela captura: "
           + ("batem." if not res["divergencias_pc"] else "**" + "; ".join(res["divergencias_pc"]) + "**."),
           f"- Estouros do anel: {a.estouros}; linhas com checksum errado: {a.checksum_errado}; "
-          f"reinícios da placa: {a.reinicios}.",
-          f"- Clipes da flash pela serial: {res['clipes_iguais']}/{len(res['clipes'])} com o escore bit a bit "
-          "igual ao da linha `ref` (a mesma conta da demonstração)"
-          + ("." if res["clipes_iguais"] == len(res["clipes"]) else
-             "; **diferem: " + ", ".join(str(i) for i, r_, s_ in res["clipes"] if r_ != s_) + "**."), ""]
+          f"reinícios da placa: {a.reinicios}."]
+    if "jung" in res["conjuntos"]:
+        t.append(f"- Clipes da flash pela serial: {res['clipes_iguais']}/{len(res['clipes'])} com o escore bit "
+                 "a bit igual ao da linha `ref` (a mesma conta da demonstração)"
+                 + ("." if res["clipes_iguais"] == len(res["clipes"]) else
+                    "; **diferem: " + ", ".join(str(i) for i, r_, s_ in res["clipes"] if r_ != s_) + "**."))
+    if meta.get("lista"):
+        lm = meta["lista"]
+        t.append(f"- Lista: manifesto {lm['manifesto_sha']}, referencias.csv {lm['referencias_sha']}, "
+                 f".bin sha256 {lm['bin_sha256'][:12]}… (conferido inteiro antes do primeiro quadro).")
+    t.append("")
+    destino.write_text("\n".join(t), encoding="utf-8", newline="\n")
+
+
+def escrever_tex_lista(res: dict, destino: Path) -> None:
+    """A tabela da --lista: uma linha por ruído e SNR."""
+    t = [r"\begin{table}[H]", r"\centering",
+         r"\caption{MFCC e LDA na placa com ruído (segmentos do Jung com ruído somado a 51,2~kHz, antes da "
+         r"decimação, mandados pela serial a 12,8~kHz). Critério: decisões iguais às do Python e "
+         r"$|\Delta s| < E$ em todos os segmentos, com $E$ o limite absoluto do erro do escore do porte; a "
+         r"fração da tolerância relativa ($10^{-5}$ do escore) é só informação.}",
+         r"\label{tab:serial_placa_ruido}", r"\small",
+         r"\begin{tabular}{llrrrrr}", r"\toprule",
+         r"\textbf{Ruído} & \textbf{SNR} & \textbf{Segmentos} & \textbf{Concordância} & "
+         r"\textbf{$|\Delta s|/E$ máx.} & \textbf{\% tol. rel. máx.} & "
+         r"\textbf{Acima da tol. rel.} \\", r"\midrule"]
+    cj = res["conjuntos"]
+    for c, r in cj.items():
+        for j, q in enumerate(r["por_snr"]):
+            difE = br(q["difE_max"], 4) if q["difE_max"] is not None else "---"
+            frac = br(100 * q["frac_max"], 1) if q["frac_max"] is not None else "---"
+            t.append(f"{NOMES_CONJUNTO[c].replace('Ruído ', '') if j == 0 else ''} & {q['snr_db']}~dB & "
+                     f"{q['n']} & {q['concordancia']}/{q['processados']} & {difE} & {frac} & "
+                     f"{q['fora_da_tolerancia']} \\\\")
+        if c != list(cj)[-1]:
+            t.append(r"\midrule")
+    t += [r"\bottomrule", r"\end{tabular}", r"\end{table}", ""]
     destino.write_text("\n".join(t), encoding="utf-8", newline="\n")
 
 
 def escrever_tex(res: dict, destino: Path) -> None:
     cj = res["conjuntos"]
+    if any("por_snr" in r for r in cj.values()):
+        escrever_tex_lista(res, destino)
+        return
     t = [r"\begin{table}[H]", r"\centering",
          r"\caption{MFCC e LDA na placa, com os segmentos já decimados a 12,8~kHz mandados pela serial "
          r"(a decimação fica fora desta rodada; na placa, ela é testada pelo recorte de 1~s a 51,2~kHz do "
@@ -1112,6 +1343,8 @@ NOTAS_PADRAO = {
     "jung": "fidelidade do porte, não desempenho: os segmentos estão no treino do modelo final",
     "hust": "a LDA do Jung sem retreino (exp274 do Protocolo C); mede a concordância com o Python",
 }
+NOTA_LISTA = ("robustez ao ruído na placa (opção 2 da página de 05/11): critério decisões iguais e "
+              "|Δs| < E em todos os segmentos; a fração da tolerância relativa é só informação")
 
 
 def linhas_registry(res: dict, a: Analise, meta: dict, responsavel: str, notas: str) -> list[dict]:
@@ -1129,9 +1362,13 @@ def linhas_registry(res: dict, a: Analise, meta: dict, responsavel: str, notas: 
                 "captura_sha": meta["captura_sha"], "modelo": meta["modelo"], "json": meta["json"],
                 "referencia_sha": meta["referencia_sha"] if c == "jung" else None,
                 "divisao_hust": meta["divisao_sha"] if c == "hust" else None,
+                **({"lista": meta["lista"]["manifesto_sha"], "referencias_sha": meta["lista"]["referencias_sha"],
+                    "bin_sha256": meta["lista"]["bin_sha256"][:12],
+                    "criterio": "decisoes_iguais_e_dif_menor_que_E"} if "aprovado" in r else {}),
                 "baud": meta.get("baud"), "tol_rel": TOL_REL, "tentativas_max": TENTATIVAS}),
             "dataset": (f"jung_{r['n']}seg_treino_{meta['modelo']}" if c == "jung"
-                        else f"hustmotor_{r['n']}seg_12800Hz"),
+                        else f"hustmotor_{r['n']}seg_12800Hz" if c == "hust"
+                        else f"jung_ruido_{c}_{r['n']}seg_12800Hz"),
             "metricas": experimentos.kv({
                 "n_segmentos": r["n"], "processados": r["processados"],
                 "nao_processados": len(r["nao_processados"]),
@@ -1142,6 +1379,10 @@ def linhas_registry(res: dict, a: Analise, meta: dict, responsavel: str, notas: 
                 "seg_frac_tol_max": p["segmento"] if p else None,
                 "frac_tol_mediana": f"{r['frac_mediana']:.4f}" if p else None,
                 "fora_da_tolerancia": len(r["fora_da_tolerancia"]),
+                **({"aprovado": r["aprovado"], "fora_de_E": len(r["fora_de_E"]),
+                    "dif_E_max": f"{r['pior_E']['dif_E']:.4g}" if r["pior_E"] else None,
+                    "seg_dif_E_max": r["pior_E"]["segmento"] if r["pior_E"] else None}
+                   if "aprovado" in r else {}),
                 "tentativas_extras": r["tentativas_extras"], "duplicatas": r["duplicatas"],
                 "ms_mediana": f"{r['ms_mediana']:.0f}" if p else None,
                 "ciclos_mediana": f"{r['ciclos_mediana']:.0f}" if p else None,
@@ -1149,7 +1390,7 @@ def linhas_registry(res: dict, a: Analise, meta: dict, responsavel: str, notas: 
                 "erros_recepcao": sum(a.erros.values()), "estouros": a.estouros,
                 "reinicios": a.reinicios}),
             "responsavel": responsavel,
-            "notas": NOTAS_PADRAO[c] + (f"; {notas}" if notas else ""),     # --notas acrescenta, não substitui
+            "notas": NOTAS_PADRAO.get(c, NOTA_LISTA) + (f"; {notas}" if notas else ""),   # --notas acrescenta
         })
     return linhas
 
@@ -1197,7 +1438,11 @@ def main(argv=None) -> int:
     fonte.add_argument("--simulada", action="store_true", help="placa simulada em Python, sem a placa")
     fonte.add_argument("--captura", type=Path, help="só refaz a matriz de uma captura salva")
     ap.add_argument("--baud", type=int, default=BAUD_PADRAO, help="o mesmo do firmware (padrão 921600)")
-    ap.add_argument("--conjuntos", default="jung,hust", help="jung, hust ou jung,hust")
+    ap.add_argument("--conjuntos", default=None, help="jung, hust ou jung,hust (padrão: os dois)")
+    ap.add_argument("--lista", type=Path, nargs="?", const=LISTA_PADRAO,
+                    help="manda os segmentos de uma lista exportada (pasta com o manifest.json e o "
+                         f"referencias.csv; sem pasta, {LISTA_PADRAO.as_posix()}) no lugar do Jung e do HUST")
+    ap.add_argument("--bin", type=Path, help="com --lista: o .bin em outro lugar que o do manifesto")
     ap.add_argument("--limite", type=int, help="só os N primeiros de cada conjunto (ensaio; não registra)")
     ap.add_argument("--out-dir", type=Path, help="pasta das saídas")
     ap.add_argument("--registry", type=Path, default=Path("experiments/registry.csv"))
@@ -1206,8 +1451,12 @@ def main(argv=None) -> int:
     ap.add_argument("--notas", default="", help="acrescentado às notas padrão de cada conjunto")
     args = ap.parse_args(argv)
 
-    conjuntos = [c.strip() for c in args.conjuntos.split(",") if c.strip()]
-    if not conjuntos or any(c not in GRUPOS for c in conjuntos):
+    if args.lista and args.conjuntos:
+        ap.error("--lista e --conjuntos não vão juntos: a lista substitui o Jung e o HUST")
+    if args.bin and not args.lista:
+        ap.error("--bin só vale com --lista")
+    conjuntos = [c.strip() for c in (args.conjuntos or "jung,hust").split(",") if c.strip()]
+    if not args.lista and (not conjuntos or any(c not in CONJUNTOS_FIXOS for c in conjuntos)):
         ap.error("--conjuntos: jung, hust ou jung,hust")
     if args.porta:                              # avisa antes de recalcular os escores
         try:
@@ -1218,6 +1467,7 @@ def main(argv=None) -> int:
     if registrar and not args.responsavel:
         ap.error("--responsavel é obrigatório numa rodada registrada (ou use --sem-registro)")
     hoje = datetime.now().strftime("%d-%m")
+    prefixo = "serial-ruido" if args.lista else "serial"      # a lista não mistura com a rodada do Jung e do HUST
     if args.out_dir:
         out_dir = args.out_dir
     elif args.simulada:
@@ -1225,29 +1475,40 @@ def main(argv=None) -> int:
     elif not registrar:
         out_dir = SAIDA_TESTE
     else:
-        out_dir = Path("reports/embarcado") / f"serial_{hoje.replace('-', '_')}"
+        out_dir = Path("reports/embarcado") / f"{prefixo.replace('-', '_')}_{hoje.replace('-', '_')}"
 
     caminho_cap = None
     try:
         modelo_id, json_sha12, pesos, bias = info_modelo(MODELO)
         print("referência do Python: recalculando os escores do int16 dos quadros...")
-        segs = []
-        if "jung" in conjuntos:
-            segs += carregar_jung(pesos, bias)[: args.limite]
-        if "hust" in conjuntos:
-            segs += carregar_hust(pesos, bias)[: args.limite]
-        print(f"  {len(segs)} segmentos ({', '.join(conjuntos)}), conferidos com os CSV de referência")
+        segs, lista = [], None
+        if args.lista:
+            lista = carregar_lista(args.lista, modelo_id, json_sha12, pesos, bias, args.bin)
+            conjuntos = list(dict.fromkeys(s.conjunto for s in lista.segmentos))
+            for c in conjuntos:                 # --limite: os N primeiros de cada grupo
+                segs += [s for s in lista.segmentos if s.conjunto == c][: args.limite]
+        else:
+            if "jung" in conjuntos:
+                segs += carregar_jung(pesos, bias)
+            if "hust" in conjuntos:
+                segs += carregar_hust(pesos, bias)
+        esperado = Counter(s.grupo for s in (lista.segmentos if lista else segs))   # o plano inteiro
+        if args.limite and not lista:
+            segs = [s for c in conjuntos for s in [x for x in segs if x.conjunto == c][: args.limite]]
+        print(f"  {len(segs)} segmentos ({', '.join(conjuntos)}), conferidos com "
+              + (f"o referencias.csv e o .bin da lista ({args.lista})" if lista else "os CSV de referência"))
 
         if args.captura:
             caminho_cap = args.captura
             linhas = ler_linhas_captura(caminho_cap)
         else:
             out_dir.mkdir(parents=True, exist_ok=True)
-            caminho_cap = caminho_livre((out_dir if not registrar else CAPTURAS) / f"serial-{hoje}.log")
+            caminho_cap = caminho_livre((out_dir if not registrar else CAPTURAS) / f"{prefixo}-{hoje}.log")
             caminho_cap.parent.mkdir(parents=True, exist_ok=True)
             cap = Captura(caminho_cap)
             cap.pc(f"rodada inicio data={date.today().isoformat()} porta={args.porta or 'simulada'} "
-                   f"baud={args.baud} modelo={modelo_id} json={json_sha12} commit={experimentos.git_short_hash()}")
+                   f"baud={args.baud} modelo={modelo_id} json={json_sha12} commit={experimentos.git_short_hash()}"
+                   + (f" lista={lista.manifesto_sha}" if lista else ""))
             for c in conjuntos:
                 cap.pc(f"plano grupo={GRUPOS[c]} ids={faixas([s.id for s in segs if s.conjunto == c])}")
             if args.simulada:
@@ -1272,6 +1533,9 @@ def main(argv=None) -> int:
             linhas = ler_linhas_captura(caminho_cap)
 
         a = analisar(linhas, modelo_id, json_sha12)
+        if a.cabecalho.get("lista") != (lista.manifesto_sha if lista else None):
+            a.problemas.append(f"a captura é da lista {a.cabecalho.get('lista') or '(nenhuma)'}, e a análise, "
+                               f"da {lista.manifesto_sha if lista else '(nenhuma: Jung e HUST)'}")
         if a.problemas:
             raise Abortar("a captura não passou nas conferências:\n  " + "\n  ".join(a.problemas))
         res = resultado(a, segs)
@@ -1295,6 +1559,9 @@ def main(argv=None) -> int:
             # o commit e a data são os da rodada (cabeçalho da captura), não os da análise
             "commit": a.cabecalho.get("commit") or experimentos.git_short_hash(),
             "data": a.cabecalho.get("data") or date.today().isoformat()}
+    if lista:
+        meta["lista"] = {"manifesto_sha": lista.manifesto_sha, "referencias_sha": lista.referencias_sha,
+                         "bin_sha256": lista.bin_sha256}
     out_dir.mkdir(parents=True, exist_ok=True)
     escrever_csv(res, out_dir / "segmentos.csv")
     escrever_md(res, a, meta, out_dir / "resumo.md")
@@ -1304,6 +1571,11 @@ def main(argv=None) -> int:
         print(f"{NOMES_CONJUNTO[c]}: {r['processados']}/{r['n']} processados; concordância "
               f"{r['concordancia']}/{r['processados']}"
               + (f"; pior caso {p['segmento']} com {pct(p['frac_tol'])} da tolerância" if p else ""))
+        if "aprovado" in r:
+            pe = r["pior_E"]
+            print(f"  critério (decisões iguais e |Δs| < E): {'APROVADO' if r['aprovado'] else 'REPROVADO'}"
+                  + (f" ({'; '.join(r['motivos'])})" if r["motivos"] else "")
+                  + (f"; |Δs|/E máx. {pe['dif_E']:.4g} ({pe['segmento']})" if pe else ""))
     for d in res["divergencias_pc"]:
         print(f"ATENÇÃO: {d}")
     if res["clipes_iguais"] != len(res["clipes"]):
@@ -1311,8 +1583,7 @@ def main(argv=None) -> int:
               "bit a bit igual ao da linha ref (a placa calcula os dois com a mesma conta)")
     print(f"saídas: {out_dir}/ (captura {caminho_cap})")
 
-    completo = all(len(a.plano.get(GRUPOS[c], [])) == n for c, n in (("jung", 295), ("hust", 40))
-                   if c in conjuntos)
+    completo = all(len(a.plano.get(g, [])) == n for g, n in esperado.items())
     if not registrar:
         print("(ensaio: registry não alterado)")
         return 0
