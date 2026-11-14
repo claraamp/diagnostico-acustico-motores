@@ -474,5 +474,27 @@ def test_main_simulada_com_lista_e_captura_de_outra_lista(tmp_path, monkeypatch,
                      mexer=lambda l, pcm: l[0].__setitem__("E", "0.500000"))
     assert M.main(["--captura", str(cap), "--lista", str(p2), "--out-dir", str(out), "--sem-registro"]) == 1
     assert "a captura é da lista" in capsys.readouterr().out
+    # sem o .bin (em outra máquina): a análise sai igual, com o escore do CSV, e não registra
+    (p / "segmentos.bin").rename(tmp_path / "guardado.bin")
+    out2 = tmp_path / "out2"
+    assert M.main(["--captura", str(cap), "--lista", str(p), "--out-dir", str(out2), "--sem-registro"]) == 0
+    for f in ("segmentos.csv", "tabelas.tex"):
+        assert (out2 / f).read_bytes() == (out / f).read_bytes()
+    assert "sem o .bin" in (out2 / "resumo.md").read_text(encoding="utf-8")
+    assert M.main(["--captura", str(cap), "--lista", str(p), "--out-dir", str(out2), "--responsavel", "A",
+                   "--registry", str(tmp_path / "reg.csv")]) == 1
+    assert "não é registrada" in capsys.readouterr().out and not (tmp_path / "reg.csv").exists()
+    with pytest.raises(M.Abortar, match="não achei"):                       # para mandar, o .bin é obrigatório
+        M.carregar_lista(p, modelo_id, json12, pesos, bias)
     with pytest.raises(SystemExit):                                          # a lista substitui os conjuntos
         M.main(["--captura", str(cap), "--lista", str(p), "--conjuntos", "jung"])
+
+
+def test_lista_com_ruido_que_o_script_nao_conhece_e_recusada(tmp_path):
+    import json
+    p = criar_lista(tmp_path / "l", PESOS, 10.0)
+    man = json.loads((p / "manifest.json").read_text(encoding="utf-8"))
+    man["grupos"] = {"branco": 3, "rosa": 4, "marrom": 5}         # sem nome nem linha de registry
+    (p / "manifest.json").write_text(json.dumps(man), encoding="utf-8")
+    with pytest.raises(M.Abortar, match="grupos do manifesto inválidos"):
+        M.carregar_lista(p, MODELO, JSON, PESOS, 10.0)

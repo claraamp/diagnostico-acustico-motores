@@ -80,7 +80,8 @@ o dos conjuntos da lista: todos os segmentos processados, as decisões iguais à
 Python e |Δs| < E em todos. A fração pela tolerância relativa entra só como
 informação (perto do limiar, |s| pequeno, ela cresce sem que o erro do porte cresça).
 A captura leva o sha256[:12] do manifesto no cabeçalho, e `--captura` só refaz a
-análise com a mesma lista. Numa rodada registrada, a captura é a
+análise com a mesma lista; sem o .bin (que não é versionado), ela usa o escore do
+CSV e não registra. Numa rodada registrada, a captura é a
 `capturas/serial-ruido-DD-MM.log` e as saídas vão para `reports/embarcado/serial_ruido_DD_MM/`,
 separadas das do Jung e do HUST.
 
@@ -399,7 +400,11 @@ class Lista:
     manifesto: dict
     manifesto_sha: str     # sha256[:12] do manifest.json: vai no cabeçalho da captura
     referencias_sha: str   # sha256[:12] do referencias.csv
-    bin_sha256: str        # o do .bin inteiro, conferido contra o do manifesto
+    bin_sha256: str        # o do .bin inteiro, conferido contra o do manifesto ("" sem o .bin)
+
+    @property
+    def bin_conferido(self) -> bool:
+        return bool(self.bin_sha256)
 
 
 def sha256_arquivo(caminho: Path) -> str:
@@ -411,8 +416,14 @@ def sha256_arquivo(caminho: Path) -> str:
 
 
 def carregar_lista(pasta: Path, modelo_id: str, json_sha12: str, pesos, bias, bin_path: Path | None = None,
-                   escore=escore_python) -> Lista:
-    """Os segmentos de uma lista exportada (manifest.json, referencias.csv e o .bin), conferidos."""
+                   escore=escore_python, exigir_bin: bool = True) -> Lista:
+    """
+    Os segmentos de uma lista exportada (manifest.json, referencias.csv e o .bin), conferidos.
+
+    Com `exigir_bin=False` (só para refazer a análise de uma captura, `--captura`) e sem o
+    .bin, o escore do Python é o do CSV (9 casas, conferido pelo exportador com o
+    `escore_python`), os segmentos vêm sem o int16 e a lista não serve para registrar.
+    """
     pasta = Path(pasta)
     man_path, ref_path = pasta / "manifest.json", pasta / "referencias.csv"
     for c in (man_path, ref_path):
@@ -427,25 +438,28 @@ def carregar_lista(pasta: Path, modelo_id: str, json_sha12: str, pesos, bias, bi
             or man.get("dtype") != "int16 little-endian":
         problemas.append("o manifesto não descreve segmentos de 12.800 amostras int16 little-endian a 12,8 kHz")
     grupos_man = {int(g): str(r) for r, g in (man.get("grupos") or {}).items()}
-    if not grupos_man or any(g in (GRUPOS["jung"], GRUPOS["hust"]) or GRUPOS.get(r) not in (None, g)
-                             for g, r in grupos_man.items()):
-        problemas.append(f"grupos do manifesto inválidos: {man.get('grupos')} (1 e 2 são do Jung e do HUST)")
+    if not grupos_man or any(r in CONJUNTOS_FIXOS or GRUPOS.get(r) != g for g, r in grupos_man.items()):
+        problemas.append(f"grupos do manifesto inválidos: {man.get('grupos')} (o script conhece "
+                         f"{ {r: g for r, g in GRUPOS.items() if r not in CONJUNTOS_FIXOS} }; 1 e 2 são do "
+                         "Jung e do HUST)")
     if problemas:
         raise Abortar("--lista: " + "; ".join(problemas))
 
     bin_path = Path(bin_path or man["bin"])
-    if not bin_path.exists():
+    n = int(man["n_segmentos"])
+    pcm, sha = None, ""
+    if bin_path.exists():
+        tam = bin_path.stat().st_size
+        if tam != n * N_AMOSTRAS * 2:
+            raise Abortar(f"--lista: {bin_path} tem {tam} B; o manifesto pede {n} × {N_AMOSTRAS} amostras int16")
+        sha = sha256_arquivo(bin_path)
+        if sha != man.get("sha256"):
+            raise Abortar(f"--lista: o sha256 de {bin_path} é {sha[:12]}…, e o do manifesto, "
+                          f"{str(man.get('sha256'))[:12]}…: o .bin não é o desta lista")
+        pcm = np.fromfile(bin_path, dtype="<i2").reshape(n, N_AMOSTRAS)
+    elif exigir_bin:
         raise Abortar(f"--lista: não achei {bin_path} (não versionado; refaça com "
                       "scripts/validation/run_varredura_snr.py --exportar-placa)")
-    n = int(man["n_segmentos"])
-    tam = bin_path.stat().st_size
-    if tam != n * N_AMOSTRAS * 2:
-        raise Abortar(f"--lista: {bin_path} tem {tam} B; o manifesto pede {n} × {N_AMOSTRAS} amostras int16")
-    sha = sha256_arquivo(bin_path)
-    if sha != man.get("sha256"):
-        raise Abortar(f"--lista: o sha256 de {bin_path} é {sha[:12]}…, e o do manifesto, "
-                      f"{str(man.get('sha256'))[:12]}…: o .bin não é o desta lista")
-    pcm = np.fromfile(bin_path, dtype="<i2").reshape(n, N_AMOSTRAS)
 
     with ref_path.open(encoding="utf-8", newline="") as fh:
         linhas = list(csv.DictReader(fh))
@@ -464,9 +478,12 @@ def carregar_lista(pasta: Path, modelo_id: str, json_sha12: str, pesos, bias, bi
         lim = float(r["E"])
         if not lim > 0:
             problemas.append(f"{r['nome']}: E = {r['E']}")
-        x = np.ascontiguousarray(pcm[k], dtype=np.int16)
-        e = escore(x, pesos, bias)
         e_csv = float(r["escore"])
+        if pcm is None:                         # --captura sem o .bin: o escore do CSV
+            x, e = np.empty(0, dtype=np.int16), e_csv
+        else:
+            x = np.ascontiguousarray(pcm[k], dtype=np.int16)
+            e = escore(x, pesos, bias)
         if abs(e - e_csv) > 1e-6 * max(1.0, abs(e_csv)) or r["decisao"] != decisao_de(e):
             problemas.append(f"{r['nome']}: escore {e:.9f} ({decisao_de(e)}) do int16 e o CSV "
                              f"{r['escore']} ({r['decisao']})")
@@ -1262,7 +1279,8 @@ def escrever_md(res: dict, a: Analise, meta: dict, destino: Path) -> None:
     if meta.get("lista"):
         lm = meta["lista"]
         t.append(f"- Lista: manifesto {lm['manifesto_sha']}, referencias.csv {lm['referencias_sha']}, "
-                 f".bin sha256 {lm['bin_sha256'][:12]}… (conferido inteiro antes do primeiro quadro).")
+                 + (f".bin sha256 {lm['bin_sha256'][:12]}… (conferido inteiro antes do primeiro quadro)."
+                    if lm["bin_sha256"] else "análise refeita sem o .bin (escore do Python do referencias.csv)."))
     t.append("")
     destino.write_text("\n".join(t), encoding="utf-8", newline="\n")
 
@@ -1483,7 +1501,13 @@ def main(argv=None) -> int:
         print("referência do Python: recalculando os escores do int16 dos quadros...")
         segs, lista = [], None
         if args.lista:
-            lista = carregar_lista(args.lista, modelo_id, json_sha12, pesos, bias, args.bin)
+            lista = carregar_lista(args.lista, modelo_id, json_sha12, pesos, bias, args.bin,
+                                   exigir_bin=not args.captura)
+            if not lista.bin_conferido:
+                if registrar:
+                    raise Abortar("sem o .bin, a lista não é conferida e a rodada não é registrada: "
+                                  "use --sem-registro para só refazer a análise")
+                print("  sem o .bin: o escore do Python é o do referencias.csv (9 casas), sem recalcular")
             conjuntos = list(dict.fromkeys(s.conjunto for s in lista.segmentos))
             for c in conjuntos:                 # --limite: os N primeiros de cada grupo
                 segs += [s for s in lista.segmentos if s.conjunto == c][: args.limite]
@@ -1496,7 +1520,8 @@ def main(argv=None) -> int:
         if args.limite and not lista:
             segs = [s for c in conjuntos for s in [x for x in segs if x.conjunto == c][: args.limite]]
         print(f"  {len(segs)} segmentos ({', '.join(conjuntos)}), conferidos com "
-              + (f"o referencias.csv e o .bin da lista ({args.lista})" if lista else "os CSV de referência"))
+              + ((f"o referencias.csv e o .bin da lista ({args.lista})" if lista.bin_conferido
+                  else f"o referencias.csv da lista ({args.lista})") if lista else "os CSV de referência"))
 
         if args.captura:
             caminho_cap = args.captura
