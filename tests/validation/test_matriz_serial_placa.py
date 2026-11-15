@@ -9,7 +9,9 @@ resposta atrasada são reenviados como as regras mandam (3 tentativas, o reiníc
 não gasta tentativa, a duplicata é contada e tem de ser igual bit a bit); um modelo
 diferente não deixa sair nenhum quadro; e a análise da captura salva dá o mesmo
 que a rodada. Nas saídas, as matrizes ficam por conjunto e a fração da tolerância é
-contra o float64.
+contra o float64. Com --lista: a lista é conferida (sha256 do .bin, modelo,
+escores do CSV, grupos e ids) e o critério é |Δs| < E, com a fração relativa só como
+informação.
 """
 
 import csv
@@ -260,6 +262,8 @@ def test_saidas_e_registro(tmp_path):
     assert all(len(r["escore_hex"]) == 8 for r in rows)
     md = (tmp_path / "resumo.md").read_text(encoding="utf-8")
     assert "## Jung (3/3 processados)" in md and "## HUSTmotor (3/3 processados)" in md
+    assert md.count("- Concordância placa × Python: **3/3**.") == 2 and "Critério" not in md
+    assert_tabelas_md(md)
     tex = (tmp_path / "tabelas.tex").read_text(encoding="utf-8")
     assert "\\label{tab:serial_placa_matriz}" in tex
     assert "\\texttt{hust\\_" in tex and "\\texttt{jung\\_" in tex      # o _ escapado no nome do pior
@@ -299,3 +303,216 @@ def test_captura_interrompida_nao_e_registrada(tmp_path):
     assert len(res2["divergencias_pc"]) == 2 and "captura interrompida" in res2["divergencias_pc"][0]
     with pytest.raises(M.Abortar, match="incompleta"):
         M.registrar_rodada(tmp_path / "registry.csv", res2, a2, _meta(tmp_path, a2), "Amanda", "")
+
+
+# --------------------------------------------------------------------------- #
+# --lista (recorte da robustez ao ruído)                                      #
+# --------------------------------------------------------------------------- #
+# (ruído, snr, semente, segmento); o id é o do run_varredura_snr.id_placa
+LISTA = [("branco", 10, 20260925, 0), ("branco", 0, 20260925, 48), ("branco", 0, 5, 57),
+         ("rosa", 5, 20260925, 3), ("rosa", 5, 9, 23)]
+
+
+def _id(snr, seg, semente):
+    return snr * 1000 + seg + (0 if semente == 20260925 else semente * 100000)
+
+
+def criar_lista(pasta, pesos, bias, modelo=MODELO, json_=JSON, mexer=None):
+    """Uma lista pequena, no formato do run_varredura_snr.exportar_placa."""
+    rng = np.random.default_rng(1)
+    pcm = rng.integers(-4000, 4000, (len(LISTA), M.N_AMOSTRAS)).astype("<i2")
+    linhas = []
+    for k, (ruido, snr, semente, seg) in enumerate(LISTA):
+        e = M.escore_python(pcm[k].astype(np.int16), pesos, bias)
+        linhas.append({"ordem": k, "grupo": {"branco": 3, "rosa": 4}[ruido], "id": _id(snr, seg, semente),
+                       "nome": f"normal_seg{seg:04d}_{ruido}_{snr}db", "classe": "normal", "ruido": ruido,
+                       "snr_db": snr, "semente": semente, "segmento": seg, "escore": f"{e:.9f}",
+                       "decisao": M.decisao_de(e), "E": "0.410000", "margem_E": f"{abs(e) / 0.41:.1f}"})
+    if mexer:
+        mexer(linhas, pcm)
+    pasta.mkdir(parents=True, exist_ok=True)
+    corpo = pcm.tobytes()
+    (pasta / "segmentos.bin").write_bytes(corpo)
+    with (pasta / "referencias.csv").open("w", encoding="utf-8", newline="") as fh:
+        w = csv.DictWriter(fh, fieldnames=list(linhas[0]))
+        w.writeheader()
+        w.writerows(linhas)
+    import hashlib
+    import json
+    (pasta / "manifest.json").write_text(json.dumps({
+        "bin": (pasta / "segmentos.bin").as_posix(), "sha256": hashlib.sha256(corpo).hexdigest(),
+        "n_segmentos": len(linhas), "amostras_por_segmento": 12800, "dtype": "int16 little-endian",
+        "fs_hz": 12800, "modelo": modelo, "json_sha12": json_, "grupos": {"branco": 3, "rosa": 4}}),
+        encoding="utf-8")
+    return pasta
+
+
+PESOS = np.random.default_rng(2).normal(0, 50, 26)
+
+
+def test_lista_carrega_e_confere(tmp_path):
+    p = criar_lista(tmp_path / "l", PESOS, 10.0)
+    lista = M.carregar_lista(p, MODELO, JSON, PESOS, 10.0)
+    assert [s.chave for s in lista.segmentos] == [(3, 10000), (3, 48), (3, 500057), (4, 5003), (4, 905023)]
+    assert [s.conjunto for s in lista.segmentos] == ["branco"] * 3 + ["rosa"] * 2
+    assert all(s.E == 0.41 and s.pcm.dtype == np.int16 for s in lista.segmentos)
+    assert lista.segmentos[2].extra == {"ruido": "branco", "snr_db": 0, "semente": 5, "id_jung": 57}
+    assert M.montar_quadro(lista.segmentos[-1].pcm, 4, 905023)[4:14] == struct.pack("<BBHIH", 1, 1, 4,
+                                                                                     905023, 12800)
+
+
+@pytest.mark.parametrize("mexer, msg", [
+    (lambda l, pcm: pcm.__setitem__((1, 7), pcm[1, 7] + 1), "sha256"),            # .bin de outra lista
+    (lambda l, pcm: l[1].__setitem__("escore", "123.0"), "escore"),               # CSV de outro .bin
+    (lambda l, pcm: l[4].update(grupo=3, id=_id(10, 0, 20260925), ruido="branco"), "repetido"),
+    (lambda l, pcm: l[3].__setitem__("grupo", 1), "grupo 1"),                      # grupo do Jung
+    (lambda l, pcm: l[0].__setitem__("E", "0"), "E = 0"),
+])
+def test_lista_recusa_o_que_nao_bate(tmp_path, mexer, msg):
+    p = criar_lista(tmp_path / "l", PESOS, 10.0)
+    if msg == "sha256":                         # o .bin muda depois do manifesto
+        b = bytearray((p / "segmentos.bin").read_bytes())
+        b[100] ^= 1
+        (p / "segmentos.bin").write_bytes(bytes(b))
+    else:
+        p = criar_lista(tmp_path / "m", PESOS, 10.0, mexer=mexer)
+    with pytest.raises(M.Abortar, match=msg):
+        M.carregar_lista(p, MODELO, JSON, PESOS, 10.0)
+
+
+def test_lista_de_outro_modelo_e_recusada(tmp_path):
+    p = criar_lista(tmp_path / "l", PESOS, 10.0, modelo="exp238")
+    with pytest.raises(M.Abortar, match="modelo exp238"):
+        M.carregar_lista(p, MODELO, JSON, PESOS, 10.0)
+
+
+def _rodar_lista(tmp_path, escore_placa=None):
+    segs = M.carregar_lista(criar_lista(tmp_path / "l", PESOS, 10.0), MODELO, JSON, PESOS, 10.0).segmentos
+    ref = {s.chave: s.escore_py for s in segs}
+    placa = M.PlacaSimulada(escore_placa or (lambda g, i: ref[(g, i)]), MODELO, JSON, demo_s=0.005)
+    cap = M.Captura(tmp_path / "cap.log")
+    cap.pc(f"rodada inicio data=2026-11-14 porta=simulada baud=921600 modelo={MODELO} json={JSON} "
+           "commit=abc1234 lista=0123456789ab")
+    for g in (3, 4):
+        cap.pc(f"plano grupo={g} ids={M.faixas([s.id for s in segs if s.grupo == g])}")
+    try:
+        M.Rodada(placa, cap, MODELO, JSON, 0, RAPIDO, mostrar=lambda m: None).enviar(segs)
+    finally:
+        cap.fechar()
+    a = M.analisar(M.ler_linhas_captura(tmp_path / "cap.log"), MODELO, JSON)
+    return segs, a, M.resultado(a, segs)
+
+
+def test_lista_criterio_e_E_e_nao_a_tolerancia_relativa(tmp_path):
+    segs, a, res = _rodar_lista(tmp_path)
+    assert list(res["conjuntos"]) == ["branco", "rosa"] and a.cabecalho["lista"] == "0123456789ab"
+    b = res["conjuntos"]["branco"]
+    assert b["aprovado"] and b["motivos"] == [] and [q["snr_db"] for q in b["por_snr"]] == [10, 0]
+    assert b["por_snr"][1]["n"] == 2 and b["por_snr"][1]["sementes"] == 2
+    assert all(0 <= x["dif_E"] < 1 for x in res["linhas"])
+    # perto do limiar (|s| = 0,5), 0,001 de erro passa da tolerância relativa e fica bem abaixo de E:
+    # aprova; 0,6 de erro passa de E (0,41), mesmo com a decisão igual: reprova
+    ref = {s.chave: s.escore_py for s in segs}
+    python = {**ref, (3, 48): 0.5}
+    placa = {**python, (3, 48): 0.501, (4, 5003): ref[(4, 5003)] + 0.6}
+    segs2 = [M.Segmento(s.conjunto, s.grupo, s.id, s.nome, s.classe, s.pcm, python[s.chave],
+                        M.decisao_de(python[s.chave]), s.E, s.extra) for s in segs]
+    _, a2, _ = _rodar_lista(tmp_path / "b", escore_placa=lambda g, i: placa[(g, i)])
+    res2 = M.resultado(a2, segs2)
+    b2, r2 = res2["conjuntos"]["branco"], res2["conjuntos"]["rosa"]
+    assert b2["aprovado"] and b2["fora_da_tolerancia"] == ["normal_seg0048_branco_0db"]   # só informação
+    assert b2["pior_E"]["segmento"] == "normal_seg0048_branco_0db" and b2["pior_E"]["dif_E"] < 0.01
+    assert not r2["aprovado"] and r2["fora_de_E"] == ["normal_seg0003_rosa_5db"]
+    assert r2["motivos"] == ["1 com |Δs| ≥ E"] and r2["concordancia"] == 2               # mesma decisão
+
+
+def assert_tabelas_md(md: str) -> None:
+    """Cada tabela do Markdown tem o mesmo número de colunas em todas as linhas (| escapado não conta)."""
+    import re
+    blocos, atual = [], []
+    for l in md.splitlines() + [""]:
+        if l.startswith("|"):
+            atual.append(l)
+        elif atual:
+            blocos.append(atual)
+            atual = []
+    assert blocos
+    for b in blocos:
+        colunas = {len(re.split(r"(?<!\\)\|", l)) for l in b}
+        assert len(colunas) == 1, b[:2]
+
+
+def test_lista_saidas_e_registro(tmp_path):
+    _, a, res = _rodar_lista(tmp_path)
+    meta = {"captura_nome": "cap.log", "captura_sha": M.sha12(tmp_path / "cap.log"), "modelo": MODELO,
+            "json": JSON, "referencia_sha": "x", "divisao_sha": "y", "baud": 921600, "commit": "abc1234",
+            "data": "2026-11-14", "proximo_exp": 320,
+            "lista": {"manifesto_sha": "0123456789ab", "referencias_sha": "ba9876543210", "bin_sha256": "f" * 64}}
+    M.escrever_csv(res, tmp_path / "segmentos.csv")
+    M.escrever_md(res, a, meta, tmp_path / "resumo.md")
+    M.escrever_tex(res, tmp_path / "tabelas.tex")
+    with (tmp_path / "segmentos.csv").open(encoding="utf-8", newline="") as fh:
+        rows = list(csv.DictReader(fh))
+    assert {"ruido", "snr_db", "semente", "id_jung", "E", "dif_E"} <= set(rows[0]) and len(rows) == 5
+    assert rows[2]["segmento"] == "normal_seg0057_branco_0db" and rows[2]["id_jung"] == "57"
+    md = (tmp_path / "resumo.md").read_text(encoding="utf-8")
+    assert "**Critério da rodada: aprovado**" in md and "| 0 dB | 2 | 2 |" in md and "Clipes" not in md
+    assert_tabelas_md(md)
+    tex = (tmp_path / "tabelas.tex").read_text(encoding="utf-8")
+    assert "\\label{tab:serial_placa_ruido}" in tex and "branco & 10~dB & 1 & 1/1" in tex
+    novas = M.linhas_registry(res, a, meta, "Amanda", "")
+    assert [n["id"] for n in novas] == ["exp320", "exp321"]
+    assert "lista=0123456789ab" in novas[0]["parametros"] and "bin_sha256=ffffffffffff" in novas[0]["parametros"]
+    assert "aprovado=True" in novas[0]["metricas"] and "fora_de_E=0" in novas[0]["metricas"]
+    assert novas[1]["dataset"] == "jung_ruido_rosa_2seg_12800Hz" and novas[1]["notas"] == M.NOTA_LISTA
+
+
+def test_jung_e_hust_nao_mudam_com_a_lista(tmp_path):
+    """O CSV e o resumo do Jung e do HUST continuam com as mesmas colunas e linhas de antes."""
+    _, _, _, a, res, _ = rodar(tmp_path)
+    M.escrever_csv(res, tmp_path / "segmentos.csv")
+    assert (tmp_path / "segmentos.csv").read_text(encoding="utf-8").splitlines()[0] == (
+        "conjunto,grupo,id,segmento,classe,estado,escore_python,escore_placa,escore_hex,dif,tol,frac_tol,"
+        "decisao_python,decisao_placa,tentativas,duplicatas,n,ms,ciclos")
+    assert all("aprovado" not in r for r in res["conjuntos"].values())
+
+
+def test_main_simulada_com_lista_e_captura_de_outra_lista(tmp_path, monkeypatch, capsys):
+    raiz = __import__("pathlib").Path(M.__file__).resolve().parents[2]
+    monkeypatch.chdir(raiz)
+    modelo_id, json12, pesos, bias = M.info_modelo(M.MODELO)
+    p = criar_lista(tmp_path / "l", pesos, bias, modelo=modelo_id, json_=json12)
+    out = tmp_path / "out"
+    assert M.main(["--simulada", "--lista", str(p), "--out-dir", str(out)]) == 0
+    texto = capsys.readouterr().out
+    assert "critério (decisões iguais e |Δs| < E): APROVADO" in texto and "registry não alterado" in texto
+    cap = next(out.glob("serial-*.log"))
+    assert M.main(["--captura", str(cap), "--lista", str(p), "--out-dir", str(out), "--sem-registro"]) == 0
+    p2 = criar_lista(tmp_path / "l2", pesos, bias, modelo=modelo_id, json_=json12,      # outro E: outra lista
+                     mexer=lambda l, pcm: l[0].__setitem__("E", "0.500000"))
+    assert M.main(["--captura", str(cap), "--lista", str(p2), "--out-dir", str(out), "--sem-registro"]) == 1
+    assert "a captura é da lista" in capsys.readouterr().out
+    # sem o .bin (em outra máquina): a análise sai igual, com o escore do CSV, e não registra
+    (p / "segmentos.bin").rename(tmp_path / "guardado.bin")
+    out2 = tmp_path / "out2"
+    assert M.main(["--captura", str(cap), "--lista", str(p), "--out-dir", str(out2), "--sem-registro"]) == 0
+    for f in ("segmentos.csv", "tabelas.tex"):
+        assert (out2 / f).read_bytes() == (out / f).read_bytes()
+    assert "sem o .bin" in (out2 / "resumo.md").read_text(encoding="utf-8")
+    assert M.main(["--captura", str(cap), "--lista", str(p), "--out-dir", str(out2), "--responsavel", "A",
+                   "--registry", str(tmp_path / "reg.csv")]) == 1
+    assert "não é registrada" in capsys.readouterr().out and not (tmp_path / "reg.csv").exists()
+    with pytest.raises(M.Abortar, match="não achei"):                       # para mandar, o .bin é obrigatório
+        M.carregar_lista(p, modelo_id, json12, pesos, bias)
+    with pytest.raises(SystemExit):                                          # a lista substitui os conjuntos
+        M.main(["--captura", str(cap), "--lista", str(p), "--conjuntos", "jung"])
+
+
+def test_lista_com_ruido_que_o_script_nao_conhece_e_recusada(tmp_path):
+    import json
+    p = criar_lista(tmp_path / "l", PESOS, 10.0)
+    man = json.loads((p / "manifest.json").read_text(encoding="utf-8"))
+    man["grupos"] = {"branco": 3, "rosa": 4, "marrom": 5}         # sem nome nem linha de registry
+    (p / "manifest.json").write_text(json.dumps(man), encoding="utf-8")
+    with pytest.raises(M.Abortar, match="grupos do manifesto inválidos"):
+        M.carregar_lista(p, MODELO, JSON, PESOS, 10.0)
