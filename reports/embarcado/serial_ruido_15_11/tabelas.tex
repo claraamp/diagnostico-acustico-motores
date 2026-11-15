@@ -1,0 +1,19 @@
+\begin{table}[H]
+\centering
+\caption{MFCC e LDA na placa com ruído (segmentos do Jung com ruído somado a 51,2~kHz, antes da decimação, mandados pela serial a 12,8~kHz). Critério: decisões iguais às do Python e $|\Delta s| < E$ em todos os segmentos, com $E$ o limite absoluto do erro do escore do porte; a fração da tolerância relativa ($10^{-5}$ do escore) é só informação.}
+\label{tab:serial_placa_ruido}
+\small
+\begin{tabular}{llrrrrr}
+\toprule
+\textbf{Ruído} & \textbf{SNR} & \textbf{Segmentos} & \textbf{Concordância} & \textbf{$|\Delta s|/E$ máx.} & \textbf{\% tol. rel. máx.} & \textbf{Acima da tol. rel.} \\
+\midrule
+branco & 10~dB & 295 & 295/295 & 0,0027 & 9,3 & 0 \\
+ & 5~dB & 295 & 295/295 & 0,0025 & 19,6 & 0 \\
+ & 0~dB & 304 & 304/304 & 0,0018 & 5.433,0 & 16 \\
+\midrule
+rosa & 10~dB & 295 & 295/295 & 0,0020 & 11,9 & 0 \\
+ & 5~dB & 304 & 304/304 & 0,0020 & 493,0 & 8 \\
+ & 0~dB & 295 & 295/295 & 0,0019 & 9,5 & 0 \\
+\bottomrule
+\end{tabular}
+\end{table}
