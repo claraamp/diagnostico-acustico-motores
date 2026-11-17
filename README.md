@@ -242,6 +242,7 @@ diagnostico-acustico-motores/
 │       ├── run_protocol.py                # executável: roda A ou B e registra o resultado
 │       ├── run_protocol_c.py              # executável: Protocolo C no HUSTmotor (C1, C2 e recalibração da LDA)
 │       ├── matriz_serial_placa.py         # executável: segmentos pela serial à placa e matriz embarcada contra o Python
+│       ├── run_tempo_memoria.py           # executável: tempo (dois modos, E/S separada), memória e pilha do firmware final
 │       ├── run_tabela_comparativa.py      # executável: tabela provisório × oficial a partir dos metrics.json
 │       ├── run_tabela_controles.py        # executável: tabela dos controles (sem c0, permutação, curva)
 │       ├── run_tabela_aumento.py          # executável: tabela do B com e sem aumento de dados
@@ -402,6 +403,13 @@ python scripts/validation/matriz_serial_placa.py --captura reports/embarcado/cap
 python scripts/validation/matriz_serial_placa.py --lista --porta COM5 --sem-registro --limite 10   # robustez na placa: ensaio (10 por ruído)
 python scripts/validation/matriz_serial_placa.py --lista --porta COM5 --responsavel <nome>         # robustez na placa: os 1.788 (precisa do .bin do --exportar-placa)
 python scripts/validation/matriz_serial_placa.py --captura reports/embarcado/capturas/serial-ruido-15-11-2.log --lista --sem-registro   # refaz a matriz da robustez (15/11)
+
+# tempo e memória do firmware final (seção 3.5): a captura é a de uma rodada dos 295 + 40 com o firmware
+# gravado com -DMEDIDA=ON (linhas med); o orçamento e a pilha estática vêm do build padrão, pelos
+# tools/orcamento_memoria.py --markdown e tools/pilha_estatica.py do firmware
+python scripts/validation/run_tempo_memoria.py --captura reports/embarcado/capturas/tempo-memoria-DD-MM.log \
+    --orcamento reports/embarcado/tempo_memoria/orcamento.md --pilha reports/embarcado/tempo_memoria/pilha_estatica.txt \
+    --firmware-commit <hash> --responsavel <nome>    # resumo.md, tabelas.tex e segmentos.csv em reports/embarcado/tempo_memoria/
 
 # tabelas (leem os metrics.json; não treinam nem registram)
 python scripts/validation/run_tabela_comparativa.py   # provisório × oficial
