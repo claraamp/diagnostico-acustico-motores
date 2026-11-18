@@ -131,6 +131,8 @@ O escore do Python é recalculado do mesmo `int16` que vai no quadro (`dsp.mfcc`
 
 **Rodada na placa (07/11, `exp303`–`exp304`):** firmware `58da414` (`main` do firmware, com o PR #12: 921.600 bit/s e o contador de voltas do anel), análise no commit `fe083e1`. Os 335 segmentos foram processados na primeira tentativa, sem `$ERR`, timeout, estouro do anel, checksum errado nem reinício. A concordância placa × Python é de **295/295 no Jung** (pior caso `bpfi_1.0mm_seg0127`, com 9,8 % da tolerância; mediana 2,2 %) e de **40/40 no HUSTmotor** (pior caso `bf_20hz_a4`, com 7,6 %; mediana 1,3 %). As matrizes da placa são iguais às do Python: no Jung, 59 normais e 236 falhas na diagonal (treino do modelo final: fidelidade, não desempenho); no HUSTmotor, os 20 normais e as 20 falhas decididos como falha, como a LDA do Jung sem retreino (`exp274`). Os 10 segmentos dos clipes saíram, pela serial, bit a bit iguais às linhas `ref`. Por quadro, a mediana foi de 306 ms de recepção (os 25.618 B a 925.926 bit/s reais dão 277 ms; o resto são intervalos entre bytes no PC e no adaptador) e de 5,85 milhões de ciclos de MFCC e LDA (58,5 ms a 100 MHz). Contra o ensaio no emulador, o pior caso do Jung foi de 11,3 % (`bpfi_1.0mm_seg0167`) para 9,8 % (`bpfi_1.0mm_seg0127`), e o do HUSTmotor, de 13,2 % para 7,6 %: a placa funde multiplicação e soma (`vfma.f32`), e o emulador, compilado no PC, não.
 
+**Tempo e memória do firmware final (18/11, `exp322`):** firmware `025449f` (PR #14 do firmware) gravado com `-DMEDIDA=ON`, análise pelo `run_tempo_memoria.py`; a rodada dos 295 + 40 pela serial deu 295/295 e 40/40, com os **335 escores bit a bit iguais aos de 07/11** (o build de medida não mexe na cadeia), e o build padrão do mesmo commit sai byte a byte igual ao da `main` do firmware. **Memória:** 450.236 B de flash (85,9 %; 450.228 B pela soma das partes, 8 B de alinhamento) e 34.992 B de RAM (26,7 %), +9.560 B e +3.344 B desde 22/10, quase tudo da recepção pela serial (3.245 B de RAM) e da HAL com o DMA e a IRQ da USART1 (+5.522 B de flash). **Pilha:** pior caso estático de 1.708 B (boot, com as interrupções) e 1.588 B no modo de recepção; medida na placa, 1.228 B no boot e 1.124 B na recepção, contra a reserva de 4.096 B. **Modo (a), áudio da flash:** 174,42 ms por segundo de áudio, mais 0,5 ms do `$SEG`, ou 17,5 % do tempo real (341 ciclos por amostra contra 1.953 a 51,2 kHz). **Modo (b), pela serial:** 306,3 ms de linha (276,7 teóricos e 30,2 ms em ~400 pausas curtas do adaptador, uma por pacote USB), 121,1 ms de CPU (58,5 de MFCC e LDA e 62,6 de recepção byte a byte, quase tudo custo fixo das leituras do anel, a 1,24 bytes por leitura), ou 39,5 % do tempo de linha, um teto do laço como está escrito; o ciclo por segmento é de 311,0 ms, 3,2 vezes o tempo real. O critério de tempo real vale nos dois modos: em (b), no período de um byte na linha (473 ciclos de CPU contra 1.080; a maior leitura do anel, 0,61 ms, contra os 22,1 ms em que ele enche). A rodada de 16/11 (`reports/embarcado/capturas/tempo-memoria-16-11.log`, firmware `2c67598`) foi a primeira com o build de medida e fica versionada; foi substituída por esta depois da revisão do PR #14 do firmware, que repintou a pilha no modo de recepção e pôs o campo `leituras` na linha `med`. Os tempos das duas rodadas diferem em menos de 0,1 %.
+
 Os quadros vão já decimados a 12,8 kHz, então a rodada testa o MFCC e a LDA, e não a decimação. Na placa, a decimação é testada pelo recorte de 1 s a 51,2 kHz do segmento 29, no boot da mesma captura (`DECIMACAO OK` e a linha `ponta`: escore a 8,3 % da tolerância, 174,4 ms para a cadeia inteira, dos quais 115,9 ms de decimação, ou 17,4 % do tempo real); no PC, nas 5 gravações inteiras (`decimar_gravacao.c` do firmware). Para o critério de tempo real vale o número da cadeia inteira, e não os 58,5 ms. Saídas em `reports/embarcado/serial_07_11/`, captura em `reports/embarcado/capturas/serial-07-11.log`.
 
 ### Robustez ao ruído: varredura de SNR (`exp305`–`exp319`) e rodada na placa (`exp320`–`exp321`)
@@ -242,6 +244,7 @@ diagnostico-acustico-motores/
 │       ├── run_protocol.py                # executável: roda A ou B e registra o resultado
 │       ├── run_protocol_c.py              # executável: Protocolo C no HUSTmotor (C1, C2 e recalibração da LDA)
 │       ├── matriz_serial_placa.py         # executável: segmentos pela serial à placa e matriz embarcada contra o Python
+│       ├── run_tempo_memoria.py           # executável: tempo (dois modos, E/S separada), memória e pilha do firmware final
 │       ├── run_tabela_comparativa.py      # executável: tabela provisório × oficial a partir dos metrics.json
 │       ├── run_tabela_controles.py        # executável: tabela dos controles (sem c0, permutação, curva)
 │       ├── run_tabela_aumento.py          # executável: tabela do B com e sem aumento de dados
@@ -402,6 +405,15 @@ python scripts/validation/matriz_serial_placa.py --captura reports/embarcado/cap
 python scripts/validation/matriz_serial_placa.py --lista --porta COM5 --sem-registro --limite 10   # robustez na placa: ensaio (10 por ruído)
 python scripts/validation/matriz_serial_placa.py --lista --porta COM5 --responsavel <nome>         # robustez na placa: os 1.788 (precisa do .bin do --exportar-placa)
 python scripts/validation/matriz_serial_placa.py --captura reports/embarcado/capturas/serial-ruido-15-11-2.log --lista --sem-registro   # refaz a matriz da robustez (15/11)
+
+# tempo e memória do firmware final (seção 3.6 do relatório final): a captura é a de uma rodada dos 295 + 40
+# com o firmware gravado com -DMEDIDA=ON (linhas med); o orçamento e a pilha estática vêm do build padrão,
+# pelos tools/orcamento_memoria.py --markdown e tools/pilha_estatica.py do firmware; --linker é o "Memory
+# region" do build padrão, e --comparar-captura confere os escores bit a bit contra outra rodada
+python scripts/validation/run_tempo_memoria.py --captura reports/embarcado/capturas/tempo-memoria-DD-MM.log \
+    --orcamento reports/embarcado/tempo_memoria/orcamento.md --pilha reports/embarcado/tempo_memoria/pilha_estatica.txt \
+    --linker 450236 34992 --comparar-captura reports/embarcado/capturas/serial-07-11.log \
+    --firmware-commit <hash> --responsavel <nome>    # resumo.md, tabelas.tex e segmentos.csv em reports/embarcado/tempo_memoria/
 
 # tabelas (leem os metrics.json; não treinam nem registram)
 python scripts/validation/run_tabela_comparativa.py   # provisório × oficial

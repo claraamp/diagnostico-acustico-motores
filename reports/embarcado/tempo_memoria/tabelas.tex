@@ -1,0 +1,58 @@
+\begin{table}[H]
+\centering
+\caption{Ocupação de memória do firmware, por parte: 2\textordmasculine\ parcial (22/10) e firmware final, com a recepção pela serial (versão de depuração, somada a partir do mapa de memória do \emph{linker}). O \emph{linker} conta 8~B a mais de \emph{flash}, o alinhamento depois da tabela de vetores: 440.676~B em 22/10 e 450.236~B no final.}
+\label{tab:final_memoria}
+\small
+\begin{tabular}{lrrrr}
+\toprule
+ & \multicolumn{2}{c}{\textbf{Flash (B)}} & \multicolumn{2}{c}{\textbf{RAM (B)}} \\
+\cmidrule(lr){2-3}\cmidrule(lr){4-5}
+\textbf{Parte} & \textbf{22/10} & \textbf{Final} & \textbf{22/10} & \textbf{Final} \\
+\midrule
+Clipes a 12,8~kHz (5 gravações $\times$ 2~s) & 256.215 & 256.215 & 0 & 0 \\
+Recorte a 51,2~kHz (1~s, com as margens) & 103.284 & 103.284 & 0 & 0 \\
+Extração de características (MFCC) & 1.432 & 1.432 & 10.788 & 10.788 \\
+Cadeia completa na placa (verificação e laço) & 3.569 & 3.569 & 3.446 & 3.446 \\
+Decimação e inferência de ponta a ponta & 6.108 & 5.988 & 7.125 & 7.125 \\
+Recepção pela serial (anel do DMA e parser) & --- & 3.055 & --- & 3.245 \\
+CRC-32 & --- & 200 & --- & 0 \\
+Classificador e vetores de teste & 37.352 & 37.804 & 0 & 0 \\
+Pacote da serial & 1.398 & 1.598 & 0 & 0 \\
+CMSIS-DSP & 13.028 & 13.028 & 0 & 0 \\
+HAL e inicialização (CubeMX) & 6.025 & 11.547 & 13 & 13 \\
+Aplicação base (\texttt{main.c}, FFT de teste) & 2.224 & 2.472 & 5.220 & 5.316 \\
+Biblioteca C & 9.856 & 9.856 & 408 & 408 \\
+Reserva mínima de \emph{heap} e pilha & 0 & 0 & 4.612 & 4.612 \\
+Outros e alinhamento & 177 & 180 & 36 & 39 \\
+\midrule
+\textbf{Total} & \textbf{440.668} & \textbf{450.228} & \textbf{31.648} & \textbf{34.992} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[H]
+\centering
+\caption{Tempo por segundo de áudio nos dois modos do firmware final (DWT a 100~MHz; no modo (b), mediana dos 335 segmentos da rodada pela serial; o ciclo por segmento soma o pedido, a espera, a linha e a resposta, sem a linha de medida, que o firmware normal não manda).}
+\label{tab:final_tempo}
+\small
+\begin{tabular}{llr}
+\toprule
+\textbf{Modo} & \textbf{Etapa} & \textbf{Tempo (ms)} \\
+\midrule
+(a) Áudio da \emph{flash} & Decimação (FIR, fator 4) & 115,93 \\
+ & Cadeia (MFCC e LDA) & 58,49 \\
+ & Envio do \texttt{\$SEG} (46~B) & 0,50 \\
+ & \textbf{Total} & \textbf{174,91} \\
+\midrule
+(b) Segmento pela serial & Espera do computador (do \texttt{\$PED} ao 1\textordmasculine\ byte) & 2,31 \\
+ & Linha (25.618~B a 925.925~bit/s; teórico 276,7) & 306,3 \\
+ & \quad das quais, linha parada entre pacotes & 30,2 \\
+ & CPU durante a linha & 121,1 \\
+ & \quad MFCC e LDA & 58,50 \\
+ & \quad recepção byte a byte, com o custo de cada leitura do anel & 62,64 \\
+ & Resposta (LDA, \texttt{rx} e \texttt{\$SEG}) & 2,18 \\
+ & Pedido (\texttt{\$PED}) & 0,16 \\
+ & \textbf{Ciclo por segmento} & \textbf{311,0} \\
+\bottomrule
+\end{tabular}
+\end{table}
