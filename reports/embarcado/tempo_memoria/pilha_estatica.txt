@@ -12,7 +12,8 @@ main (boot e laco): 1144 B
     144 B  arm_cfft_radix8by4_f32
     160 B  arm_radix8_butterfly_f32
 
-recepcao_serial_executar (modo de recepcao): 928 B
+main pelo recepcao_serial_executar (modo de recepcao): 1024 B
+     96 B  main
     256 B  recepcao_serial_executar
     176 B  pacote_linha
      64 B  texto_fixo
@@ -35,7 +36,7 @@ DMA2_Stream2_IRQHandler (nivel 0): 176 B
       8 B  DMA2_Stream2_IRQHandler
      32 B  HAL_DMA_IRQHandler
     120 B  UART_DMAReceiveCplt
-     16 B  HAL_UARTEx_RxEventCallback
+     16 B  HAL_UART_RxCpltCallback
 
 SysTick_Handler (nivel 15): 12 B
       8 B  SysTick_Handler
@@ -43,7 +44,4 @@ SysTick_Handler (nivel 15): 12 B
 
 Pior caso (main + SysTick interrompido por USART1 ou DMA2, cada entrada com 108 B de quadro de excecao)
   main 1144 B + interrupcoes 564 B = 1708 B, contra a reserva de 4096 B (42 %); folga 2388 B
-  so o modo de recepcao: 928 B + 564 B = 1492 B
-
-Chamadas que o grafo nao resolve (por ponteiro ou sem simbolo), nas funcoes alcancadas:
-  __indirect_call: chamada de HAL_DMA_IRQHandler, HAL_UART_IRQHandler, cadeia_avaliar.part.0, cadeia_inferir, cadeia_verificar_com, decimacao_bloco, decimacao_conferir, decimacao_executar, decimacao_verificar_com, recepcao_caracteristicas, recepcao_receber
+  so o modo de recepcao: 1024 B + 564 B = 1588 B

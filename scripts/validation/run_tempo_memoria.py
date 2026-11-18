@@ -3,7 +3,7 @@
 run_tempo_memoria.py — tempo de execução e ocupação de memória do firmware final
 
 Card "Medir tempo de execução e ocupação de memória da cadeia embarcada" (Fase 3,
-seção 3.5 do relatório final). Junta três medidas do firmware de `main` e escreve
+seção 3.6 do relatório final, Tempo e Memória). Junta três medidas do firmware de `main` e escreve
 a tabela da seção, o resumo e a linha do registry:
 
 1. **Memória** (build padrão do firmware): a saída do `tools/orcamento_memoria.py
@@ -15,8 +15,16 @@ a tabela da seção, o resumo e a linha do registry:
 3. **Tempo**, nos dois modos, da captura do build de medida (`-DMEDIDA=ON`):
    (a) áudio da flash, do int16 a 51,2 kHz ao escore (linha `decim ciclos` do
    boot), mais o envio do `$SEG`; (b) segmento recebido pela serial, com a E/S
-   separada do processamento pelas linhas `med` (espera do PC, tempo de linha,
-   lacunas, trabalho da CPU com os bytes, resposta).
+   separada do processamento pelas linhas `med` (o `$PED`, a espera do PC, o
+   tempo de linha, as lacunas, o trabalho da CPU com o quadro e a resposta).
+
+A flash do resumo e das tabelas é a soma das partes do orçamento; o linker conta
+8 B a mais (o alinhamento depois do `.isr_vector`). Com `--linker FLASH RAM` (o
+"Memory region" do fim do build), o resumo e a legenda da tabela dão os dois.
+Com `--comparar-captura`, os escores (`escore_hex` da `rx`) de cada segmento são
+comparados, bit a bit, com os de outra rodada pela serial: o build de medida não
+pode mexer na cadeia. A data do registry é a da rodada (`#pc rodada inicio
+data=` da captura), como nas rodadas do `matriz_serial_placa.py`.
 
 O critério de tempo real (Kuo, Lee e Tian, 2013, como na proposta): tempo de
 processamento mais o de E/S menor que o período de amostragem. Em (a), o período
@@ -28,7 +36,9 @@ baud real) e a folga do anel do DMA. O resumo diz os dois.
         --captura reports/embarcado/capturas/tempo-memoria-AAAA-MM-DD.log \\
         --orcamento reports/embarcado/tempo_memoria/orcamento.md \\
         --pilha reports/embarcado/tempo_memoria/pilha_estatica.txt \\
-        --firmware-commit <hash do main do firmware> --responsavel Clara
+        --linker 450236 34992 \\
+        --comparar-captura reports/embarcado/capturas/serial-07-11.log \\
+        --firmware-commit <hash do firmware gravado> --responsavel Clara
 
 Com --sem-registro, não escreve no registry (ensaio).
 """
@@ -76,7 +86,7 @@ P2 = {
     "outros e alinhamento": (177, 36),
 }
 P2_TOTAL = (440668, 31648)
-P2_LINKER = (440676, 31648)
+P2_LINKER = (440676, 31648)   # "Memory region" do build de 22/10 (8 B de alinhamento a mais)
 
 # Partes do script -> linha da tabela do relatório (pt-BR, como na tab:res_flash)
 ROTULOS = [
@@ -135,6 +145,9 @@ def ler_pilha(caminho: Path) -> dict[str, int]:
     r = re.search(r"so o modo de recepcao: (\d+) B \+ (\d+) B = (\d+) B", txt)
     if not (m and r):
         raise SystemExit(f"{caminho}: não achei o pior caso (é a saída do tools/pilha_estatica.py?)")
+    if "main pelo recepcao_serial_executar" not in txt:
+        raise SystemExit(f"{caminho}: saída de um pilha_estatica.py anterior à revisão do PR #14 do firmware "
+                         "(o modo de recepção sem o quadro do main); gere de novo")
     return {"main": int(m.group(1)), "interrupcoes": int(m.group(2)), "pior": int(m.group(3)),
             "recepcao": int(r.group(3))}
 
@@ -142,10 +155,14 @@ def ler_pilha(caminho: Path) -> dict[str, int]:
 def ler_captura(caminho: Path) -> dict:
     linhas = caminho.read_text(encoding="utf-8", errors="replace").splitlines()
     cap = {"clock_mhz": None, "decim": None, "cadeia": None, "seg_d": [], "inicio": None,
-           "pares": [], "erros": 0, "estouros": 0}
+           "pares": [], "erros": 0, "estouros": 0, "data": None, "ped": []}
     rx = None
     for l in linhas:
-        if l.startswith("$CAB,"):
+        if l.startswith("#pc rodada inicio ") and cap["data"] is None:
+            cap["data"] = dict(RE_KV.findall(l)).get("data")
+        elif l.startswith("$PED,"):
+            cap["ped"].append(len(l) + 2)
+        elif l.startswith("$CAB,"):
             campos = l.split("*")[0].split(",")
             cap["clock_mhz"] = int(campos[5])
         elif l.startswith("decim ciclos ") and cap["decim"] is None:
@@ -178,7 +195,30 @@ def ler_captura(caminho: Path) -> dict:
         raise SystemExit(f"{caminho}: sem linhas med (o firmware foi gravado com -DMEDIDA=ON?)")
     if cap["decim"] is None:
         raise SystemExit(f"{caminho}: sem a linha 'decim ciclos' do boot (a captura começa no RESET?)")
+    if "leituras" not in cap["pares"][0]["med"]:
+        raise SystemExit(f"{caminho}: linhas med sem o campo leituras (firmware de medida anterior "
+                         "à revisão do PR #14; grave o atual e refaça a rodada)")
     return cap
+
+
+def comparar_escores(cap: dict, outra: Path) -> dict:
+    """Escores de cada segmento contra os de outra rodada pela serial, bit a bit."""
+    ref = {}
+    for l in outra.read_text(encoding="utf-8", errors="replace").splitlines():
+        if l.startswith("rx grupo="):
+            kv = dict(RE_KV.findall(l))
+            if "escore_hex" in kv and int(kv.get("estouros", 0)) == 0:
+                ref[(kv["grupo"], kv["id"])] = kv["escore_hex"]
+    iguais = diferentes = sem_par = 0
+    for p in cap["pares"]:
+        chave = (p["rx"]["grupo"], p["rx"]["id"])
+        if chave not in ref:
+            sem_par += 1
+        elif ref[chave] == p["rx"]["escore_hex"]:
+            iguais += 1
+        else:
+            diferentes += 1
+    return {"captura": outra.name, "iguais": iguais, "diferentes": diferentes, "sem_par": sem_par}
 
 
 # --------------------------------------------------------------------------- #
@@ -209,8 +249,10 @@ def calcular(cap: dict, orc: dict, pilha: dict) -> dict:
     }
 
     # (b) segmento pela serial
+    ped_ms = 1000.0 * (statistics.median(cap["ped"]) if cap["ped"] else 12) * 10 / baud
     por = {k: [] for k in ("espera", "linha", "lacunas", "lacuna_max", "consumir", "ciclos", "bytes_cpu",
-                           "consumir_max", "resposta", "ciclo", "ocupacao", "pilha", "n_bytes", "ms")}
+                           "consumir_max", "resposta", "ciclo", "ocupacao", "pilha", "n_bytes", "ms",
+                           "bytes_por_leitura", "ciclos_por_leitura")}
     for p in cap["pares"]:
         rx, m = p["rx"], p["med"]
         ciclos = int(rx["ciclos"])
@@ -222,11 +264,15 @@ def calcular(cap: dict, orc: dict, pilha: dict) -> dict:
         por["consumir"].append(ms(m["consumir"]))
         por["ciclos"].append(ciclos)
         # o consumir() faz os quadros do MFCC e o resumo; o ciclos da rx tem esses e a
-        # LDA (~240 ciclos). A diferença é o trabalho byte a byte (cópia, CRC, amostras)
+        # LDA (~240 ciclos). A diferença é a recepção byte a byte, com o custo fixo de
+        # cada chamada ao consumir() que achou bytes (o laço lê a cada um ou dois)
         por["bytes_cpu"].append(ms(max(m["consumir"] - ciclos, 0)))
+        por["bytes_por_leitura"].append(n_bytes / max(m["leituras"], 1))
+        por["ciclos_por_leitura"].append(max(m["consumir"] - ciclos, 0) / max(m["leituras"], 1))
         por["consumir_max"].append(m["consumir_max_us"] / 1000)
         por["resposta"].append(m["resposta_us"] / 1000)
-        por["ciclo"].append((m["espera_us"] + m["linha_us"] + m["resposta_us"]) / 1000)
+        # o $PED tambem existe no firmware normal; a propria med, nao
+        por["ciclo"].append(ped_ms + (m["espera_us"] + m["linha_us"] + m["resposta_us"]) / 1000)
         por["ocupacao"].append(100.0 * m["consumir"] / max(m["linha_us"] * clock / 1e6, 1))
         por["pilha"].append(m["pilha"])
         por["n_bytes"].append(n_bytes)
@@ -241,7 +287,7 @@ def calcular(cap: dict, orc: dict, pilha: dict) -> dict:
             [p["med"]["consumir"] / int(p["rx"]["bytes"]) for p in cap["pares"]]),
         "anel_ms": 1000.0 * ANEL_RX * 10 / baud,
         "vezes_tempo_real": 1000.0 / est["ciclo"]["med"],
-        "erros": cap["erros"], "estouros": cap["estouros"],
+        "erros": cap["erros"], "estouros": cap["estouros"], "ped_ms": ped_ms,
     }
 
     # memória e pilha
@@ -249,10 +295,12 @@ def calcular(cap: dict, orc: dict, pilha: dict) -> dict:
     mem = {"partes": orc, "flash": tot[0], "ram": tot[1],
            "flash_livre": FLASH_TOTAL - tot[0], "ram_livre": RAM_TOTAL - tot[1],
            "p2": P2_TOTAL}
-    pilha_med = max(por["pilha"] + [ini.get("pilha_boot", 0)])
-    pl = dict(pilha, medida=pilha_med, medida_boot=ini.get("pilha_boot"), reserva=RESERVA_PILHA,
-              pintada=ini.get("pilha_pintada"))
-    return {"a": a, "b": b, "mem": mem, "pilha": pl, "clock": clock}
+    # a pilha é pintada de novo depois da "med inicio": pilha_boot é o boot e a
+    # demonstração, e o pilha= das med, só a recepção
+    pl = dict(pilha, medida_boot=ini.get("pilha_boot", 0), medida_recepcao=max(por["pilha"]),
+              reserva=ini.get("pilha_reserva", RESERVA_PILHA), pintada=ini.get("pilha_pintada"))
+    pl["medida"] = max(pl["medida_boot"], pl["medida_recepcao"])
+    return {"a": a, "b": b, "mem": mem, "pilha": pl, "clock": clock, "linker": None, "comparacao": None}
 
 
 # --------------------------------------------------------------------------- #
@@ -264,7 +312,7 @@ def br(x: float, casas: int = 1) -> str:
     return s.replace(",", "X").replace(".", ",").replace("X", ".")
 
 
-def tabela_memoria_tex(mem: dict) -> str:
+def tabela_memoria_tex(mem: dict, linker=None) -> str:
     linhas = []
     for chave, rotulo in ROTULOS:
         f, r = mem["partes"].get(chave, (0, 0))
@@ -273,9 +321,14 @@ def tabela_memoria_tex(mem: dict) -> str:
         p2r = br(r2, 0) if r2 is not None else "---"
         linhas.append(f"{rotulo} & {p2f} & {br(f, 0)} & {p2r} & {br(r, 0)} \\\\")
     corpo = "\n".join(linhas)
+    nota_linker = ""
+    if linker:
+        nota_linker = (f" O \\emph{{linker}} conta {br(linker[0] - mem['flash'], 0)}~B a mais de \\emph{{flash}}, "
+                       f"o alinhamento depois da tabela de vetores: {br(P2_LINKER[0], 0)}~B em 22/10 e "
+                       f"{br(linker[0], 0)}~B no final.")
     return f"""\\begin{{table}}[H]
 \\centering
-\\caption{{Ocupação de memória do firmware, por parte: 2\\textordmasculine\\ parcial (22/10) e firmware final, com a recepção pela serial (versão de depuração, pelo mapa de memória do \\emph{{linker}}).}}
+\\caption{{Ocupação de memória do firmware, por parte: 2\\textordmasculine\\ parcial (22/10) e firmware final, com a recepção pela serial (versão de depuração, somada a partir do mapa de memória do \\emph{{linker}}).{nota_linker}}}
 \\label{{tab:final_memoria}}
 \\small
 \\begin{{tabular}}{{lrrrr}}
@@ -298,7 +351,7 @@ def tabela_tempo_tex(r: dict) -> str:
     med = lambda k, c=1: br(e[k]["med"], c)
     return f"""\\begin{{table}}[H]
 \\centering
-\\caption{{Tempo por segundo de áudio nos dois modos do firmware final (DWT a 100~MHz; no modo (b), mediana dos {b['n']} segmentos da rodada pela serial).}}
+\\caption{{Tempo por segundo de áudio nos dois modos do firmware final (DWT a 100~MHz; no modo (b), mediana dos {b['n']} segmentos da rodada pela serial; o ciclo por segmento soma o pedido, a espera, a linha e a resposta, sem a linha de medida, que o firmware normal não manda).}}
 \\label{{tab:final_tempo}}
 \\small
 \\begin{{tabular}}{{llr}}
@@ -310,13 +363,15 @@ def tabela_tempo_tex(r: dict) -> str:
  & Envio do \\texttt{{\\$SEG}} ({br(a['seg_bytes'], 0)}~B) & {br(a['es_us'] / 1000, 2)} \\\\
  & \\textbf{{Total}} & \\textbf{{{br(a['proc_ms'] + a['es_us'] / 1000, 2)}}} \\\\
 \\midrule
-(b) Segmento pela serial & Espera do PC (do \\texttt{{\\$PED}} ao 1\\textordmasculine\\ byte) & {med('espera', 2)} \\\\
+(b) Segmento pela serial & Espera do computador (do \\texttt{{\\$PED}} ao 1\\textordmasculine\\ byte) & {med('espera', 2)} \\\\
  & Linha ({br(b['n_bytes'], 0)}~B a {br(b['baud'], 0)}~bit/s; teórico {br(b['linha_teorica_ms'], 1)}) & {med('linha')} \\\\
  & \\quad das quais, linha parada entre pacotes & {med('lacunas')} \\\\
- & CPU durante a linha (MFCC e bytes) & {med('consumir')} \\\\
- & \\quad das quais, bytes (cópia, CRC, amostras) & {med('bytes_cpu', 2)} \\\\
+ & CPU durante a linha & {med('consumir')} \\\\
+ & \\quad MFCC e LDA & {br(1000 * e['ciclos']['med'] / r['clock'], 2)} \\\\
+ & \\quad recepção byte a byte, com o custo de cada leitura do anel & {med('bytes_cpu', 2)} \\\\
  & Resposta (LDA, \\texttt{{rx}} e \\texttt{{\\$SEG}}) & {med('resposta', 2)} \\\\
- & \\textbf{{Ciclo por segmento}} (espera, linha e resposta) & \\textbf{{{med('ciclo')}}} \\\\
+ & Pedido (\\texttt{{\\$PED}}) & {br(b['ped_ms'], 2)} \\\\
+ & \\textbf{{Ciclo por segmento}} & \\textbf{{{med('ciclo')}}} \\\\
 \\bottomrule
 \\end{{tabular}}
 \\end{{table}}
@@ -332,12 +387,23 @@ def resumo_md(r: dict, meta: dict) -> str:
     t = lambda k, c=1: f"{br(e[k]['med'], c)} (mín. {br(e[k]['min'], c)}, máx. {br(e[k]['max'], c)})"
     cumpre_a = a["ciclos_por_amostra"] < a["orcamento_por_amostra"]
     cumpre_b = b["cpu_por_byte"] < b["ciclos_por_byte"] and e["consumir_max"]["max"] < b["anel_ms"]
+    c = r.get("comparacao")
+    linha_comparacao = ""
+    if c:
+        linha_comparacao = (f"\nEscores contra a rodada `{c['captura']}`: **{c['iguais']} iguais bit a bit**, "
+                            f"{c['diferentes']} diferentes, {c['sem_par']} sem par. O build de medida não mexe na cadeia.\n")
+    lk = r.get("linker")
+    linha_linker = ""
+    if lk:
+        linha_linker = (f"\n- Soma das partes; o linker (\"Memory region\") dá {br(lk[0], 0)} B de flash e "
+                        f"{br(lk[1], 0)} B de RAM: {br(lk[0] - mem['flash'], 0)} B de alinhamento depois do "
+                        f"`.isr_vector`, como em 22/10 ({br(P2_LINKER[0], 0)} B pelo linker).")
     return f"""# Tempo de execução e ocupação de memória do firmware final
 
 Captura `{meta['captura']}` (sha {meta['captura_sha']}), firmware `{meta['firmware_commit']}` com `-DMEDIDA=ON`
 para o tempo e a pilha medida; memória e pilha estática do build padrão (Debug, `-DMEDIDA=OFF`).
-Relógio de {r['clock'] // 1_000_000} MHz; baud real {br(b['baud'], 0)} bit/s ({b['ciclos_por_byte']} ciclos por byte de 10 bits).
-
+Relógio de {r['clock'] // 1_000_000} MHz; baud real {br(b['baud'], 0)} bit/s ({b['ciclos_por_byte']} ciclos por byte de 10 bits). Rodada de {meta['data']}.
+{linha_comparacao}
 ## Memória (build padrão)
 
 | Parte | Flash 22/10 | Flash final | RAM 22/10 | RAM final |
@@ -346,12 +412,12 @@ Relógio de {r['clock'] // 1_000_000} MHz; baud real {br(b['baud'], 0)} bit/s ({
 | **total** | **{br(P2_TOTAL[0], 0)}** | **{br(mem['flash'], 0)}** | **{br(P2_TOTAL[1], 0)}** | **{br(mem['ram'], 0)}** |
 
 - Flash: {br(mem['flash'], 0)} B de {br(FLASH_TOTAL, 0)} ({br(100 * mem['flash'] / FLASH_TOTAL)} %), {br(mem['flash'] - P2_TOTAL[0], 0)} B a mais que em 22/10; livres {br(mem['flash_livre'], 0)} B.
-- RAM: {br(mem['ram'], 0)} B de {br(RAM_TOTAL, 0)} ({br(100 * mem['ram'] / RAM_TOTAL)} %), {br(mem['ram'] - P2_TOTAL[1], 0)} B a mais; livres {br(mem['ram_livre'], 0)} B.
+- RAM: {br(mem['ram'], 0)} B de {br(RAM_TOTAL, 0)} ({br(100 * mem['ram'] / RAM_TOTAL)} %), {br(mem['ram'] - P2_TOTAL[1], 0)} B a mais; livres {br(mem['ram_livre'], 0)} B.{linha_linker}
 
 ## Pilha
 
-- Estática (`tools/pilha_estatica.py`, pior caminho com as interrupções): **{pl['pior']} B** ({pl['main']} B do `main` e {pl['interrupcoes']} B de interrupções); só o modo de recepção, {pl['recepcao']} B.
-- Medida na placa (marca d'água desde o boot): **{pl['medida']} B** (no fim do boot e da demonstração, {pl['medida_boot']} B).
+- Estática (`tools/pilha_estatica.py`, pior caminho com as interrupções): **{pl['pior']} B** ({pl['main']} B do `main` e {pl['interrupcoes']} B de interrupções); só o modo de recepção, a partir do `main`, {pl['recepcao']} B.
+- Medida na placa (marca d'água): boot e demonstração, **{pl['medida_boot']} B**; modo de recepção (pilha pintada de novo depois da `med inicio`), **{pl['medida_recepcao']} B**.
 - Reserva do linker: {pl['reserva']} B. Uso: {br(100 * max(pl['pior'], pl['medida']) / pl['reserva'], 0)} % no pior dos dois.
 
 ## (a) Áudio da flash, do int16 a 51,2 kHz ao escore
@@ -371,14 +437,16 @@ Relógio de {r['clock'] // 1_000_000} MHz; baud real {br(b['baud'], 0)} bit/s ({
 | lacunas (linha parada) | {t('lacunas')} |
 | maior lacuna | {t('lacuna_max', 2)} |
 | CPU com o quadro (`consumir()`) | {t('consumir')} |
-| ... dos quais, bytes (cópia, CRC, amostras) | {t('bytes_cpu', 2)} |
+| ... dos quais, recepção byte a byte (inclui o custo de cada chamada ao `consumir()`) | {t('bytes_cpu', 2)} |
 | maior chamada ao `consumir()` | {t('consumir_max', 2)} |
 | resposta (LDA, `rx` e `$SEG`) | {t('resposta', 2)} |
-| ciclo por segmento (espera + linha + resposta) | {t('ciclo')} |
+| pedido (`$PED`, {br(b['ped_ms'] * b['baud'] / 10000, 0)} B na linha) | {br(b['ped_ms'], 2)} |
+| ciclo por segmento (`$PED` + espera + linha + resposta; sem a `med`, que o firmware normal não manda) | {t('ciclo')} |
 | campo `ms` da `rx` (resolução de 1 ms) | {t('ms', 0)} |
 
 - MFCC e LDA (campo `ciclos` da `rx`): mediana {br(e['ciclos']['med'], 0)} ciclos ({br(1000 * e['ciclos']['med'] / r['clock'], 2)} ms).
-- A CPU fica ocupada {br(e['ocupacao']['med'])} % do tempo de linha; trabalha {br(b['cpu_por_byte'], 0)} ciclos por byte recebido, contra {b['ciclos_por_byte']} de um byte na linha.
+- Cada chamada ao `consumir()` que achou bytes pegou {br(e['bytes_por_leitura']['med'], 2)} bytes (mediana), com {br(e['ciclos_por_leitura']['med'], 0)} ciclos fora do MFCC: a recepção byte a byte é, em boa parte, o custo fixo de cada leitura do anel, e cairia se a CPU estivesse ocupada.
+- A CPU fica ocupada {br(e['ocupacao']['med'])} % do tempo de linha (um teto do laço como está escrito, não o mínimo necessário); trabalha {br(b['cpu_por_byte'], 0)} ciclos por byte recebido, contra {b['ciclos_por_byte']} de um byte na linha.
 - A maior chamada ao `consumir()` ({br(e['consumir_max']['max'], 2)} ms) fica abaixo dos {br(b['anel_ms'], 1)} ms em que o anel de 2 KB enche.
 - Um segmento de 1 s de áudio a cada {br(e['ciclo']['med'])} ms: **{br(b['vezes_tempo_real'], 1)} vezes o tempo real**. **Critério {'cumprido' if cumpre_b else 'NÃO cumprido'}** no período que vale neste modo (o de um byte na linha).
 """
@@ -393,26 +461,35 @@ def linha_registry(r: dict, meta: dict, proximo: int, responsavel: str, notas: s
             "firmware_commit": meta["firmware_commit"], "build_memoria": "Debug_padrao",
             "build_tempo": "Debug_MEDIDA", "captura": meta["captura"], "captura_sha": meta["captura_sha"],
             "clock_mhz": r["clock"] // 1_000_000, "baud_real": b["baud"], "modelo": "exp239"}),
-        "dataset": f"firmware_main;rodada_serial_{b['n']}seg;recorte_51200Hz_seg29",
+        "dataset": f"firmware_main+rodada_serial_{b['n']}seg+recorte_51200Hz_seg29",
         "metricas": experimentos.kv({
             "flash_b": mem["flash"], "ram_b": mem["ram"], "flash_livre_b": mem["flash_livre"],
             "ram_livre_b": mem["ram_livre"], "flash_delta_p2_b": mem["flash"] - P2_TOTAL[0],
             "ram_delta_p2_b": mem["ram"] - P2_TOTAL[1],
-            "pilha_estatica_b": pl["pior"], "pilha_medida_b": pl["medida"], "pilha_reserva_b": pl["reserva"],
+            "flash_linker_b": (r["linker"] or (None,))[0] or "", "ram_linker_b": (r["linker"] or (None, None))[1] or "",
+            "pilha_estatica_b": pl["pior"], "pilha_estatica_recepcao_b": pl["recepcao"],
+            "pilha_boot_b": pl["medida_boot"], "pilha_recepcao_b": pl["medida_recepcao"],
+            "pilha_reserva_b": pl["reserva"],
             "a_ciclos_total": a["ciclos_total"], "a_proc_ms": f"{a['proc_ms']:.2f}",
             "a_es_us": f"{a['es_us']:.0f}", "a_tempo_real_pct": f"{a['tempo_real_pct']:.2f}",
             "a_ciclos_por_amostra": f"{a['ciclos_por_amostra']:.0f}",
             "b_segmentos": b["n"], "b_espera_ms": f"{e['espera']['med']:.2f}",
             "b_linha_ms": f"{e['linha']['med']:.1f}", "b_linha_teorica_ms": f"{b['linha_teorica_ms']:.1f}",
             "b_lacunas_ms": f"{e['lacunas']['med']:.1f}", "b_cpu_ms": f"{e['consumir']['med']:.1f}",
-            "b_bytes_cpu_ms": f"{e['bytes_cpu']['med']:.2f}", "b_mfcc_lda_ciclos": f"{e['ciclos']['med']:.0f}",
+            "b_bytes_cpu_ms": f"{e['bytes_cpu']['med']:.2f}",
+            "b_bytes_por_leitura": f"{e['bytes_por_leitura']['med']:.2f}",
+            "b_ped_ms": f"{b['ped_ms']:.2f}", "b_mfcc_lda_ciclos": f"{e['ciclos']['med']:.0f}",
             "b_resposta_ms": f"{e['resposta']['med']:.2f}", "b_ciclo_ms": f"{e['ciclo']['med']:.1f}",
             "b_vezes_tempo_real": f"{b['vezes_tempo_real']:.2f}", "b_ocupacao_cpu_pct": f"{e['ocupacao']['med']:.1f}",
             "b_consumir_max_ms": f"{e['consumir_max']['max']:.2f}", "b_cpu_ciclos_por_byte": f"{b['cpu_por_byte']:.0f}",
-            "b_erros": b["erros"], "b_estouros": b["estouros"]}),
+            "b_erros": b["erros"], "b_estouros": b["estouros"],
+            "escores_iguais": (r["comparacao"] or {}).get("iguais", ""),
+            "escores_diferentes": (r["comparacao"] or {}).get("diferentes", "")}),
         "responsavel": responsavel,
         "notas": ("tempo e pilha medidos no build -DMEDIDA=ON (linha med; rx e $SEG iguais ao padrão); "
-                  "memória e pilha estática no build padrão. " + notas).strip(),
+                  "memória e pilha estática no build padrão"
+                  + (f"; escores bit a bit contra {r['comparacao']['captura']}" if r["comparacao"] else "")
+                  + ". " + notas).strip(),
     }
 
 
@@ -421,7 +498,11 @@ def main() -> int:
     ap.add_argument("--captura", type=Path, required=True, help="captura do build -DMEDIDA=ON, desde o RESET")
     ap.add_argument("--orcamento", type=Path, required=True, help="saída do orcamento_memoria.py --markdown")
     ap.add_argument("--pilha", type=Path, required=True, help="saída do tools/pilha_estatica.py")
-    ap.add_argument("--firmware-commit", required=True, help="hash curto do main do firmware medido")
+    ap.add_argument("--firmware-commit", required=True, help="hash curto do commit do firmware gravado")
+    ap.add_argument("--linker", type=int, nargs=2, metavar=("FLASH", "RAM"),
+                    help="o \"Memory region\" do build padrão, para o resumo dar também o total do linker")
+    ap.add_argument("--comparar-captura", type=Path,
+                    help="outra rodada pela serial: os escores têm de ser iguais bit a bit")
     ap.add_argument("--out-dir", type=Path, default=Path("reports/embarcado/tempo_memoria"))
     ap.add_argument("--registry", type=Path, default=Path("experiments/registry.csv"))
     ap.add_argument("--sem-registro", action="store_true", help="ensaio: não escreve no registry")
@@ -431,23 +512,27 @@ def main() -> int:
 
     cap = ler_captura(args.captura)
     r = calcular(cap, ler_orcamento(args.orcamento), ler_pilha(args.pilha))
+    r["linker"] = tuple(args.linker) if args.linker else None
+    if args.comparar_captura:
+        r["comparacao"] = comparar_escores(cap, args.comparar_captura)
+    # data da rodada, do cabeçalho da captura (como no matriz_serial_placa.py)
     meta = {"captura": args.captura.name, "firmware_commit": args.firmware_commit,
             "captura_sha": hashlib.sha256(args.captura.read_bytes()).hexdigest()[:12],
-            "data": date.today().isoformat()}
+            "data": cap["data"] or date.today().isoformat()}
 
     args.out_dir.mkdir(parents=True, exist_ok=True)
     (args.out_dir / "resumo.md").write_text(resumo_md(r, meta), encoding="utf-8", newline="\n")
     (args.out_dir / "tabelas.tex").write_text(
-        tabela_memoria_tex(r["mem"]) + "\n" + tabela_tempo_tex(r), encoding="utf-8", newline="\n")
+        tabela_memoria_tex(r["mem"], r["linker"]) + "\n" + tabela_tempo_tex(r), encoding="utf-8", newline="\n")
     with (args.out_dir / "segmentos.csv").open("w", encoding="utf-8", newline="") as fh:
         w = csv.writer(fh)
         w.writerow(["grupo", "id", "ms", "ciclos", "espera_us", "linha_us", "lacunas_us", "lacuna_max_us",
-                    "consumir", "consumir_max_us", "resposta_us", "pilha"])
+                    "consumir", "leituras", "consumir_max_us", "resposta_us", "pilha"])
         for p in cap["pares"]:
             m = p["med"]
             w.writerow([p["rx"]["grupo"], p["rx"]["id"], p["rx"]["ms"], p["rx"]["ciclos"], m["espera_us"],
                         m["linha_us"], m["lacunas_us"], m["lacuna_max_us"], m["consumir"],
-                        m["consumir_max_us"], m["resposta_us"], m["pilha"]])
+                        m["leituras"], m["consumir_max_us"], m["resposta_us"], m["pilha"]])
     print((args.out_dir / "resumo.md").read_text(encoding="utf-8"))
 
     if not args.sem_registro:

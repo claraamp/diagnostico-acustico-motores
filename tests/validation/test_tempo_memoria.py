@@ -27,12 +27,14 @@ ORCAMENTO = """Orcamento de memoria (build/Debug/frente1.map)
 """
 
 PILHA = """main (boot e laco): 1144 B
+main pelo recepcao_serial_executar (modo de recepcao): 1024 B
 Pior caso (main + SysTick interrompido por USART1 ou DMA2, cada entrada com 108 B de quadro de excecao)
   main 1144 B + interrupcoes 564 B = 1708 B, contra a reserva de 4096 B (42 %); folga 2388 B
-  so o modo de recepcao: 928 B + 564 B = 1492 B
+  so o modo de recepcao: 1024 B + 564 B = 1588 B
 """
 
 BOOT = [
+    "#pc rodada inicio data=2026-11-18 porta=/dev/ttyUSB0 baud=921600 modelo=exp239 json=ee0c3e088366 commit=x",
     "hello frente1",
     "$CAB,1,exp239,ee0c3e088366,26,100*3B",
     "cadeia resumo ok=10/10 ciclos min=5854382 med=5855382 max=5857468 (med 58.55 ms, max 58.57 ms)",
@@ -44,14 +46,14 @@ BOOT = [
 ]
 
 
-def segmento(id_, estouros=0, consumir=7_345_552, pilha=1404):
+def segmento(id_, estouros=0, consumir=7_345_552, pilha=1404, escore="0xC4C53EA7"):
     return [
         f"$PED,1,{id_ + 1}*00",
         f"rx grupo=1 id={id_} bytes=25618 ms=306 ignorados=0 a_mais=0 erros_uart=0 ciclos=5845552 "
-        f"escore_hex=0xC4C53EA7 voltas=12 estouros={estouros}",
+        f"escore_hex={escore} voltas=12 estouros={estouros}",
         f"$SEG,1,{id_},S,1,{id_},N,0,-1577.959,0,,,5845552*00",
         f"med grupo=1 id={id_} espera_us=2000 linha_us=303000 lacunas_us=26000 lacuna_max_us=1500 "
-        f"consumir={consumir} consumir_max_us=900 resposta_us=2300 pilha={pilha}",
+        f"consumir={consumir} leituras=12809 consumir_max_us=900 resposta_us=2300 pilha={pilha}",
     ]
 
 
@@ -92,6 +94,7 @@ def test_captura_pareia_med_com_rx_e_descarta_estouro(arquivos):
     assert c["estouros"] == 1 and c["erros"] == 1
     assert c["decim"] == {"total": 17436612, "decimacao": 11593270, "cadeia": 5843342}
     assert c["inicio"]["ciclos_por_byte"] == 1080
+    assert c["data"] == "2026-11-18"
 
 
 def test_captura_sem_med_e_recusada(tmp_path):
@@ -101,6 +104,29 @@ def test_captura_sem_med_e_recusada(tmp_path):
         T.ler_captura(cap)
 
 
+def test_captura_e_pilha_antigas_sao_recusadas(tmp_path, arquivos):
+    _, _, pil = arquivos
+    cap = tmp_path / "antiga.log"
+    linhas = BOOT + segmento(0)
+    linhas[-1] = linhas[-1].replace(" leituras=12809", "")
+    cap.write_text("\n".join(linhas) + "\n", encoding="utf-8")
+    with pytest.raises(SystemExit):
+        T.ler_captura(cap)
+    velha = tmp_path / "pilha_velha.txt"
+    velha.write_text(PILHA.replace("main pelo recepcao_serial_executar", "recepcao_serial_executar"),
+                     encoding="utf-8")
+    with pytest.raises(SystemExit):
+        T.ler_pilha(velha)
+
+
+def test_comparacao_de_escores(tmp_path, arquivos):
+    cap, _, _ = arquivos
+    outra = tmp_path / "outra.log"
+    outra.write_text("\n".join(segmento(0) + segmento(1, escore="0xC4C53EA8")) + "\n", encoding="utf-8")
+    c = T.comparar_escores(T.ler_captura(cap), outra)
+    assert (c["iguais"], c["diferentes"], c["sem_par"]) == (1, 1, 0)
+
+
 def test_contas_dos_dois_modos(arquivos):
     cap, orc, pil = arquivos
     r = T.calcular(T.ler_captura(cap), T.ler_orcamento(orc), T.ler_pilha(pil))
@@ -108,25 +134,32 @@ def test_contas_dos_dois_modos(arquivos):
     assert a["proc_ms"] == pytest.approx(174.36612)
     assert a["ciclos_por_amostra"] == pytest.approx(17436612 / 51200)
     assert a["orcamento_por_amostra"] == pytest.approx(100e6 / 51200)
-    assert a["es_us"] == pytest.approx(1e6 * (len(BOOT[4]) + 2) * 10 / 925925)
+    assert a["es_us"] == pytest.approx(1e6 * (len(BOOT[5]) + 2) * 10 / 925925)
     assert b["linha_teorica_ms"] == pytest.approx(1000 * 25618 * 10 / 925925)
     e = b["est"]
     assert e["bytes_cpu"]["med"] == pytest.approx(15.0)            # (7.345.552 - 5.845.552) / 100 MHz
-    assert e["ciclo"]["med"] == pytest.approx(307.3)               # 2,0 + 303,0 + 2,3 ms
+    ped_ms = 1000 * (len("$PED,1,1*00") + 2) * 10 / 925925
+    assert b["ped_ms"] == pytest.approx(ped_ms)
+    assert e["ciclo"]["med"] == pytest.approx(307.3 + ped_ms)      # $PED + 2,0 + 303,0 + 2,3 ms
+    assert e["bytes_por_leitura"]["med"] == pytest.approx(25618 / 12809)
     assert b["cpu_por_byte"] == pytest.approx(7345552 / 25618)
     assert b["anel_ms"] == pytest.approx(1000 * 2048 * 10 / 925925)
-    assert r["pilha"]["medida"] == 1412                             # o segmento com estouro não conta
-    assert r["pilha"]["pior"] == 1708
+    assert r["pilha"]["medida_recepcao"] == 1412                    # o segmento com estouro não conta
+    assert r["pilha"]["medida_boot"] == 1180
+    assert r["pilha"]["pior"] == 1708 and r["pilha"]["recepcao"] == 1588
 
 
 def test_saidas_e_registry(tmp_path, arquivos):
     cap, orc, pil = arquivos
     r = T.calcular(T.ler_captura(cap), T.ler_orcamento(orc), T.ler_pilha(pil))
-    meta = {"captura": "cap.log", "captura_sha": "x", "firmware_commit": "58da414", "data": "2026-11-16"}
+    r["linker"] = (450236, 34992)
+    meta = {"captura": "cap.log", "captura_sha": "x", "firmware_commit": "58da414", "data": "2026-11-18"}
     md = T.resumo_md(r, meta)
     assert "Critério de tempo real cumprido" in md and "Critério cumprido" in md
-    tex = T.tabela_memoria_tex(r["mem"]) + T.tabela_tempo_tex(r)
+    tex = T.tabela_memoria_tex(r["mem"], r["linker"]) + T.tabela_tempo_tex(r)
     assert "tab:final_memoria" in tex and "tab:final_tempo" in tex and "450.228" in tex
+    assert "450.236" in md and "440.676" in tex
     linha = T.linha_registry(r, meta, 320, "Clara", "")
     assert linha["id"] == "exp320" and linha["etapa"] == "caracterizacao_embarcada"
     assert "pilha_estatica_b=1708" in linha["metricas"] and "b_segmentos=2" in linha["metricas"]
+    assert ";" not in linha["dataset"] and linha["data"] == "2026-11-18"
