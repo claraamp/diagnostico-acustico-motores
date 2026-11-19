@@ -404,6 +404,7 @@ python scripts/validation/matriz_serial_placa.py --porta COM5 --responsavel <nom
 python scripts/validation/matriz_serial_placa.py --captura reports/embarcado/capturas/serial-DD-MM.log --sem-registro   # refaz a matriz
 python scripts/validation/matriz_serial_placa.py --lista --porta COM5 --sem-registro --limite 10   # robustez na placa: ensaio (10 por ruído)
 python scripts/validation/matriz_serial_placa.py --lista --porta COM5 --responsavel <nome>         # robustez na placa: os 1.788 (precisa do .bin do --exportar-placa)
+python scripts/validation/matriz_serial_placa.py --lista --porta COM5 --ids 3:48,3:3,3:57,3:59 --pausa 4   # teste dos LEDs: só esses, na ordem dada, 4 s em cada um com a cor esperada (ensaio)
 python scripts/validation/matriz_serial_placa.py --captura reports/embarcado/capturas/serial-ruido-15-11-2.log --lista --sem-registro   # refaz a matriz da robustez (15/11)
 
 # tempo e memória do firmware final (seção 3.6 do relatório final): a captura é a de uma rodada dos 295 + 40

@@ -93,6 +93,17 @@ Uso (da raiz do repositório)
     python scripts/validation/matriz_serial_placa.py --captura reports/embarcado/capturas/serial-07-11.log --sem-registro
     python scripts/validation/matriz_serial_placa.py --lista --porta COM5 --sem-registro --limite 10   # ensaio da lista
     python scripts/validation/matriz_serial_placa.py --lista --porta COM5 --responsavel Amanda          # a rodada da robustez
+    python scripts/validation/matriz_serial_placa.py --lista --porta COM5 --ids 3:48,3:3 --pausa 4      # LEDs (ensaio)
+
+Teste dos LEDs (`--ids` e `--pausa`)
+------------------------------------
+`--ids G:ID,G:ID,...` manda só esses segmentos, na ordem dada (os grupos e ids da
+regra 4; com `--lista`, os do `referencias.csv`); `--pausa S` espera S segundos depois
+de cada resposta certa e mostra a cor que o LED tem de ter, pela decisão do Python
+(verde = normal, vermelho = falha). No modo de recepção, o LED da decisão fica aceso
+até a próxima resposta (seção "Sinalização por LED" do README do firmware), então a
+pausa é o tempo de olhar (ou filmar) o LED. Os dois são ensaio: não registram. A
+matriz no fim confere, como sempre, a decisão da placa contra a do Python.
 
 Com a placa: feche o picocom (só um programa abre a porta) e grave o firmware com a
 recepção. A porta abre a 921.600 bit/s (o padrão do firmware desde 03/11);
@@ -147,6 +158,7 @@ MEIA_UNIDADE = 0.5e-3                      # o escore do $SEG tem 3 casas
 FOLGA_TEXTO = 2.5e-4                       # meio ulp do float32 até 4096, com folga
 
 GRUPOS = {"jung": 1, "hust": 2, "branco": 3, "rosa": 4}
+COR_LED = {"normal": "verde", "falha": "vermelho"}   # README do firmware, "Sinalização por LED"
 NOMES_CONJUNTO = {"jung": "Jung", "hust": "HUSTmotor", "branco": "Ruído branco", "rosa": "Ruído rosa"}
 CONJUNTOS_FIXOS = ("jung", "hust")         # os de --conjuntos; os outros vêm de --lista
 CLASSES = ("normal", "falha")
@@ -539,6 +551,34 @@ def faixas(ids: list[int]) -> str:
     return ",".join(out)
 
 
+def ler_ids(texto: str) -> list[tuple[int, int]]:
+    """'3:48,3:3' -> [(3, 48), (3, 3)], na ordem dada (--ids)."""
+    pares = []
+    for parte in texto.split(","):
+        parte = parte.strip()
+        if not parte:
+            continue
+        g, sep, i = parte.partition(":")
+        if not sep or not g.strip().isdigit() or not i.strip().isdigit():
+            raise ValueError(f"--ids: '{parte}' não é grupo:id (ex.: 3:48)")
+        pares.append((int(g), int(i)))
+    if not pares:
+        raise ValueError("--ids vazio")
+    if len(set(pares)) != len(pares):
+        raise ValueError("--ids com um segmento repetido")
+    return pares
+
+
+def escolher(segs: list[Segmento], pares: list[tuple[int, int]]) -> list[Segmento]:
+    """Os segmentos de --ids, na ordem dada; recusa o que não está no plano."""
+    por_chave = {s.chave: s for s in segs}
+    faltam = [p for p in pares if p not in por_chave]
+    if faltam:
+        raise Abortar("--ids: " + ", ".join(f"{g}:{i}" for g, i in faltam) + " não estão nos segmentos "
+                      "carregados (grupo e id da regra 4; com --lista, os do referencias.csv)")
+    return [por_chave[p] for p in pares]
+
+
 def de_faixas(texto: str) -> list[int]:
     out = []
     for parte in filter(None, texto.split(",")):
@@ -770,8 +810,9 @@ class PlacaSimulada:
 # --------------------------------------------------------------------------- #
 class Rodada:
     def __init__(self, porta, captura: Captura, modelo_id: str, json_sha12: str, baud: int,
-                 tempos: Tempos = Tempos(), mostrar=print):
+                 tempos: Tempos = Tempos(), mostrar=print, pausa_s: float = 0.0, dormir=time.sleep):
         self.porta, self.cap = porta, captura
+        self.pausa_s, self.dormir = pausa_s, dormir
         self.modelo_id, self.json_sha12 = modelo_id, json_sha12
         self.baud, self.t = baud, tempos
         self.mostrar = mostrar
@@ -915,6 +956,10 @@ class Rodada:
                 status = self.esperar_resposta(s, time.monotonic() + t_tx + self.t.folga_s)
                 if status == "ok":
                     resumo["ok"] += 1
+                    if self.pausa_s > 0:            # --pausa: o LED da decisão fica aceso até a próxima
+                        self.mostrar(f"  {k}/{len(segs)} {s.nome}: Python {s.decisao_py} -> LED "
+                                     f"{COR_LED[s.decisao_py]} ({self.pausa_s:g} s)")
+                        self.dormir(self.pausa_s)
                     break
                 if status == "reinicio":
                     self.reinicios += 1
@@ -1463,6 +1508,9 @@ def main(argv=None) -> int:
                          f"referencias.csv; sem pasta, {LISTA_PADRAO.as_posix()}) no lugar do Jung e do HUST")
     ap.add_argument("--bin", type=Path, help="com --lista: o .bin em outro lugar que o do manifesto")
     ap.add_argument("--limite", type=int, help="só os N primeiros de cada conjunto (ensaio; não registra)")
+    ap.add_argument("--ids", help="só estes segmentos, na ordem dada: grupo:id,grupo:id,... (ensaio; não registra)")
+    ap.add_argument("--pausa", type=float, default=0.0,
+                    help="segundos de espera depois de cada resposta certa, com a cor do LED (ensaio; não registra)")
     ap.add_argument("--out-dir", type=Path, help="pasta das saídas")
     ap.add_argument("--registry", type=Path, default=Path("experiments/registry.csv"))
     ap.add_argument("--sem-registro", action="store_true", help="ensaio: saídas fora do Git, registry intocado")
@@ -1474,6 +1522,16 @@ def main(argv=None) -> int:
         ap.error("--lista e --conjuntos não vão juntos: a lista substitui o Jung e o HUST")
     if args.bin and not args.lista:
         ap.error("--bin só vale com --lista")
+    if args.pausa < 0:
+        ap.error("--pausa não pode ser negativa")
+    if (args.ids or args.pausa) and not args.porta and not args.simulada:
+        ap.error("--ids e --pausa são do envio (--porta ou --simulada), não de --captura")
+    if args.ids and args.limite:
+        ap.error("--ids e --limite não vão juntos")
+    try:
+        pares_ids = ler_ids(args.ids) if args.ids else None
+    except ValueError as e:
+        ap.error(str(e))
     conjuntos = [c.strip() for c in (args.conjuntos or "jung,hust").split(",") if c.strip()]
     if not args.lista and (not conjuntos or any(c not in CONJUNTOS_FIXOS for c in conjuntos)):
         ap.error("--conjuntos: jung, hust ou jung,hust")
@@ -1482,7 +1540,7 @@ def main(argv=None) -> int:
             import serial  # noqa: F401
         except ImportError:
             ap.error("--porta precisa do pyserial: pip install pyserial")
-    registrar = not (args.sem_registro or args.simulada or args.limite)
+    registrar = not (args.sem_registro or args.simulada or args.limite or args.ids or args.pausa)
     if registrar and not args.responsavel:
         ap.error("--responsavel é obrigatório numa rodada registrada (ou use --sem-registro)")
     hoje = datetime.now().strftime("%d-%m")
@@ -1520,6 +1578,9 @@ def main(argv=None) -> int:
         esperado = Counter(s.grupo for s in (lista.segmentos if lista else segs))   # o plano inteiro
         if args.limite and not lista:
             segs = [s for c in conjuntos for s in [x for x in segs if x.conjunto == c][: args.limite]]
+        if pares_ids:
+            segs = escolher(segs, pares_ids)
+            conjuntos = [c for c in conjuntos if any(s.conjunto == c for s in segs)]
         print(f"  {len(segs)} segmentos ({', '.join(conjuntos)}), conferidos com "
               + ((f"o referencias.csv e o .bin da lista ({args.lista})" if lista.bin_conferido
                   else f"o referencias.csv da lista ({args.lista})") if lista else "os CSV de referência"))
@@ -1550,7 +1611,7 @@ def main(argv=None) -> int:
             print(f"captura: {caminho_cap}")
             try:
                 envio = Rodada(porta, cap, modelo_id, json_sha12, 0 if args.simulada else args.baud,
-                               tempos).enviar(segs)
+                               tempos, pausa_s=args.pausa).enviar(segs)
             finally:
                 cap.pc("rodada fim")
                 cap.fechar()
