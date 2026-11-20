@@ -135,6 +135,21 @@ O escore do Python é recalculado do mesmo `int16` que vai no quadro (`dsp.mfcc`
 
 Os quadros vão já decimados a 12,8 kHz, então a rodada testa o MFCC e a LDA, e não a decimação. Na placa, a decimação é testada pelo recorte de 1 s a 51,2 kHz do segmento 29, no boot da mesma captura (`DECIMACAO OK` e a linha `ponta`: escore a 8,3 % da tolerância, 174,4 ms para a cadeia inteira, dos quais 115,9 ms de decimação, ou 17,4 % do tempo real); no PC, nas 5 gravações inteiras (`decimar_gravacao.c` do firmware). Para o critério de tempo real vale o número da cadeia inteira, e não os 58,5 ms. Saídas em `reports/embarcado/serial_07_11/`, captura em `reports/embarcado/capturas/serial-07-11.log`.
 
+### Interface de diagnóstico: painel no computador
+
+O `run_painel.py` (card "Implementar a interface de diagnóstico no computador (leitura serial)") mostra, segmento a segmento, o que a placa decidiu, a partir das linhas `$CAB`, `$SEG` e `$ERR` do formato v1 do pacote (seção "Pacote da serial" do README do firmware). A leitura e o estado ficam no `interface/pacotes.py`, só com a biblioteca padrão, e aceitam e recusam as mesmas linhas que o leitor de referência do firmware (`tests/host/pacote/ler_pacotes.py`); a janela é Tkinter. O que ele mostra, pela decisão de 17/10 ("O que o painel mostra no lugar de grau de confiança") e pelo escopo do guia de 16–23/11:
+
+- **a classe do segmento**: normal, falha ou **erro** quando o bit 4 (`disparou = 4`, escore não finito) vem ligado, nunca "normal" com erro; e o **escore cru da LDA**, como veio no texto, nunca em % nem como confiança. A decisão da LDA se lê pelo sinal do texto (`-0.000` é normal);
+- **o LED que a placa tem de estar mostrando**, pela tabela do README do firmware ("Sinalização por LED"): verde com `N`, vermelho com `F`, os dois com o erro de conta, os dois apagados depois de um `$ERR` e antes do primeiro `$SEG`. É o que a conferência com a placa compara;
+- **o histórico** das últimas inferências (origem, clipe ou grupo, segmento, decisão, escore e tempo de processamento) e quantos dos últimos N segmentos indicaram falha (`--ultimos`, padrão 10), que o pacote não traz de propósito;
+- **pacotes perdidos** pelo salto do contador `n` (inclui as linhas descartadas por checksum, cujo `n` não vale), reinícios da placa, linhas descartadas e os `$ERR` da recepção. Um pacote de origem desconhecida é ignorado sem contar como corrompido nem como perdido.
+
+O modelo é conferido antes de qualquer decisão aparecer: o `$CAB` tem de trazer o id e o SHA-256[:12] do `lda_final.json`. Sem ele (o painel abriu com a placa já rodando), os segmentos são contados, mas a decisão não aparece até o RESET; com outro modelo, o painel avisa e não mostra decisão. Um `hello` no meio (a placa reiniciou) pede o `$CAB` de novo.
+
+**Os dois modos.** Na demonstração (origens `C` e `D`), o painel abre a porta (`--porta`; `--salvar` grava a captura). Na recepção (origem `S`), a porta é do `matriz_serial_placa.py`, que agora grava cada linha na captura assim que ela chega; o painel acompanha essa captura (`--seguir`, com o arquivo ou com a pasta das saídas, em que ele espera a primeira captura nova). As linhas `#pc envio` da captura dão o nome de cada segmento (por exemplo `normal_seg0048_branco_0db`). Para a conferência com o LED e o vídeo, o grupo misto da robustez ao ruído com o `--ids` e o `--pausa` do envio (PR #40) alterna normal e falha e inclui os falsos alarmes.
+
+**Sem a placa:** as capturas versionadas, com `--arquivo` (e `--ritmo S` para ver a sequência); `--sem-janela` escreve uma linha por segmento e o resumo, e sai com 1 se alguma linha foi descartada ou se o modelo não é o do Python. Nas capturas de `reports/embarcado/capturas/` e nas do firmware (`docs/recepcao-placa-921600-04-11.log`, `docs/leds-placa-19-11.log` e `docs/leds-ruido-19-11.log`), o painel lê todos os pacotes sem descartar nenhum, com os 5 `$ERR` da captura de 04/11 e o reinício dela, e as decisões batem com as de cada rodada (por exemplo, na `serial-ruido-15-11-2.log`, 1.788 segmentos da lista e 2 da demonstração, com 261 + 2 normais). Contra o `emular_placa` do firmware, o `--seguir` acompanhou ao vivo uma rodada do `matriz_serial_placa.py`.
+
 ### Robustez ao ruído: varredura de SNR (`exp305`–`exp319`) e rodada na placa (`exp320`–`exp321`)
 
 O `run_varredura_snr.py` (card "Rodar os testes de robustez com ruído sintético (varredura de SNR)", com o escopo da decisão "Robustez ao ruído também na placa, pela serial", de 05/11) soma ruído **no int16 a 51,2 kHz, antes da decimação**, com a SNR definida nessa entrada, segmento a segmento: o trecho da gravação original que o decimador lê (`dsp.recorte_para_decimar`) recebe o ruído, volta para int16 com saturação, passa pelo FIR do `02` e volta para int16 a 12,8 kHz, que é o que a placa recebe pela serial. Sem ruído, esse caminho reproduz bit a bit o PCM do `02`, e o script confere isso antes de rodar. A grade tem 7 SNRs (30 a 0 dB, de 5 em 5), ruído branco e rosa (1/f) e 10 sementes, as do aumento nos `exp224`–`exp233` (20260925 e 1 a 9); numa semente, o ruído de um segmento é o mesmo em todas as SNRs, com outra escala. O eixo é a SNR da entrada. O filtro de decimação tira o ruído acima de 5,76 kHz, então a SNR na banda que a cadeia vê é 6,3 dB maior que a da entrada no branco e só 0,4 dB maior no rosa: o mesmo número de dB não é o mesmo nível de ruído para a cadeia nos dois ruídos.
@@ -205,6 +220,9 @@ diagnostico-acustico-motores/
 │   ├── augmentation/         # aumento de dados do treino
 │   │   ├── transformacoes.py              # estiramento (phase vocoder / reamostragem), ruído, recorte
 │   │   └── variantes.py                   # sorteio reprodutível, janela lida e filtro por fold
+│   ├── interface/            # interface de diagnóstico no computador (leitura serial)
+│   │   ├── pacotes.py                     # leitura dos $CAB, $SEG e $ERR (formato v1) e estado do painel, só a biblioteca padrão
+│   │   └── run_painel.py                  # executável: painel (Tkinter) pela porta, seguindo a captura da recepção ou de uma captura salva
 │   ├── models/               # modelo final do classificador
 │   │   └── lda.py                         # treino com todos os segmentos e parâmetros em JSON (escore ≥ 0 → falha)
 │   ├── exploration/          # estudos e inspeções, sem numeração
@@ -405,6 +423,14 @@ python scripts/validation/matriz_serial_placa.py --captura reports/embarcado/cap
 python scripts/validation/matriz_serial_placa.py --lista --porta COM5 --sem-registro --limite 10   # robustez na placa: ensaio (10 por ruído)
 python scripts/validation/matriz_serial_placa.py --lista --porta COM5 --responsavel <nome>         # robustez na placa: os 1.788 (precisa do .bin do --exportar-placa)
 python scripts/validation/matriz_serial_placa.py --captura reports/embarcado/capturas/serial-ruido-15-11-2.log --lista --sem-registro   # refaz a matriz da robustez (15/11)
+
+# painel de diagnóstico (interface/run_painel.py; precisa do Tkinter, que vem com o Python no Windows; no Linux,
+# sudo apt install python3-tk): na demonstração, a porta da placa (aperte o RESET depois de abrir); na recepção,
+# a porta é do matriz_serial_placa.py e o painel segue a captura que ele grava (a pasta das saídas de ensaio)
+python scripts/interface/run_painel.py --porta COM5                                    # demonstração (origens C e D)
+python scripts/interface/run_painel.py --seguir reports/embarcado/teste_serial          # recepção: abra antes do envio
+python scripts/interface/run_painel.py --arquivo reports/embarcado/capturas/serial-ruido-15-11-2.log --ritmo 0.3   # sem a placa
+python scripts/interface/run_painel.py --arquivo reports/embarcado/capturas/serial-07-11.log --sem-janela          # texto
 
 # tempo e memória do firmware final (seção 3.6 do relatório final): a captura é a de uma rodada dos 295 + 40
 # com o firmware gravado com -DMEDIDA=ON (linhas med); o orçamento e a pilha estática vêm do build padrão,

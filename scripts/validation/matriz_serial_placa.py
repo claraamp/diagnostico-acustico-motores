@@ -508,6 +508,7 @@ class Captura:
     def placa(self, bruta: bytes) -> str:
         if self.fh:
             self.fh.write(bruta + b"\n")
+            self.fh.flush()       # o painel (run_painel.py --seguir) lê a captura enquanto ela é gravada
         return bruta.decode("ascii", errors="replace").rstrip("\r")
 
     def pc(self, texto: str) -> None:
