@@ -550,8 +550,27 @@ def test_pausa_depois_de_cada_resposta_certa_com_a_cor_do_led(tmp_path):
     assert envio["ok"] == 6 and envio["err"] == 1 and pausas == [3.0] * 6
     leds = [m for m in msgs if "-> LED" in m]
     assert len(leds) == 6
-    assert leds[0].endswith("jung_29: Python normal -> LED verde (3 s)")
-    assert leds[1].endswith("Python falha -> LED vermelho (3 s)")
+    assert leds[0].endswith("jung_29: Python normal, placa normal -> LED verde (3 s)")
+    assert leds[1].endswith("Python falha, placa falha -> LED vermelho (3 s)")
+    assert not any("DIVERGE" in m for m in leds)
+
+
+def test_pausa_mostra_a_divergencia_na_hora_com_a_cor_da_placa(tmp_path):
+    segs = segmentos()
+    ref = {s.chave: s.escore_py for s in segs}
+    # a placa dá normal no 88 (falha no Python): o LED segue a placa
+    placa = M.PlacaSimulada(lambda g, i: -1.0 if (g, i) == (1, 88) else ref[(g, i)], MODELO, JSON,
+                            refs={29: ref[(1, 29)]}, demo_s=0.005)
+    cap = M.Captura(tmp_path / "cap.log")
+    msgs = []
+    try:
+        M.Rodada(placa, cap, MODELO, JSON, 0, RAPIDO, mostrar=msgs.append, pausa_s=1.0,
+                 dormir=lambda s: None).enviar(segs)
+    finally:
+        cap.fechar()
+    leds = [m for m in msgs if "-> LED" in m]
+    assert leds[1].endswith("jung_88: Python falha, placa normal -> LED verde (1 s)  <- DIVERGE do Python")
+    assert sum("DIVERGE" in m for m in leds) == 1
 
 
 def test_sem_pausa_nao_dorme(tmp_path):

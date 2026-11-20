@@ -99,8 +99,9 @@ Teste dos LEDs (`--ids` e `--pausa`)
 ------------------------------------
 `--ids G:ID,G:ID,...` manda só esses segmentos, na ordem dada (os grupos e ids da
 regra 4; com `--lista`, os do `referencias.csv`); `--pausa S` espera S segundos depois
-de cada resposta certa e mostra a cor que o LED tem de ter, pela decisão do Python
-(verde = normal, vermelho = falha). No modo de recepção, o LED da decisão fica aceso
+de cada resposta certa e mostra a decisão do Python, a da placa (lida do `$SEG`) e a
+cor que o LED tem de ter, pela da placa (verde = normal, vermelho = falha); uma
+divergência aparece na hora, marcada com `DIVERGE`, e não só na matriz. No modo de recepção, o LED da decisão fica aceso
 até a próxima resposta (seção "Sinalização por LED" do README do firmware), então a
 pausa é o tempo de olhar (ou filmar) o LED. Os dois são ensaio: não registram. A
 matriz no fim confere, como sempre, a decisão da placa contra a do Python.
@@ -551,6 +552,13 @@ def faixas(ids: list[int]) -> str:
     return ",".join(out)
 
 
+def linha_pausa(k: int, total: int, s: Segmento, decisao_placa: str, pausa_s: float) -> str:
+    """A linha do --pausa: as duas decisões e a cor do LED, que segue a da placa."""
+    aviso = "" if decisao_placa == s.decisao_py else "  <- DIVERGE do Python"
+    return (f"  {k}/{total} {s.nome}: Python {s.decisao_py}, placa {decisao_placa} -> LED "
+            f"{COR_LED[decisao_placa]} ({pausa_s:g} s){aviso}")
+
+
 def ler_ids(texto: str) -> list[tuple[int, int]]:
     """'3:48,3:3' -> [(3, 48), (3, 3)], na ordem dada (--ids)."""
     pares = []
@@ -896,6 +904,7 @@ class Rodada:
         rx = None
         achado = None              # ("ok", Resposta) | ("err", motivo) | ("rejeitado", motivo)
         self.viu_ped = False
+        self.resposta = None       # a Resposta do 'ok' (a linha do --pausa)
         while True:
             l = self.linha(fim)
             if l is None:
@@ -931,7 +940,10 @@ class Rodada:
                     break
         if achado is None:
             return "timeout"
-        return "ok" if achado[0] == "ok" else f"{achado[0]}:{achado[1]}"
+        if achado[0] == "ok":
+            self.resposta = achado[1]
+            return "ok"
+        return f"{achado[0]}:{achado[1]}"
 
     def enviar(self, segs: list[Segmento]) -> dict:
         """Manda os segmentos, com as regras 2, 3, 5 e 7. Devolve um resumo do envio."""
@@ -957,8 +969,7 @@ class Rodada:
                 if status == "ok":
                     resumo["ok"] += 1
                     if self.pausa_s > 0:            # --pausa: o LED da decisão fica aceso até a próxima
-                        self.mostrar(f"  {k}/{len(segs)} {s.nome}: Python {s.decisao_py} -> LED "
-                                     f"{COR_LED[s.decisao_py]} ({self.pausa_s:g} s)")
+                        self.mostrar(linha_pausa(k, len(segs), s, self.resposta.decisao, self.pausa_s))
                         self.dormir(self.pausa_s)
                     break
                 if status == "reinicio":
