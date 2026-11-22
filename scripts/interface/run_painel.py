@@ -255,14 +255,19 @@ class Janela:
 
         colunas = ("hora", "n", "origem", "onde", "segmento", "classe", "escore", "ms")
         larguras = (80, 60, 80, 230, 300, 70, 100, 80)
-        self.arvore = ttk.Treeview(raiz, columns=colunas, show="headings", height=12)
+        tabela = tk.Frame(raiz, bg=CORES["fundo"])
+        tabela.pack(fill="both", expand=True, padx=12)
+        self.arvore = ttk.Treeview(tabela, columns=colunas, show="headings", height=12)
+        rolagem = ttk.Scrollbar(tabela, orient="vertical", command=self.arvore.yview)
+        self.arvore.configure(yscrollcommand=rolagem.set)
+        rolagem.pack(side="right", fill="y")
         for c, w in zip(colunas, larguras):
             self.arvore.heading(c, text={"ms": "tempo (ms)", "onde": "clipe ou grupo"}.get(c, c))
             self.arvore.column(c, width=w, anchor="w")
         for tag, cor in (("normal", CORES["normal"]), ("falha", CORES["falha"]), ("erro", CORES["erro"]),
                          ("err", CORES["fraco"]), ("aviso", CORES["erro"])):
             self.arvore.tag_configure(tag, foreground=cor)
-        self.arvore.pack(fill="both", expand=True, padx=12)
+        self.arvore.pack(side="left", fill="both", expand=True)
         self.l_aviso = f(font=("Helvetica", 10), fg=CORES["erro"], anchor="w")
         self.l_aviso.pack(fill="x", padx=12, pady=(4, 0))
         self.l_fonte = f(font=("Helvetica", 9), fg=CORES["fraco"], anchor="w")
@@ -355,6 +360,10 @@ class Janela:
         if itens == getattr(self, "_ultimos", None):
             return
         self._ultimos = itens
+        # quem rolou a tabela para ver linhas antigas fica onde estava; quem está no
+        # topo continua vendo a mais recente (sem isso, as novas entravam acima da vista)
+        no_topo = self.arvore.yview()[0] <= 0.0
+        topo_antes = self.arvore.yview()[0]
         self.arvore.delete(*self.arvore.get_children())
         for it in reversed(itens):                 # o mais recente em cima
             hora = time.strftime("%H:%M:%S", time.localtime(it.hora))
@@ -369,6 +378,7 @@ class Janela:
                 valores = (hora, "", "", it.texto, "", "aviso", "", "")
                 tag = "aviso"
             self.arvore.insert("", "end", values=valores, tags=(tag,))
+        self.arvore.yview_moveto(0.0 if no_topo else topo_antes)
 
 
 def rodar_janela(gerador, p: Painel, fonte: str) -> None:
