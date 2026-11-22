@@ -255,15 +255,30 @@ class Resposta:
     estouros: int
 
 
+def inteiro_kv(kv: dict, chave: str, padrao=None):
+    """O campo `chave` de uma linha de texto da placa; None se veio estragado (bytes perdidos na linha)."""
+    if chave not in kv:
+        return padrao
+    return int(kv[chave]) if kv[chave].isdigit() else None
+
+
 def ler_rx(rx: str) -> dict | None:
+    """
+    A linha rx de um segmento, ou None se ela não está inteira. A rx não tem checksum:
+    um adaptador que perde bytes (o CH340 a 921.600 bit/s no Windows, 22/11) pode
+    juntar a rx com o $SEG seguinte ("estouros=$SEG,...") ou cortar um campo. Uma rx
+    assim é recusada (o segmento vai como "sem_rx" e é reenviado), nunca interpretada.
+    """
     m = RE_RX.match(rx or "")
     if not m:
         return None
     kv = dict(RE_KV.findall(rx))
+    voltas, estouros = inteiro_kv(kv, "voltas"), inteiro_kv(kv, "estouros", 0)
+    if estouros is None or ("voltas" in kv and voltas is None):
+        return None
     return {"grupo": int(m.group(1)), "id": int(m.group(2)), "bytes": int(m.group(3)),
             "ms": int(m.group(4)), "ciclos": int(m.group(5)), "hexa": m.group(6),
-            "voltas": int(kv["voltas"]) if "voltas" in kv else None,
-            "estouros": int(kv.get("estouros", 0))}
+            "voltas": voltas, "estouros": estouros}
 
 
 def validar_resposta(rx: str | None, seg: list[str]) -> tuple[Resposta | None, str]:
@@ -1061,7 +1076,7 @@ def analisar(linhas: list[str], modelo_id: str, json_sha12: str) -> Analise:
             rx = l
             r = ler_rx(l)
             kv = dict(RE_KV.findall(l))
-            a.estouros += int(kv.get("estouros", 0)) if (r or l.startswith("rx erro")) else 0
+            a.estouros += (inteiro_kv(kv, "estouros", 0) or 0) if (r or l.startswith("rx erro")) else 0
         elif l.startswith("$"):
             campos = ler_pacote(l)
             if campos is None:

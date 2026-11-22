@@ -601,3 +601,21 @@ def test_main_ids_e_pausa_sao_ensaio(tmp_path, monkeypatch, capsys):
             M.main(["--simulada", "--lista", str(p), *ruim])
     with pytest.raises(SystemExit):                                     # a captura não tem envio
         M.main(["--captura", str(out / "x.log"), "--lista", str(p), "--pausa", "2"])
+
+
+def test_rx_estragada_por_bytes_perdidos_e_recusada_sem_quebrar():
+    """Linhas da captura de 22/11 (CH340 a 921.600 bit/s no Windows): a rx e o $SEG juntos,
+    ou um campo cortado. A análise não pode quebrar, e nenhuma vira resposta válida."""
+    juntas = ("rx grupo=4 id=5047 bytes=25618 ms=308 ignorados=0 a_mais=0 erros_uart=0 ciclos=5842400 "
+              "escore_hex=0x40DF6787 voltas=12 estouros=$SEG,1,336,S,4,5047,F,1,6.981,0,,,5842400*67")
+    assert M.ler_rx(juntas) is None
+    assert M.ler_rx(juntas.replace("voltas=12", "voltas=1x")) is None
+    certa = ("rx grupo=4 id=5047 bytes=25618 ms=308 ignorados=0 a_mais=0 erros_uart=0 ciclos=5842388 "
+             "escore_hex=0x40DF6787 voltas=12 estouros=0")
+    assert M.ler_rx(certa)["estouros"] == 0
+    seg = M.ler_pacote("$SEG,1,337,S,4,5047,F,1,6.981,0,,,5842388*61")
+    assert M.validar_resposta(juntas, seg) == (None, "sem_rx")
+    linhas = ["recepcao inicio modelo=exp239 json=ee0c3e088366 quadro=25618",
+              "#pc plano grupo=4 ids=5047", juntas, "rx erro=crc grupo=4 id=5047 estouros=$SEG"]
+    a = M.analisar(linhas, "exp239", "ee0c3e088366")
+    assert not a.respostas and a.estouros == 0
