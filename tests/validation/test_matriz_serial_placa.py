@@ -516,3 +516,88 @@ def test_lista_com_ruido_que_o_script_nao_conhece_e_recusada(tmp_path):
     (p / "manifest.json").write_text(json.dumps(man), encoding="utf-8")
     with pytest.raises(M.Abortar, match="grupos do manifesto inválidos"):
         M.carregar_lista(p, MODELO, JSON, PESOS, 10.0)
+
+
+# --------------------------------------------------------------------------- #
+# --ids e --pausa: o teste dos LEDs (README do firmware, "Sinalização por LED")
+def test_ler_ids_na_ordem_e_recusas():
+    assert M.ler_ids("3:48, 3:3,4:5047") == [(3, 48), (3, 3), (4, 5047)]
+    for ruim in ("", "3", "3:x", "3-48", "3:48,3:48"):
+        with pytest.raises(ValueError):
+            M.ler_ids(ruim)
+
+
+def test_escolher_mantem_a_ordem_dada_e_recusa_o_que_falta():
+    segs = segmentos()
+    assert [s.chave for s in M.escolher(segs, [(2, 39), (1, 29)])] == [(2, 39), (1, 29)]
+    with pytest.raises(M.Abortar, match="1:30"):
+        M.escolher(segs, [(1, 29), (1, 30)])
+
+
+def test_pausa_depois_de_cada_resposta_certa_com_a_cor_do_led(tmp_path):
+    segs = segmentos()
+    ref = {s.chave: s.escore_py for s in segs}
+    # o 88 dá $ERR na primeira: só a resposta certa pausa
+    placa = M.PlacaSimulada(lambda g, i: ref[(g, i)], MODELO, JSON, refs={29: ref[(1, 29)]},
+                            falhas={(1, 88, 1): "crc"}, demo_s=0.005)
+    cap = M.Captura(tmp_path / "cap.log")
+    msgs, pausas = [], []
+    try:
+        envio = M.Rodada(placa, cap, MODELO, JSON, 0, RAPIDO, mostrar=msgs.append, pausa_s=3.0,
+                         dormir=pausas.append).enviar(segs)
+    finally:
+        cap.fechar()
+    assert envio["ok"] == 6 and envio["err"] == 1 and pausas == [3.0] * 6
+    leds = [m for m in msgs if "-> LED" in m]
+    assert len(leds) == 6
+    assert leds[0].endswith("jung_29: Python normal, placa normal -> LED verde (3 s)")
+    assert leds[1].endswith("Python falha, placa falha -> LED vermelho (3 s)")
+    assert not any("DIVERGE" in m for m in leds)
+
+
+def test_pausa_mostra_a_divergencia_na_hora_com_a_cor_da_placa(tmp_path):
+    segs = segmentos()
+    ref = {s.chave: s.escore_py for s in segs}
+    # a placa dá normal no 88 (falha no Python): o LED segue a placa
+    placa = M.PlacaSimulada(lambda g, i: -1.0 if (g, i) == (1, 88) else ref[(g, i)], MODELO, JSON,
+                            refs={29: ref[(1, 29)]}, demo_s=0.005)
+    cap = M.Captura(tmp_path / "cap.log")
+    msgs = []
+    try:
+        M.Rodada(placa, cap, MODELO, JSON, 0, RAPIDO, mostrar=msgs.append, pausa_s=1.0,
+                 dormir=lambda s: None).enviar(segs)
+    finally:
+        cap.fechar()
+    leds = [m for m in msgs if "-> LED" in m]
+    assert leds[1].endswith("jung_88: Python falha, placa normal -> LED verde (1 s)  <- DIVERGE do Python")
+    assert sum("DIVERGE" in m for m in leds) == 1
+
+
+def test_sem_pausa_nao_dorme(tmp_path):
+    *_, msgs = rodar(tmp_path)
+    assert not any("-> LED" in m for m in msgs)
+
+
+def test_main_ids_e_pausa_sao_ensaio(tmp_path, monkeypatch, capsys):
+    raiz = __import__("pathlib").Path(M.__file__).resolve().parents[2]
+    monkeypatch.chdir(raiz)
+    modelo_id, json12, pesos, bias = M.info_modelo(M.MODELO)
+    p = criar_lista(tmp_path / "l", pesos, bias, modelo=modelo_id, json_=json12)
+    monkeypatch.setattr(M.time, "sleep", lambda s: None)
+    out = tmp_path / "out"
+    ids = f"4:{_id(5, 3, 20260925)},3:{_id(0, 48, 20260925)}"          # rosa primeiro: a ordem dada
+    assert M.main(["--simulada", "--lista", str(p), "--ids", ids, "--pausa", "2", "--out-dir", str(out)]) == 0
+    texto = capsys.readouterr().out
+    assert "2 segmentos" in texto and "registry não alterado" in texto
+    assert texto.index("normal_seg0003_rosa_5db") < texto.index("normal_seg0048_branco_0db")
+    cap = next(out.glob("serial-*.log")).read_text(encoding="utf-8")
+    assert "#pc plano grupo=3 ids=48" in cap and "#pc plano grupo=4 ids=5003" in cap
+    with pytest.raises(SystemExit):
+        M.main(["--simulada", "--lista", str(p), "--ids", "3:x"])
+    assert M.main(["--simulada", "--lista", str(p), "--ids", "3:7", "--out-dir", str(out)]) == 1
+    assert "3:7 não estão" in capsys.readouterr().out
+    for ruim in (["--ids", ids, "--limite", "1"], ["--pausa", "-1"]):
+        with pytest.raises(SystemExit):
+            M.main(["--simulada", "--lista", str(p), *ruim])
+    with pytest.raises(SystemExit):                                     # a captura não tem envio
+        M.main(["--captura", str(out / "x.log"), "--lista", str(p), "--pausa", "2"])
