@@ -137,7 +137,9 @@ def test_linha_texto_sem_medida_de_tempo():
 
 
 def test_janela_desenha_os_estados_quando_ha_tela():
-    tk = pytest.importorskip("tkinter")
+    # exc_type: com o tkinter instalado mas sem a libtk, o import dá ImportError (não
+    # ModuleNotFoundError), e desde o pytest 8.2 o importorskip só pula no segundo
+    tk = pytest.importorskip("tkinter", exc_type=ImportError)
     try:
         raiz = tk.Tk()
     except tk.TclError:
