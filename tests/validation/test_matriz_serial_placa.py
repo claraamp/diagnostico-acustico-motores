@@ -604,8 +604,9 @@ def test_main_ids_e_pausa_sao_ensaio(tmp_path, monkeypatch, capsys):
 
 
 def test_rx_estragada_por_bytes_perdidos_e_recusada_sem_quebrar():
-    """Linhas da captura de 22/11 (CH340 a 921.600 bit/s no Windows): a rx e o $SEG juntos,
-    ou um campo cortado. A análise não pode quebrar, e nenhuma vira resposta válida."""
+    """Linhas da captura de 22/11 (reports/embarcado/capturas/ch340-ruido-22-11.log, CH340 a
+    921.600 bit/s no Windows): a rx e o $SEG juntos, ou um campo cortado. A análise não pode
+    quebrar, e nenhuma vira resposta válida."""
     juntas = ("rx grupo=4 id=5047 bytes=25618 ms=308 ignorados=0 a_mais=0 erros_uart=0 ciclos=5842400 "
               "escore_hex=0x40DF6787 voltas=12 estouros=$SEG,1,336,S,4,5047,F,1,6.981,0,,,5842400*67")
     assert M.ler_rx(juntas) is None
@@ -619,3 +620,15 @@ def test_rx_estragada_por_bytes_perdidos_e_recusada_sem_quebrar():
               "#pc plano grupo=4 ids=5047", juntas, "rx erro=crc grupo=4 id=5047 estouros=$SEG"]
     a = M.analisar(linhas, "exp239", "ee0c3e088366")
     assert not a.respostas and a.estouros == 0
+
+
+@pytest.mark.parametrize("nome", ["ch340-ruido-22-11.log", "ch340-ruido-22-11-3.log", "ch340-ruido-22-11-4.log"])
+def test_capturas_do_ch340_sao_analisadas_sem_quebrar(nome):
+    """As capturas de 22/11, com bytes perdidos da placa para o PC: a análise vai até o fim,
+    e toda resposta aceita tem a rx inteira e o escore igual ao do $SEG (os 3 dígitos)."""
+    from pathlib import Path
+    caminho = Path(__file__).resolve().parents[2] / "reports" / "embarcado" / "capturas" / nome
+    a = M.analisar(M.ler_linhas_captura(caminho), "exp239", "ee0c3e088366")
+    assert a.respostas and a.rejeitadas and a.estouros == 0
+    for r in a.respostas.values():
+        assert r.estouros == 0 and len(r.hexa) == 8
