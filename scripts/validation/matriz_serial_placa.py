@@ -265,7 +265,7 @@ def inteiro_kv(kv: dict, chave: str, padrao=None):
 def ler_rx(rx: str) -> dict | None:
     """
     A linha rx de um segmento, ou None se ela não está inteira. A rx não tem checksum:
-    um adaptador que perde bytes (o CH340 a 921.600 bit/s no Windows, 22/11) pode
+    uma serial que perde bytes (o teste de 22/11, a 921.600 bit/s no Windows) pode
     juntar a rx com o $SEG seguinte ("estouros=$SEG,...") ou cortar um campo. Uma rx
     assim é recusada (o segmento vai como "sem_rx" e é reenviado), nunca interpretada.
     """
