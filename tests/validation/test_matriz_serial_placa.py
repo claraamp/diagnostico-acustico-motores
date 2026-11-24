@@ -622,13 +622,49 @@ def test_rx_estragada_por_bytes_perdidos_e_recusada_sem_quebrar():
     assert not a.respostas and a.estouros == 0
 
 
-@pytest.mark.parametrize("nome", ["ch340-ruido-22-11.log", "ch340-ruido-22-11-3.log", "ch340-ruido-22-11-4.log"])
-def test_capturas_do_ch340_sao_analisadas_sem_quebrar(nome):
+def test_rx_cortada_e_recusada():
+    """Os cortes das capturas de 22/11 que a primeira versão aceitava: um campo sem o nome
+    inteiro ('erros_u0 ciclos=', no 3:54 da ch340-ruido-22-11.log), o estouros vazio ou sem
+    ele (o 4:5047 da ch340-ruido-22-11-4.log) e um dígito a menos nos ciclos, que só se vê
+    contra os ciclos do $SEG."""
+    rx, seg = _par()
+    assert M.ler_rx(rx) and M.validar_resposta(rx, seg)[1] == ""
+    for ruim in (rx.replace("erros_uart=0 ciclos", "erros_u0 ciclos"),       # 3:54
+                 rx.replace(" estouros=0", " estouros="),
+                 rx.replace(" estouros=0", ""),                                 # 4:5047
+                 rx.replace("bytes=25618", "bytes=2618"),
+                 rx.replace("ms=307 ", "ms=307  "),
+                 rx + "x"):
+        assert M.ler_rx(ruim) is None and M.validar_resposta(ruim, seg) == (None, "sem_rx"), ruim
+    # um dígito a menos nos ciclos: a rx continua no formato, e só o $SEG mostra o corte
+    curto = rx.replace("ciclos=5843000", "ciclos=584300")
+    assert M.ler_rx(curto) and M.validar_resposta(curto, seg) == (None, "rx_ciclos_nao_bate")
+    # sem voltas e estouros: só vale num firmware que não os manda (até 31/10)
+    velha, seg_v = _par(fim="")
+    assert M.validar_resposta(velha, seg_v)[1] == ""
+    assert M.validar_resposta(velha, seg_v, exigir_voltas=True) == (None, "sem_rx")
+    # numa captura em que a placa manda voltas e estouros, a rx sem os dois perdeu o fim
+    velha89, seg89 = _par(fim="", id_=89)
+    linhas = ["recepcao inicio modelo=exp239 json=ee0c3e088366 quadro=25618",
+              "#pc plano grupo=1 ids=88-89", rx, M.assinar(",".join(seg)), velha89,
+              M.assinar(",".join(seg89))]
+    a = M.analisar(linhas, "exp239", "ee0c3e088366")
+    assert list(a.respostas) == [(1, 88)] and a.rejeitadas == {"sem_rx": 1}
+
+
+@pytest.mark.parametrize("nome, processados", [("ch340-ruido-22-11.log", 3), ("ch340-ruido-22-11-3.log", 3),
+                                               ("ch340-ruido-22-11-4.log", 4)])
+def test_capturas_do_ch340_sao_analisadas_sem_quebrar(nome, processados):
     """As capturas de 22/11, com bytes perdidos da placa para o PC: a análise vai até o fim,
-    e toda resposta aceita tem a rx inteira e o escore igual ao do $SEG (os 3 dígitos)."""
+    e toda resposta aceita tem a rx inteira, no formato do firmware, com os ciclos do $SEG
+    e o escore igual ao do $SEG (os 3 dígitos)."""
     from pathlib import Path
     caminho = Path(__file__).resolve().parents[2] / "reports" / "embarcado" / "capturas" / nome
-    a = M.analisar(M.ler_linhas_captura(caminho), "exp239", "ee0c3e088366")
-    assert a.respostas and a.rejeitadas and a.estouros == 0
+    linhas = M.ler_linhas_captura(caminho)
+    a = M.analisar(linhas, "exp239", "ee0c3e088366")
+    assert len(a.respostas) == processados and a.rejeitadas and a.estouros == 0
+    inteiras = {(r["grupo"], r["id"], r["hexa"], r["ciclos"])
+                for r in map(lambda l: M.ler_rx(l, exigir_voltas=True), linhas) if r}
     for r in a.respostas.values():
-        assert r.estouros == 0 and len(r.hexa) == 8
+        assert r.estouros == 0 and r.voltas is not None
+        assert (r.grupo, r.id, r.hexa, r.ciclos) in inteiras
