@@ -154,6 +154,18 @@ def test_estouro_do_anel_rejeita_e_reenvia(tmp_path):
     assert a.envios[(2, 25)] == 2 and a.envios[(1, 148)] == 2 and a.envios[(1, 29)] == 2
 
 
+def test_rx_sem_o_fim_na_primeira_resposta_e_reenviada(tmp_path):
+    """A primeira rx da rodada perde exatamente " voltas=12 estouros=0": o envio não pode
+    aceitar (antes, ele só exigia os dois depois de ver uma rx com eles, e a análise
+    recusava: 6 aceitos ao vivo, 5 na análise). O envio e a análise têm de concordar."""
+    primeiro = (M.GRUPOS[PLANO[0][0]], PLANO[0][1])
+    _, placa, _, a, res, _ = rodar(tmp_path, {(*primeiro, 1): "corta_fim_rx"})
+    assert placa.tentativa[primeiro] == 2 and a.envios[primeiro] == 2
+    assert a.rejeitadas == {"rx_sem_voltas": 1} and len(a.respostas) == len(PLANO)
+    assert all(x["estado"] == "processado" for x in res["linhas"])
+    assert res["divergencias_pc"] == []
+
+
 def test_tres_falhas_viram_nao_processado(tmp_path):
     falhas = {(1, 88, k): "crc" for k in (1, 2, 3)}
     _, placa, envio, a, res, msgs = rodar(tmp_path, falhas)
@@ -642,14 +654,14 @@ def test_rx_cortada_e_recusada():
     # sem voltas e estouros: só vale num firmware que não os manda (até 31/10)
     velha, seg_v = _par(fim="")
     assert M.validar_resposta(velha, seg_v)[1] == ""
-    assert M.validar_resposta(velha, seg_v, exigir_voltas=True) == (None, "sem_rx")
+    assert M.validar_resposta(velha, seg_v, exigir_voltas=True) == (None, "rx_sem_voltas")
     # numa captura em que a placa manda voltas e estouros, a rx sem os dois perdeu o fim
     velha89, seg89 = _par(fim="", id_=89)
     linhas = ["recepcao inicio modelo=exp239 json=ee0c3e088366 quadro=25618",
               "#pc plano grupo=1 ids=88-89", rx, M.assinar(",".join(seg)), velha89,
               M.assinar(",".join(seg89))]
     a = M.analisar(linhas, "exp239", "ee0c3e088366")
-    assert list(a.respostas) == [(1, 88)] and a.rejeitadas == {"sem_rx": 1}
+    assert list(a.respostas) == [(1, 88)] and a.rejeitadas == {"rx_sem_voltas": 1}
 
 
 @pytest.mark.parametrize("nome, processados", [("ch340-ruido-22-11.log", 3), ("ch340-ruido-22-11-3.log", 3),

@@ -108,8 +108,11 @@ matriz no fim confere, como sempre, a decisão da placa contra a do Python.
 
 Com a placa: feche o picocom (só um programa abre a porta) e grave o firmware com a
 recepção. A porta abre a 921.600 bit/s (o padrão do firmware desde 03/11);
-`--baud 115200` para um firmware antigo. O DTR e o RTS ficam desligados para não
-reiniciar a placa em adaptadores que os ligam ao reset. Se a placa já estiver no
+`--baud 115200` para um firmware compilado a 115.200. O envio exige a linha rx com
+voltas e estouros, que o firmware manda desde 04/11 (PR #12 do firmware); com um
+firmware anterior, toda resposta é recusada (`rx_sem_voltas`). A análise de uma
+captura antiga (`--captura`) continua lendo as rx sem os dois. O DTR e o RTS ficam
+desligados para não reiniciar a placa em adaptadores que os ligam ao reset. Se a placa já estiver no
 modo de recepção (de uma execução anterior), ela não manda a linha `recepcao inicio`
 e o modelo não pode ser conferido: aperte o RESET quando o script pedir.
 
@@ -274,7 +277,9 @@ def ler_rx(rx: str, exigir_voltas: bool = False) -> dict | None:
     Por isso a linha tem de vir inteira, com todos os campos na ordem do firmware e só
     dígitos nos números; senão é recusada (o segmento vai como "sem_rx" e é reenviado),
     nunca interpretada. `exigir_voltas`: o firmware manda voltas e estouros, então uma rx
-    sem os dois perdeu o fim (só um firmware até 31/10 manda a linha sem eles).
+    sem os dois perdeu o fim. O envio sempre exige (o firmware atual sempre manda os
+    dois); a análise exige quando alguma rx da captura os tem, porque as capturas até
+    31/10 são de um firmware que não os mandava.
     """
     m = RE_RX.match(rx or "")
     if not m or m.group(3) != str(TAM_QUADRO):
@@ -300,6 +305,8 @@ def validar_resposta(rx: str | None, seg: list[str],
         return None, "origem"
     r = ler_rx(rx, exigir_voltas)
     if r is None:
+        if exigir_voltas and ler_rx(rx) is not None:
+            return None, "rx_sem_voltas"        # o fim da linha se perdeu (ou um firmware até 31/10)
         return None, "sem_rx"
     if (r["grupo"], r["id"]) != (int(p["clipe"]), int(p["segmento"])):
         return None, "rx_de_outro_segmento"
@@ -671,9 +678,11 @@ class PlacaSimulada:
     `falhas` simula a linha e a placa: {(grupo, id, tentativa): ação}, com ação
     "crc" ($ERR crc), "ignora" (sem resposta, como uma mágica perdida), "perde_seg"
     (a rx e o $PED chegam, o $SEG não), "corrompe_seg" (checksum errado), "estouro"
-    (rx com estouros=1), "hex_errado" (rx com outro escore), "reinicia" (a placa
-    reinicia no meio do quadro), "erro_conta" ($SEG com disparou 4) ou "atrasa" (a
-    resposta só sai quando o PC escreve de novo, depois do timeout dele: dá duplicata).
+    (rx com estouros=1), "hex_errado" (rx com outro escore), "corta_fim_rx" (a rx
+    chega sem " voltas=12 estouros=0", o fim que bytes perdidos podem levar),
+    "reinicia" (a placa reinicia no meio do quadro), "erro_conta" ($SEG com disparou 4)
+    ou "atrasa" (a resposta só sai quando o PC escreve de novo, depois do timeout dele:
+    dá duplicata).
     Com `inicia_no_modo`, a placa começa calada, já no modo (de uma execução anterior).
     """
 
@@ -765,8 +774,9 @@ class PlacaSimulada:
         if acao == "hex_errado":
             hexa = hex_de_f32(np.float32(e + 100.0))
         estouros = 1 if acao == "estouro" else 0
+        fim = "" if acao == "corta_fim_rx" else self._rx_fim(estouros)
         self._linha(f"rx grupo={grupo} id={id_seg} bytes={TAM_QUADRO} ms=307 ignorados=0 a_mais=0 "
-                    f"erros_uart=0 ciclos=5843000 escore_hex=0x{hexa}{self._rx_fim(estouros)}")
+                    f"erros_uart=0 ciclos=5843000 escore_hex=0x{hexa}{fim}")
         falha = e >= 0
         disparou = "4" if acao == "erro_conta" else str(int(falha))
         corpo = (f"SEG,1,{self.n},S,{grupo},{id_seg},{'F' if falha or acao == 'erro_conta' else 'N'},"
@@ -852,7 +862,6 @@ class Rodada:
         self.resto = b""
         self.reinicios = 0
         self.viu_ped = False
-        self.rx_com_voltas = False  # a placa já mandou uma rx com voltas e estouros (ver ler_rx)
         self.ultimo_byte = time.monotonic()
 
     # -- linhas
@@ -939,7 +948,6 @@ class Rodada:
                 return "reinicio"
             if l.startswith("rx "):
                 rx = l
-                self.rx_com_voltas = self.rx_com_voltas or " voltas=" in l
                 continue
             campos = ler_pacote(l)
             if campos is None:
@@ -947,7 +955,9 @@ class Rodada:
             if campos[0] == "SEG":
                 if len(campos) > 3 and campos[3] in ORIGENS_FORA_DO_MODO:
                     return "reinicio"
-                resp, motivo = validar_resposta(rx, campos, self.rx_com_voltas)
+                # sempre com voltas e estouros: o firmware atual sempre manda os dois, e uma
+                # rx sem eles perdeu o fim da linha (a análise da captura também recusa)
+                resp, motivo = validar_resposta(rx, campos, exigir_voltas=True)
                 rx = None
                 if resp is None:
                     achado = achado or ("rejeitado", motivo)
