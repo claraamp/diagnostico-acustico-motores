@@ -108,8 +108,11 @@ matriz no fim confere, como sempre, a decisão da placa contra a do Python.
 
 Com a placa: feche o picocom (só um programa abre a porta) e grave o firmware com a
 recepção. A porta abre a 921.600 bit/s (o padrão do firmware desde 03/11);
-`--baud 115200` para um firmware antigo. O DTR e o RTS ficam desligados para não
-reiniciar a placa em adaptadores que os ligam ao reset. Se a placa já estiver no
+`--baud 115200` para um firmware compilado a 115.200. O envio exige a linha rx com
+voltas e estouros, que o firmware manda desde 04/11 (PR #12 do firmware); com um
+firmware anterior, toda resposta é recusada (`rx_sem_voltas`). A análise de uma
+captura antiga (`--captura`) continua lendo as rx sem os dois. O DTR e o RTS ficam
+desligados para não reiniciar a placa em adaptadores que os ligam ao reset. Se a placa já estiver no
 modo de recepção (de uma execução anterior), ela não manda a linha `recepcao inicio`
 e o modelo não pode ser conferido: aperte o RESET quando o script pedir.
 
@@ -166,8 +169,11 @@ CLASSES = ("normal", "falha")
 
 CAMPOS_SEG = ("versao", "n", "origem", "clipe", "segmento", "decisao", "disparou",
               "escore_lda", "cod_novidade", "pont_novidade", "lim_novidade", "ciclos")
-RE_RX = re.compile(r"^rx grupo=(\d+) id=(\d+) bytes=(\d+) ms=(\d+) .*?\bciclos=(\d+) "
-                   r"escore_hex=0x([0-9A-F]{8})(?: |$)")
+# a linha rx inteira, campo a campo, como o firmware escreve (recepcao_serial.c); voltas e
+# estouros vêm juntos desde o PR #12 do firmware (04/11), e as capturas até 31/10 não têm os dois
+RE_RX = re.compile(r"^rx grupo=(\d+) id=(\d+) bytes=(\d+) ms=(\d+) ignorados=(\d+) a_mais=(\d+) "
+                   r"erros_uart=(\d+) ciclos=(\d+) escore_hex=0x([0-9A-F]{8})"
+                   r"(?: voltas=(\d+) estouros=(\d+)(?: anel=estourado)?)?$")
 RE_KV = re.compile(r"(\w+)=(\S+)")
 REINICIO = ("hello", "demo", "ponta")      # linhas que só existem fora do modo
 ORIGENS_FORA_DO_MODO = ("R", "C", "D", "A")  # $SEG do marco, dos clipes, decimado e ao vivo
@@ -255,32 +261,57 @@ class Resposta:
     estouros: int
 
 
-def ler_rx(rx: str) -> dict | None:
+def inteiro_kv(kv: dict, chave: str, padrao=None):
+    """O campo `chave` de uma linha de texto da placa; None se veio estragado (bytes perdidos na linha)."""
+    if chave not in kv:
+        return padrao
+    return int(kv[chave]) if kv[chave].isdigit() else None
+
+
+def ler_rx(rx: str, exigir_voltas: bool = False) -> dict | None:
+    """
+    A linha rx de um segmento, ou None se ela não está inteira. A rx não tem checksum:
+    uma serial que perde bytes (o teste de 22/11, a 921.600 bit/s no Windows) pode
+    juntar a rx com o $SEG seguinte ("estouros=$SEG,..."), cortar um campo
+    ("erros_u0 ciclos=..."), deixar um campo vazio ("estouros=") ou tirar o fim da linha.
+    Por isso a linha tem de vir inteira, com todos os campos na ordem do firmware e só
+    dígitos nos números; senão é recusada (o segmento vai como "sem_rx" e é reenviado),
+    nunca interpretada. `exigir_voltas`: o firmware manda voltas e estouros, então uma rx
+    sem os dois perdeu o fim. O envio sempre exige (o firmware atual sempre manda os
+    dois); a análise exige quando alguma rx da captura os tem, porque as capturas até
+    31/10 são de um firmware que não os mandava.
+    """
     m = RE_RX.match(rx or "")
-    if not m:
+    if not m or m.group(3) != str(TAM_QUADRO):
         return None
-    kv = dict(RE_KV.findall(rx))
+    if exigir_voltas and m.group(10) is None:
+        return None
     return {"grupo": int(m.group(1)), "id": int(m.group(2)), "bytes": int(m.group(3)),
-            "ms": int(m.group(4)), "ciclos": int(m.group(5)), "hexa": m.group(6),
-            "voltas": int(kv["voltas"]) if "voltas" in kv else None,
-            "estouros": int(kv.get("estouros", 0))}
+            "ms": int(m.group(4)), "ciclos": int(m.group(8)), "hexa": m.group(9),
+            "voltas": int(m.group(10)) if m.group(10) is not None else None,
+            "estouros": int(m.group(11)) if m.group(11) is not None else 0}
 
 
-def validar_resposta(rx: str | None, seg: list[str]) -> tuple[Resposta | None, str]:
+def validar_resposta(rx: str | None, seg: list[str],
+                     exigir_voltas: bool = False) -> tuple[Resposta | None, str]:
     """
     Um $SEG de origem S (campos já com o checksum conferido) e a linha rx que veio antes
-    dele. Devolve (Resposta, "") ou (None, motivo da rejeição).
+    dele. Devolve (Resposta, "") ou (None, motivo da rejeição). `exigir_voltas`: ver ler_rx.
     """
     if len(seg) != 1 + len(CAMPOS_SEG) or seg[0] != "SEG" or seg[1] != "1":
         return None, "seg_fora_do_formato"
     p = dict(zip(CAMPOS_SEG, seg[1:]))
     if p["origem"] != "S":
         return None, "origem"
-    r = ler_rx(rx)
+    r = ler_rx(rx, exigir_voltas)
     if r is None:
+        if exigir_voltas and ler_rx(rx) is not None:
+            return None, "rx_sem_voltas"        # o fim da linha se perdeu (ou um firmware até 31/10)
         return None, "sem_rx"
     if (r["grupo"], r["id"]) != (int(p["clipe"]), int(p["segmento"])):
         return None, "rx_de_outro_segmento"
+    if not p["ciclos"].isdigit() or r["ciclos"] != int(p["ciclos"]):
+        return None, "rx_ciclos_nao_bate"       # um dígito perdido na rx, que não tem checksum
     if r["estouros"] > 0:
         return None, "estouro"                  # regra 7
     if p["disparou"] == "4":
@@ -521,6 +552,7 @@ class Captura:
     def placa(self, bruta: bytes) -> str:
         if self.fh:
             self.fh.write(bruta + b"\n")
+            self.fh.flush()       # o painel (run_painel.py --seguir) lê a captura enquanto ela é gravada
         return bruta.decode("ascii", errors="replace").rstrip("\r")
 
     def pc(self, texto: str) -> None:
@@ -646,9 +678,11 @@ class PlacaSimulada:
     `falhas` simula a linha e a placa: {(grupo, id, tentativa): ação}, com ação
     "crc" ($ERR crc), "ignora" (sem resposta, como uma mágica perdida), "perde_seg"
     (a rx e o $PED chegam, o $SEG não), "corrompe_seg" (checksum errado), "estouro"
-    (rx com estouros=1), "hex_errado" (rx com outro escore), "reinicia" (a placa
-    reinicia no meio do quadro), "erro_conta" ($SEG com disparou 4) ou "atrasa" (a
-    resposta só sai quando o PC escreve de novo, depois do timeout dele: dá duplicata).
+    (rx com estouros=1), "hex_errado" (rx com outro escore), "corta_fim_rx" (a rx
+    chega sem " voltas=12 estouros=0", o fim que bytes perdidos podem levar),
+    "reinicia" (a placa reinicia no meio do quadro), "erro_conta" ($SEG com disparou 4)
+    ou "atrasa" (a resposta só sai quando o PC escreve de novo, depois do timeout dele:
+    dá duplicata).
     Com `inicia_no_modo`, a placa começa calada, já no modo (de uma execução anterior).
     """
 
@@ -740,8 +774,9 @@ class PlacaSimulada:
         if acao == "hex_errado":
             hexa = hex_de_f32(np.float32(e + 100.0))
         estouros = 1 if acao == "estouro" else 0
+        fim = "" if acao == "corta_fim_rx" else self._rx_fim(estouros)
         self._linha(f"rx grupo={grupo} id={id_seg} bytes={TAM_QUADRO} ms=307 ignorados=0 a_mais=0 "
-                    f"erros_uart=0 ciclos=5843000 escore_hex=0x{hexa}{self._rx_fim(estouros)}")
+                    f"erros_uart=0 ciclos=5843000 escore_hex=0x{hexa}{fim}")
         falha = e >= 0
         disparou = "4" if acao == "erro_conta" else str(int(falha))
         corpo = (f"SEG,1,{self.n},S,{grupo},{id_seg},{'F' if falha or acao == 'erro_conta' else 'N'},"
@@ -920,7 +955,9 @@ class Rodada:
             if campos[0] == "SEG":
                 if len(campos) > 3 and campos[3] in ORIGENS_FORA_DO_MODO:
                     return "reinicio"
-                resp, motivo = validar_resposta(rx, campos)
+                # sempre com voltas e estouros: o firmware atual sempre manda os dois, e uma
+                # rx sem eles perdeu o fim da linha (a análise da captura também recusa)
+                resp, motivo = validar_resposta(rx, campos, exigir_voltas=True)
                 rx = None
                 if resp is None:
                     achado = achado or ("rejeitado", motivo)
@@ -1029,6 +1066,9 @@ class Analise:
 def analisar(linhas: list[str], modelo_id: str, json_sha12: str) -> Analise:
     a = Analise()
     rx = None
+    # o firmware desta captura manda voltas e estouros na rx (todos desde 04/11): então
+    # uma rx sem eles perdeu o fim da linha
+    exigir_voltas = any(l.startswith("rx ") and " voltas=" in l for l in linhas)
     for num, l in enumerate(linhas, 1):
         if l.startswith("#pc "):
             texto = l[4:]
@@ -1058,9 +1098,9 @@ def analisar(linhas: list[str], modelo_id: str, json_sha12: str) -> Analise:
                 a.refs[int(kv["seg"])] = kv["escore_hex"][2:].upper()
         elif l.startswith("rx "):
             rx = l
-            r = ler_rx(l)
+            r = ler_rx(l, exigir_voltas)
             kv = dict(RE_KV.findall(l))
-            a.estouros += int(kv.get("estouros", 0)) if (r or l.startswith("rx erro")) else 0
+            a.estouros += (inteiro_kv(kv, "estouros", 0) or 0) if (r or l.startswith("rx erro")) else 0
         elif l.startswith("$"):
             campos = ler_pacote(l)
             if campos is None:
@@ -1074,7 +1114,7 @@ def analisar(linhas: list[str], modelo_id: str, json_sha12: str) -> Analise:
                 if campos[0] == "ERR":
                     a.erros[campos[-1]] += 1
             elif campos[0] == "SEG" and len(campos) > 3 and campos[3] == "S":
-                resp, motivo = validar_resposta(rx, campos)
+                resp, motivo = validar_resposta(rx, campos, exigir_voltas)
                 rx = None
                 if resp is None:
                     a.rejeitadas[motivo] += 1

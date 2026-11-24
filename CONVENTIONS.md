@@ -168,6 +168,7 @@ Módulos importáveis ficam na raiz de `scripts/` quando praticamente toda etapa
 | `validation/selecao.py` | validação interna ao treino do B (`folds_internos`) e regra de escolha (`escolher`: o mais barato dentro da margem), para todo estudo que escolhe sem olhar o teste |
 | `augmentation/transformacoes.py` | transformações de sinal do aumento: estiramento temporal (phase vocoder ou reamostragem), ruído com SNR fixada, recorte central |
 | `models/lda.py` | modelo final: o mesmo `novo_modelo` do `run_protocol` treinado com todos os segmentos, parâmetros em JSON nas formas padronizada e dobrada (escore ≥ 0 → falha, o empate do sklearn), descrição da cadeia de features para o firmware (`cadeia_entrada`, tirada do `config` e do `dsp`) e conferência contra o sklearn |
+| `interface/pacotes.py` | leitura dos pacotes da placa (`$CAB`, `$SEG` e `$ERR`, formato v1 do README do firmware) e o estado do painel; só a biblioteca padrão, para o painel rodar sem o resto do pipeline |
 | `augmentation/variantes.py` | variantes por segmento (sorteio reprodutível por segmento e cópia), intervalo lido da gravação e filtro que aceita, em cada fold, só as variantes que leem segmentos de treino |
 
 A regra vale em particular para a segmentação: qualquer etapa que opere sobre segmentos — extração de features, aumento de dados, treino — obtém os segmentos de `particao.segmentos_de(particao.carregar(...))`, nunca recorta o sinal por conta própria. Uma segunda segmentação poderia divergir da partição sem erro nenhum, e o teste deixaria de estar separado do treino.

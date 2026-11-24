@@ -1,0 +1,123 @@
+#pc rodada inicio data=2026-11-22 porta=COM3 baud=921600 modelo=exp239 json=ee0c3e088366 commit=4a0558a lista=bcc8925a416a
+#pc plano grupo=3 ids=3,44,48,50,54,57,59-60
+#pc plano grupo=4 ids=5000,5047
+#pc pedir_modo
+recepcao inicio modelo=exp239 json=ee0c3e088366 quadro=25618 anel=2048 baud=921600 silencio_ms=200
+ref seg=29 clipe=normal k=0 escore=-1331.768 escore_hex=0xC4A678ref seg=30 clipe=normal k=1 escore=-1392.132 escore_hex=0xC4AE043C
+ref seg=88 clipe=bpfi_0.3mm k=0 escore=1361.836 escore_hex=0x44AA3AC3
+ref seg=89 clipe=bpfi_0.3mm k=1 escore=1477.391 escore_hex=0x44B8AC81
+ref seg=147 clipe=bpfi_1.0mm k=0 escore=1469.799 escore_hex=0x447B990
+ref seg=148 clipe=bpfi_1.0mm k=1 escore=1425.165 escore_hex=0x44ref seg=206 clipe=bpfo_0.3mm k=0 escore=1492.374 escore_hex=0x44BA8BFB
+ref seg=207 clipe=bpfo_0.3mm k=1 escore=1518.177 escore_hex=0x44BDC5AB
+ref seg=265 clipe=bpfo_1.0mm k=0 escore=1499.839 escore_hex=0x44BB7ADB
+ref seg=266 clipe=bpfo_1.0mm k=1 escore=1499.847 escore_hex=0x447B1E
+$CAB,1,exp239,ee0c3e088366,26,100*3B
+$PED,1,1*51
+#pc envio grupo=3 id=48 tentativa=1 nome=normal_seg0048_branco_0db
+rx grupo=3 id=48 bytes=25618 ms=308 ignorados=0 a_mais=0 erros_uart=0 ciclos=5843777 escore_hex=oltas=12 estouros=0
+$SEG,1,319,S,3,48,N,0,-0.677,0,,,5843777*41$PED,1,2*52
+#pc falhou grupo=3 id=48 tentativa=1 motivo=timeout
+#pc envio grupo=3 id=48 tentativa=2 nome=normal_seg0048_branco_0db
+rx grupo=3 id=48 bytes=25618 ms=308 ignorados=0 a_mais=0 erros_uart=0 ciclos=5843476 escore_hex=0xBF2D469A voltas=12 estouros=0$SEG,1,320,S,3,48,N,0,-0.677,0,,,5843476*49
+$PED,1,3*53
+#pc falhou grupo=3 id=48 tentativa=2 motivo=timeout
+#pc envio grupo=3 id=48 tentativa=3 nome=normal_seg0048_branco_0db
+rx grupo=3 id=48 bytes=25618 ms=308 ignorados=0 a_mais=0 erros_uart=0 ciclos=5843559 escore_hex=0xBF2D469A voltas=12 estouros=0$SEG,1,321,S,3,48,N,0,-0.677,0,,,5843559*44
+$PED,1,4*54
+#pc falhou grupo=3 id=48 tentativa=3 motivo=timeout
+#pc nao_processado grupo=3 id=48 tentativas=3
+#pc envio grupo=3 id=3 tentativa=1 nome=normal_seg0003_branco_0db
+rx grupo=3 id=3 bytes=25618 ms=308 ignorados=0 a_mais=0 erros_uart=0 ciclos=5844062 escore_hex=0x3F83FD85 voltas=12 estouros=0
+$SEG,1,322,S,3,3,F,1,1.031,0,,,544062*53
+$PED,1,5*55
+#pc falhou grupo=3 id=3 tentativa=1 motivo=timeout
+#pc envio grupo=3 id=3 tentativa=2 nome=normal_seg0003_branco_0db
+rx grupo=3 id=3 bytes=25618 ms=308 ignorados=0 a_mais=0 erros_uart=0 ciclos=5844015 escore_hex=0x3F83FD85 voltas=12 estouros=0
+EG,1,323,S,3,3,F,1,1.031,0,,,5844015*52
+$PED,1,6*56
+#pc falhou grupo=3 id=3 tentativa=2 motivo=timeout
+#pc envio grupo=3 id=3 tentativa=3 nome=normal_seg0003_branco_0db
+rx grupo=3 id=3 bytes=25618 ms=308 ignorados=0 a_mais=0 erros_uart=0 ciclos=5844197 escore_hex=0x3F83FD85 voltas=12 estouros=0
+EG,1,324,S,3,3,F,1,1.031,0,,,5844197*5E
+$PED,1,7*57
+#pc falhou grupo=3 id=3 tentativa=3 motivo=timeout
+#pc nao_processado grupo=3 id=3 tentativas=3
+#pc envio grupo=3 id=57 tentativa=1 nome=normal_seg0057_branco_0db
+rx grupo=3 id=57 bytes=25618 ms=308 ignorados=0 a_mais=0 erros_uart=0 ciclos=5843844 escore_hex=0xC108C0A0 voltas=12 estouros=0
+$SEG,1,325,S,3,57,N,0,-8.547,0,,,5843844*47
+$PED,1,8*58
+#pc envio grupo=3 id=59 tentativa=1 nome=bpfi_0.3mm_seg0059_branco_0db
+rx grupo=3 id=59 bytes=25618 ms=308 ignorados=0 a_mais=0 erros_uart=0 ciclos=5846480 escore_hex=0x44C1300B voltas=12 estouros=0$SEG,1,326,S,3,59,F,1,1545.501,0,,,5846480*50
+$PED,1,9*59
+#pc falhou grupo=3 id=59 tentativa=1 motivo=timeout
+#pc envio grupo=3 id=59 tentativa=2 nome=bpfi_0.3mm_seg0059_branco_0db
+rx grupo=3 id=59 bytes=25618 ms=308 ignorados=0 a_mais=0 erros_uescore_hex=0x44C1300B voltas=12 estouros=0
+$SEG,1,327,S,3,59,F,1,1545.501,0,,,5846439*53
+$PED,1,10*61
+#pc falhou grupo=3 id=59 tentativa=2 motivo=rejeitado:sem_rx
+#pc envio grupo=3 id=59 tentativa=3 nome=bpfi_0.3mm_seg0059_branco_0db
+rx grupo=3 id=59 bytes=25618 ms=308 ignorados=0 a_mais=0 erros_uart=0 ciclos=5846751 escore_hex=0x44C1300B voltas=12 estouros=0SEG,1,328,S,3,59,F,1,1545.501,0,,,5846751*51
+$PED,1,11*60
+#pc falhou grupo=3 id=59 tentativa=3 motivo=timeout
+#pc nao_processado grupo=3 id=59 tentativas=3
+#pc envio grupo=3 id=44 tentativa=1 nome=normal_seg0044_branco_0db
+rx grupo=3 id=44 bytes=25618 ms=308 ignorados=0 a_mais=0 erros_uart=0 ciclos=5843697 escore_hex=6B4270 voltas=12 estouros=0
+$SEG,1,329,S,3,44,N,0,-14.704,0,,,57*71
+$PED,1,12*63
+#pc falhou grupo=3 id=44 tentativa=1 motivo=timeout
+#pc envio grupo=3 id=44 tentativa=2 nome=normal_seg0044_branco_0db
+rx grupo=3 id=44 bytes=25618 ms=308 ignorados=0 a_mais=0 erros_uart=0 ciclos=5843563 escore_hex=6B4270 voltas=12 estouros=0
+$SEG,1,330,S,3,44,N,0,-14.704,0,,,53*71
+$PED,1,13*62
+#pc falhou grupo=3 id=44 tentativa=2 motivo=timeout
+#pc envio grupo=3 id=44 tentativa=3 nome=normal_seg0044_branco_0db
+rx grupo=3 id=44 bytes=25618 ms=308 ignorados=0 a_mais=0 erros_u843803 escore_hex=0xC16B4270 voltas=12 estouros=0
+$SEG,1,331,S,3,44,N,0,-14.704,0,,,5843803*7B
+$PED,1,14*65
+#pc falhou grupo=3 id=44 tentativa=3 motivo=rejeitado:sem_rx
+#pc nao_processado grupo=3 id=44 tentativas=3
+#pc envio grupo=3 id=50 tentativa=1 nome=normal_seg0050_branco_0db
+rx grupo=3 id=50 bytes=25618 ms=308 ignorados=0 a_mais=0 erros_uart=0 ciclos=5843695 escore_hex=0x408116C8 voltas=12 estouros=0$SEG,1,332,S,3,50,F,1,4.034,0,,,5843695*6D
+$PED,1,15*64
+#pc falhou grupo=3 id=50 tentativa=1 motivo=timeout
+#pc envio grupo=3 id=50 tentativa=2 nome=normal_seg0050_branco_0db
+rx grupo=3 id=50 bytes=25618 ms=307 ignorados=0 a_mais=0 erros_uart=0 ciclos=5844066 escore_hex=0x408116C8 voltas=12 estouros=0
+$SEG,1,333,S,3,50,F,1,4.034,0,,,5844066*61
+$PED,1,16*67
+#pc envio grupo=4 id=5000 tentativa=1 nome=normal_seg0000_rosa_5db
+rx grupo=4 id=5000 bytes=25618 ms=309 ignorados=0 a_mais=0 erros_uart=0 ciclos=5842819 escore_hex=0xC30CEF31 voltas=12 estouros=0
+$SEG,1,334,S,4,5000,N,0,-140.934,0,,,5842819*4B
+#pc envio grupo=4 id=5047 tentativa=1 nome=normal_seg0047_rosa_5db
+$PED,1,17*66rx grupo=4 id=5047 bytes=25618 ms=308 ignorados=0 a_mais=0 erros_uart=0 ciclos=5842459 escore_hex=0x40DF6787 voltas=12 estouros=$SEG,1,335,S,4,5047,F,1,6.981,0,,,5842459*68
+$PED,1,18*69
+#pc falhou grupo=4 id=5047 tentativa=1 motivo=timeout
+#pc envio grupo=4 id=5047 tentativa=2 nome=normal_seg0047_rosa_5db
+rx grupo=4 id=5047 bytes=25618 ms=308 ignorados=0 a_mais=0 erros_uart=0 ciclos=5842400 escore_hex=0x40DF6787 voltas=12 estouros=$SEG,1,336,S,4,5047,F,1,6.981,0,,,5842400*67
+$PED,1,19*68
+#pc falhou grupo=4 id=5047 tentativa=2 motivo=timeout
+#pc envio grupo=4 id=5047 tentativa=3 nome=normal_seg0047_rosa_5db
+rx grupo=4 id=5047 bytes=25618 ms=308 ignorados=0 a_mais=0 erros=5842388 escore_hex=0x40DF6787 voltas=12 estouros=0
+$SEG,1,337,S,4,5047,F,1,6.981,0,,,5842388*61
+$PED,1,20*62
+#pc falhou grupo=4 id=5047 tentativa=3 motivo=rejeitado:sem_rx
+#pc nao_processado grupo=4 id=5047 tentativas=3
+#pc envio grupo=3 id=54 tentativa=1 nome=normal_seg0054_branco_0db
+rx grupo=3 id=54 bytes=25618 ms=308 ignorados=0 a_mais=0 erros_u0 ciclos=5843833 escore_hex=0xC19EAE93 voltas=12 estouros=0
+$SEG,1,338,S,3,54,N,0,-19.835,0,,,5843833*70
+$PED,1,21*63
+#pc envio grupo=3 id=60 tentativa=1 nome=bpfi_0.3mm_seg0060_branco_0db
+rx grupo=3 id=60 bytes=25618 ms=308 ignorados=0 a_mais=0 erros_uscore_hex=0x44D820D4 voltas=12 estouros=0
+$SEG,1,339,S,3,60,F,1,1729.026,0,,,5847032*50
+$PED,1,22*60
+#pc falhou grupo=3 id=60 tentativa=1 motivo=rejeitado:sem_rx
+#pc envio grupo=3 id=60 tentativa=2 nome=bpfi_0.3mm_seg0060_branco_0db
+rx grupo=3 id=60 bytes=25618 ms=308 ignorados=0 a_mais=0 erros_uart=0 ciclos=5846985 escore_hex=0x44D820D4 voltas=12 estouros=0SEG,1,340,S,3,60,F,1,1729.026,0,,,5846985*5A
+$PED,1,23*61
+#pc falhou grupo=3 id=60 tentativa=2 motivo=timeout
+#pc envio grupo=3 id=60 tentativa=3 nome=bpfi_0.3mm_seg0060_branco_0db
+rx grupo=3 id=60 bytes=25618 ms=308 ignorados=0 a_mais=0 erros_u846875 escore_hex=0x44D820D4 voltas=12 estouros=0
+$SEG,1,341,S,3,60,F,1,1729.026,0,,,5846875*55
+$PED,1,24*66
+#pc falhou grupo=3 id=60 tentativa=3 motivo=rejeitado:sem_rx
+#pc nao_processado grupo=3 id=60 tentativas=3
+#pc rodada fim

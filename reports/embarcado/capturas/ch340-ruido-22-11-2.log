@@ -1,0 +1,4 @@
+#pc rodada inicio data=2026-11-22 porta=COM3 baud=921600 modelo=exp239 json=ee0c3e088366 commit=4a0558a lista=bcc8925a416a
+#pc plano grupo=3 ids=3,44,48,50,54,57,59-60
+#pc plano grupo=4 ids=5000,5047
+#pc pedir_modo
