@@ -25,7 +25,8 @@ A descrição completa (metodologia, protocolos de validação, resultados e dis
 ## Resultados principais
 
 - **Protocolo B:** acurácia balanceada média de 0,875 (sensibilidade 0,750, especificidade 1,000). O pior caso é a falha de pista externa de 0,3 mm, que não é detectada.
-- **Placa × Python:** 295/295 segmentos do conjunto principal e 40/40 do HUSTmotor com a mesma decisão, e o escore dentro da tolerância.
+- **Placa × Python:** 295/295 segmentos do conjunto principal e 40/40 do HUSTmotor com a mesma decisão do Python, e o escore dentro da tolerância. Isso mede a **fidelidade do porte**, não o desempenho: os 295 segmentos estão no treino do modelo final, e o desempenho é o do Protocolo B.
+- **Outra máquina (HUSTmotor):** a LDA treinada no conjunto principal **não transfere**. Sem retreino, ela decide "falha" nos 40 segmentos, inclusive nos 20 normais.
 - **Tempo real e memória:** a cadeia inteira usa 17,5 % do tempo real; o firmware ocupa 85,9 % da flash e 26,7 % da RAM.
 
 Os números, as tabelas e as condições de cada resultado estão no relatório final. Cada rodada está registrada em `experiments/registry.csv`, com o commit em que rodou.
@@ -73,23 +74,25 @@ python scripts/pipeline/01_convert_mat_to_pcm.py    # .mat → PCM int16 a 51,2 
 python scripts/pipeline/02_decimate_pcm.py          # decimação para 12,8 kHz
 python scripts/pipeline/03_make_splits.py           # confere a partição versionada
 python scripts/pipeline/04_extract_features.py      # MFCC de cada segmento
-python scripts/pipeline/05_train_classifier.py --responsavel <nome>   # modelo final (LDA)
-python scripts/pipeline/06_export_lda_header.py --responsavel <nome>  # modelo em C para o firmware
+python scripts/pipeline/05_train_classifier.py --sem-registro   # modelo final (LDA) → reports/modelo_final/teste/
+python scripts/pipeline/06_export_lda_header.py --sem-registro  # modelo em C → reports/modelo_final/teste/
 ```
+
+Use sempre `--sem-registro` para reproduzir: ele grava em pastas de teste e não toca no `registry.csv` nem nos arquivos versionados. Com `--responsavel <nome>`, o script registra uma rodada nova, e no `05` isso troca o id e o SHA-256 do `lda_final.json`: o `06` passa a abortar, testes falham e o painel acusa modelo diferente do da placa.
 
 Os passos `07` a `11` geram as referências e os clipes para a placa e preparam o HUSTmotor. O que cada etapa grava e confere está em [`docs/pipeline.md`](./docs/pipeline.md).
 
-Alguns pontos de entrada:
+Alguns pontos de entrada (o que cada um precisa está no comentário):
 
 ```bash
-python scripts/validation/run_protocol.py --protocolo B --responsavel <nome>   # resultado principal
-python scripts/validation/run_protocol_c.py --responsavel <nome>               # HUSTmotor
-python scripts/validation/matriz_serial_placa.py --simulada                    # envio à placa (sem a placa)
-python scripts/interface/run_painel.py --arquivo reports/embarcado/capturas/linux-demo-24-11.log   # painel com uma captura salva
-python scripts/validation/run_consolidacao.py                                  # tabelas e figuras do relatório
+python scripts/validation/run_protocol.py --protocolo B --sem-registro   # resultado principal; precisa do 01 ao 04
+python scripts/validation/run_protocol_c.py --sem-registro               # HUSTmotor; precisa do 01 ao 06 e do HUSTmotor com o 10
+python scripts/validation/matriz_serial_placa.py --simulada                 # envio à placa simulada (não registra); precisa do 01 ao 06 e do HUSTmotor com o 10
+python scripts/interface/run_painel.py --arquivo reports/embarcado/capturas/linux-demo-24-11.log   # painel com uma captura salva; não precisa de data/
+python scripts/validation/run_consolidacao.py                            # tabelas e figuras do relatório; só lê os resultados versionados
 ```
 
-As opções de cada script estão no `--help` dele, e a lista completa de comandos, em [`docs/pipeline.md`](./docs/pipeline.md). Uma rodada registrada grava o commit no `registry.csv`, então commite o código antes de rodar.
+O HUSTmotor vai em `data/raw/hustmotor/` (download em [`docs/hustmotor.md`](./docs/hustmotor.md)) e é preparado pelo `10_prepare_hustmotor.py`. As opções de cada script estão no `--help` dele, e a lista completa de comandos, em [`docs/pipeline.md`](./docs/pipeline.md). As rodadas que entram no `registry.csv` (com `--responsavel`) são da equipe: o registro grava o commit, então commite o código antes de rodar.
 
 ## Convenções
 

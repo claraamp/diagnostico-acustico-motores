@@ -9,7 +9,7 @@ Este documento reúne os detalhes técnicos que saíram do README: as decisões 
 | Taxa de amostragem de trabalho | **12.800 Hz** (decimação por fator inteiro 4 a partir de 51,2 kHz) | `reports/decimation/decimation_report.md` |
 | Anti-aliasing | FIR Kaiser, 147 taps, corte em 5.760 Hz, 60 dB de atenuação | idem |
 | Representação de features | MFCC (25 ms, hop 10 ms, 20 mels, 13 coeficientes) | proposta, seção de Metodologia |
-| Plataforma | STM32F411CEU6 (Cortex-M4F, CMSIS-DSP, X-CUBE-AI) | proposta, seção de Infraestrutura |
+| Plataforma | STM32F411CEU6 (Cortex-M4F, CMSIS-DSP; o X-CUBE-AI previsto na proposta não foi usado) | proposta, seção de Infraestrutura |
 | Unidade de classificação | segmento de 1 s (12.800 amostras); 59 por gravação, em blocos de 10, 10, 10, 10, 10 e 9 | Notion, Registro de Decisões (protocolo de validação) |
 | Protocolo de validação | **A** — blocos temporais (limite otimista); **B** — gravação de falha deixada de fora (resultado principal) | idem; implementação em `scripts/validation/particao.py` |
 | Meta de desempenho | acurácia balanceada média do Protocolo B ≥ 85 %, sempre com sensibilidade, especificidade e pior caso | idem; resultados em `reports/validation/` |
@@ -68,7 +68,9 @@ diagnostico-acustico-motores/
 │   │   └── lda.py                         # treino com todos os segmentos e parâmetros em JSON (escore ≥ 0 → falha)
 │   ├── exploration/          # estudos e inspeções, sem numeração
 │   │   ├── inspect_mat_keys.py
-│   │   ├── inspect_signal_data.py
+│   │   ├── inspect_signal.py              # árvore de campos de um .mat de áudio
+│   │   ├── inspect_signal_fields.py       # campos do Signal (x_values, y_values, function_record)
+│   │   ├── fig_psd_por_classe.py          # figura: PSD por classe no sinal original a 51,2 kHz, em Pa
 │   │   ├── inspect_pcm.py                 # sanidade da conversão + caráter do sinal
 │   │   ├── inspect_class_spectra.py       # PSD por classe e banda necessária
 │   │   ├── compare_decimation_rates.py    # estudo que definiu a taxa de trabalho
@@ -102,6 +104,7 @@ diagnostico-acustico-motores/
 │       ├── selecao.py                     # validação interna ao B e regra de escolha (escolher), sem torch
 │       ├── run_protocol.py                # executável: roda A ou B e registra o resultado
 │       ├── run_protocol_c.py              # executável: Protocolo C no HUSTmotor (C1, C2 e recalibração da LDA)
+│       ├── matriz_clipes_placa.py         # executável: matriz embarcada nos 10 segmentos dos clipes da flash
 │       ├── matriz_serial_placa.py         # executável: segmentos pela serial à placa e matriz embarcada contra o Python
 │       ├── run_tempo_memoria.py           # executável: tempo (dois modos, E/S separada), memória e pilha do firmware final
 │       ├── run_tabela_comparativa.py      # executável: tabela provisório × oficial a partir dos metrics.json
@@ -117,9 +120,14 @@ diagnostico-acustico-motores/
 │   ├── test_contrato_numerico.py      # cada valor do docs/contrato_numerico.md conferido contra o código
 │   ├── test_dsp.py
 │   ├── test_experimentos.py           # registry: linha nova nunca é colada na anterior
+│   ├── test_fim_de_linha.py           # LF no repositório, no checkout e nos arquivos gerados
 │   ├── augmentation/
+│   │   ├── test_montar_treino.py          # montagem do treino com aumento no run_protocol
 │   │   ├── test_transformacoes.py
 │   │   └── test_variantes.py              # inclui: variante aceita nunca lê teste/descarte
+│   ├── interface/
+│   │   ├── test_pacotes.py                # leitura dos pacotes e estado do painel, sem placa e sem janela
+│   │   └── test_run_painel.py             # fontes de linhas (captura salva, captura sendo gravada) e modo texto
 │   ├── models/
 │   │   └── test_lda.py                    # o JSON reproduz o sklearn; escore ≥ 0 é falha; a descrição da cadeia refaz o MFCC do dsp
 │   ├── pipeline/
@@ -137,18 +145,21 @@ diagnostico-acustico-motores/
 │   └── validation/
 │       ├── test_curva_aprendizado.py      # subamostra só treino, n por classe, reprodutível
 │       ├── test_tabela_aumento.py         # tabela do aumento: comparabilidade e fator de expansão
+│       ├── test_tabela_protocolo_c.py     # tabela única do Protocolo C
 │       ├── test_tabela_taxas.py           # tabela das taxas: comparabilidade e mesma partição em segundos
 │       ├── test_consolidacao.py           # consolidação: número sem registry ou rodada no papel errado aborta
+│       ├── test_matriz_clipes_placa.py    # matriz dos clipes com uma captura sintética
+│       ├── test_matriz_serial_placa.py    # envio pela serial e matriz, sem data/ e sem a placa
 │       ├── test_particao.py               # inclui: outra taxa dá os mesmos segmentos em segundos
+│       ├── test_run_protocol_opcoes.py    # combinações de opções que o run_protocol recusa
 │       ├── test_protocol_c.py             # Protocolo C: limites binomiais, D2 do C2, recalibração (variantes, critério 12/15, só o bias), divisão conferida
 │       ├── test_selecao.py                # folds internos não leem o teste externo; escolher fica com o mais barato na margem
+│       ├── test_tempo_memoria.py          # análise de tempo e memória do firmware, sem a placa
 │       └── test_varredura_snr.py          # SNR exata no segmento, ruído rosa 1/f, recorte decimado igual ao 02, limite E e as duas regras
 │
 ├── notebooks/                # notebooks de análise/visualização
 │
-├── firmware/                 # Fase 2 — porte para o STM32F411CEU6
-│   ├── Core/
-│   └── Drivers/
+├── firmware/                 # pastas vazias: o firmware está no repositório lab3-firmware-stm32
 │
 ├── experiments/
 │   └── registry.csv          # registro estruturado de cada rodada de experimento
@@ -159,13 +170,23 @@ diagnostico-acustico-motores/
 │   │                         #   clipes_demo.h: clipes de áudio para a flash da placa (09)
 │   ├── classifier/           # estudo de escolha do classificador (compare_classifiers.json; SVM linear: compare_classifiers_svm_lin.json)
 │   ├── decimation/           # métricas, figuras e relatório da escolha da taxa
+│   ├── embarcado/            # resultados da placa
+│   │   ├── capturas/         #   logs da serial como chegaram (rodadas, demonstrações, testes no Windows e no Linux)
+│   │   ├── clipes_22_10/     #   matriz nos clipes da flash (matriz_clipes_placa.py)
+│   │   ├── serial_07_11/     #   295 + 40 segmentos pela serial contra o Python (matriz_serial_placa.py)
+│   │   ├── serial_ruido_15_11/  # robustez ao ruído na placa (matriz_serial_placa.py --lista)
+│   │   └── tempo_memoria/    #   tempo, memória e pilha do firmware final (run_tempo_memoria.py)
 │   ├── exploration/          # figuras dos scripts exploratórios
 │   ├── modelo_final/         # lda_final.json (parâmetros para o firmware) e escores_referencia.csv, do 05; lda_modelo.h, do 06
 │   ├── signature/            # caracterização da assinatura acústica
-│   └── validation/           # uma pasta por rodada: metrics.json e folds.csv
-│       └── consolidacao/     # tabelas .tex, figuras e rastreabilidade do relatório (run_consolidacao.py)
+│   └── validation/           # uma pasta por rodada (expNNN_*): metrics.json e folds.csv; tabelas .md na raiz
+│       ├── consolidacao/     # tabelas .tex, figuras e rastreabilidade do relatório (run_consolidacao.py)
+│       ├── controle_harmonicos/  # controle dos harmônicos do eixo (inspect_lda_harmonicos.py)
+│       ├── protocolo_c/      # Protocolo C: tabela única, recalibração e rotação deixada de fora
+│       └── varredura_snr/    # robustez ao ruído: curva, margem e o recorte para a placa (placa/)
 │
 └── docs/                     # proposta, documentação técnica complementar
+    ├── pipeline.md           # este documento
     ├── contrato_numerico.md  # o que o C tem que reproduzir da extração de características (Fase 2)
     ├── hustmotor.md          # HUSTmotor para o Protocolo C: licença, download, blocos, geometria e rotação
     └── criterio_deteccao_novidade.md  # candidatos, limiar e regra de escolha da detecção de novidade (bpfo_0.3mm)
@@ -196,14 +217,16 @@ python scripts/pipeline/01_convert_mat_to_pcm.py   # .mat → PCM int16 a 51,2 k
 python scripts/pipeline/02_decimate_pcm.py         # decima para a taxa de trabalho
 python scripts/pipeline/03_make_splits.py          # confere que a partição versionada bate
 python scripts/pipeline/04_extract_features.py     # MFCC de cada segmento → data/processed/features/
-python scripts/pipeline/05_train_classifier.py --responsavel <nome>   # modelo final → reports/modelo_final/
-python scripts/pipeline/06_export_lda_header.py --responsavel <nome>  # .h da LDA → reports/modelo_final/lda_modelo.h
+python scripts/pipeline/05_train_classifier.py --sem-registro   # modelo final → reports/modelo_final/teste/
+python scripts/pipeline/06_export_lda_header.py --sem-registro  # .h da LDA → reports/modelo_final/teste/
 python scripts/pipeline/07_export_lda_test_vectors.py                 # vetores de teste → reports/modelo_final/lda_vetores_teste.h
 python scripts/pipeline/08_export_stage_references.py                 # referências por estágio → reports/c_reference/estagios/
 python scripts/pipeline/09_export_clips.py                            # clipes para a flash → reports/c_reference/clipes_demo.h
 python scripts/pipeline/10_prepare_hustmotor.py                       # HUSTmotor (data/raw/hustmotor/) → data/processed/hustmotor/
 python scripts/pipeline/11_divisao_hustmotor.py                       # divisão do HUSTmotor por rotação → data/processed/hustmotor/divisao_rotacao.json
 ```
+
+Para reproduzir, o `05` e o `06` rodam com `--sem-registro`: gravam em `reports/modelo_final/teste/` e não tocam no `registry.csv` nem nos arquivos versionados. Com `--responsavel <nome>`, eles registram uma rodada nova e sobrescrevem o modelo versionado: o `05` troca o id e o SHA-256 do `lda_final.json`, e aí o `06` aborta, os testes que conferem o `.h` versionado falham e o painel acusa modelo diferente do da placa. Só se registra um modelo novo por decisão da equipe.
 
 O `03` é determinístico: num clone novo, ele reconstrói exatamente o `splits.json` versionado e avisa que "já existe e é idêntico". Se disser que o arquivo é **diferente**, os dados reconstruídos não são os mesmos das rodadas registradas — pare e investigue antes de seguir.
 
@@ -244,6 +267,8 @@ python scripts/exploration/inspect_pcm.py
 ```
 
 ## Validação, placa e estudos
+
+Os comandos abaixo com `--responsavel <nome>` são os das rodadas registradas da equipe: cada um grava uma linha nova no `registry.csv` e as saídas nas pastas versionadas. Para reproduzir um resultado sem mexer no registro, troque `--responsavel <nome>` por `--sem-registro`.
 
 Os protocolos de validação seguem o fluxo `04` → `mfcc_features.npz` → `run_protocol`. O `run_protocol` não extrai features, lê as do `04` e aborta se o `manifest_features.json` faltar ou tiver sido gerado com outra partição ou outros parâmetros de MFCC — nesse caso, rode o `04` de novo.
 
@@ -364,6 +389,10 @@ python scripts/validation/run_consolidacao.py --sem-taxas    # sem a tabela 12,8
 O teste nunca é aumentado: todo fold é avaliado nos segmentos originais. Rodar o `04` sem `--aumento` apaga o `mfcc_aumento.npz` de uma rodada anterior, para que ele não seja lido como se fosse da extração atual.
 
 Commite o código **antes** de uma rodada registrada: o `registry.csv` grava o hash do commit, e uma rodada feita com código não commitado aponta para um estado que não existe.
+
+### Capturas `ch340-ruido-22-11*`
+
+As capturas do teste de 22/11 no Windows com o grupo misto da robustez (`ch340-ruido-22-11*.log`, em `reports/embarcado/capturas/`, feitas com `--lista`, `--ids` e `--pausa`) têm no cabeçalho a lista `bcc8925a416a`. O `--exportar-placa` regravou o `manifest.json` do recorte com o commit em que rodou (`4a0558a`), e para refazer a análise de uma dessas capturas com `--captura ... --lista` o `git_commit` do manifesto tem de ser esse.
 
 ## Estudos exploratórios
 

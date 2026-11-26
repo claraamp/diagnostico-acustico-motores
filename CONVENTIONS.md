@@ -65,7 +65,7 @@ Consequência prática dessa escolha, aprendida na marra: **depois de clonar o r
 ## 2. Nomenclatura de arquivos e scripts
 
 **Scripts exploratórios** (`scripts/exploration/`): sem prefixo numérico, nome descritivo do que investigam.
-Exemplos já usados: `inspect_mat_keys.py`, `inspect_signal_data.py`, `inspect_pcm.py`, `inspect_class_spectra.py`, `compare_decimation_rates.py`, `compare_classifiers.py`, `inspect_left_out_fault.py`, `identify_tonal_peaks.py`, `confirm_bpf_envelope.py`.
+Exemplos já usados: `inspect_mat_keys.py`, `inspect_signal.py`, `inspect_pcm.py`, `inspect_class_spectra.py`, `compare_decimation_rates.py`, `compare_classifiers.py`, `inspect_left_out_fault.py`, `identify_tonal_peaks.py`, `confirm_bpf_envelope.py`.
 
 Um estudo cujo resultado vai para o relatório grava em `reports/<assunto>/` (ex.: `reports/signature/`) e escreve a própria linha no registry, como qualquer rodada (seção 4).
 
