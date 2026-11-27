@@ -2,538 +2,98 @@
 
 Projeto da disciplina ENGG54 — Laboratório Integrado III-A (UFBA, Escola Politécnica, 2026.2).
 
-Sistema embarcado que classifica, em tempo real e a partir de sinal acústico, o estado de operação de um motor rotativo (normal ou com defeito de rolamento — BPFI/BPFO) usando uma cadeia de processamento digital de sinais e um classificador leve, portados para um microcontrolador STM32F411CEU6. Um protótipo em Python valida a cadeia de processamento antes do porte para o hardware, permitindo comparar a solução em software e em firmware.
-
 **Equipe:** Amanda Bastos de Melo Correia, Júlia Teixeira Gonçalves, Maria Clara Andrade Magalhães Paternostro D'Oliveira.
 
-**Documentação do projeto:**
-- Proposta de trabalho (aprovada em 14/09) — `docs/proposta-trabalho.pdf`
-- Espaço de gerenciamento (tarefas, cronograma, decisões): [Notion](https://app.notion.com/p/04d931873a6c83b2b5a3017fae7db29a)
-- Convenções do projeto: [`CONVENTIONS.md`](./CONVENTIONS.md)
+## O projeto
 
-## Status
+Um sistema embarcado que escuta um motor rotativo e diz, a cada segundo de áudio, se ele está **normal** ou **com defeito de rolamento** (pista interna ou externa). A cadeia de processamento e o classificador foram desenvolvidos e validados primeiro em Python, neste repositório, e depois portados para um microcontrolador STM32F411CEU6, no repositório do firmware ([`lab3-firmware-stm32`](https://github.com/claraamp/lab3-firmware-stm32)). O protótipo em Python é a referência: a placa tem que reproduzir as mesmas decisões.
 
-Fase 1 — Protótipo em Python (em andamento). Conversão, decimação, protocolo de validação, extração de MFCC, aumento de dados, caracterização da assinatura acústica e estudo de escolha do classificador concluídos (fica a LDA: empata com a CNN 2D na validação interna e sai mais barata; ver "Escolha do classificador" abaixo). O modelo final (LDA treinada com os 295 segmentos) sai do `05_train_classifier.py` em `reports/modelo_final/`; o `06_export_lda_header.py` gera dele o `.h` para o firmware, e o próximo passo é o porte, na Fase 2. Ver o quadro de tarefas no Notion para o estado detalhado de cada etapa.
+A descrição completa (metodologia, protocolos de validação, resultados e discussão) está no **relatório final**. Este README só apresenta o projeto e mostra como rodar o código; os detalhes técnicos de cada etapa e todos os comandos estão em [`docs/pipeline.md`](./docs/pipeline.md).
 
-## Decisões técnicas fixadas
- 
-| decisão | valor | onde está a justificativa |
-|---|---|---|
-| Taxa de amostragem de trabalho | **12.800 Hz** (decimação por fator inteiro 4 a partir de 51,2 kHz) | `reports/decimation/decimation_report.md` |
-| Anti-aliasing | FIR Kaiser, 147 taps, corte em 5.760 Hz, 60 dB de atenuação | idem |
-| Representação de features | MFCC (25 ms, hop 10 ms, 20 mels, 13 coeficientes) | proposta, seção de Metodologia |
-| Plataforma | STM32F411CEU6 (Cortex-M4F, CMSIS-DSP, X-CUBE-AI) | proposta, seção de Infraestrutura |
-| Unidade de classificação | segmento de 1 s (12.800 amostras); 59 por gravação, em blocos de 10, 10, 10, 10, 10 e 9 | Notion, Registro de Decisões (protocolo de validação) |
-| Protocolo de validação | **A** — blocos temporais (limite otimista); **B** — gravação de falha deixada de fora (resultado principal) | idem; implementação em `scripts/validation/particao.py` |
-| Meta de desempenho | acurácia balanceada média do Protocolo B ≥ 85 %, sempre com sensibilidade, especificidade e pior caso | idem; resultados em `reports/validation/` |
-| Classificador | **LDA** sobre média e desvio dos 13 MFCC (26 valores), priors uniformes; na validação interna ao treino do B, empata com a CNN 2D e fica pelo custo, e supera o MLP raso e a CNN 1D | `scripts/exploration/compare_classifiers.py`; Notion, estudo comparativo da tarefa Classificador 3/6 |
-| Aumento de dados | só no treino de cada fold: deslocamento de janela (±0,4 s), estiramento temporal (taxa 0,95–1,05, phase vocoder) e ruído branco (SNR 20–35 dB); variante só entra se ler apenas segmentos de treino do fold | proposta (Metodologia); `scripts/augmentation/` |
- 
-A escolha de 12.800 Hz é a única taxa com fator de decimação inteiro dentro da faixa de 8–16 kHz — requisito de `arm_fir_decimate_f32` do CMSIS-DSP — e preserva 96,1 % da energia discriminante no pior caso (classes de defeito incipiente, 0,3 mm). O registro completo da comparação está em `experiments/registry.csv` (`exp001`–`exp006`). O diagnóstico por espectro de envelope desse relatório (SNRs de BPFI/BPFO por taxa) **não vale**: a busca do pico era centrada nas frequências nominais e não alcançava as linhas reais. Ele foi refeito no sinal original pelo `confirm_bpf_envelope.py` (ver "Assinatura acústica" abaixo). A decisão de 12.800 Hz não muda, porque nunca dependeu do envelope.
+## Como funciona
 
-O protocolo de validação existe porque o dataset tem **uma única gravação por classe**: qualquer divisão treino/teste dentro de uma gravação deixa os dois no mesmo registro, e o classificador pode separar as classes pela identidade da gravação em vez da falha (foi o que deu acurácia 1,0 no estudo de decimação). O Protocolo B testa cada gravação de falha sem que ela apareça no treino; é o único resultado que conta para a meta. A primeira rodada, provisória, está em `exp007`–`exp012`. Com o MFCC oficial, sem aumento, o A está em `exp027` (binário) e `exp028` (multiclasse) e o B em `exp013`/`exp015`, e os números são idênticos aos da rodada provisória: A com 1,000 em todos os folds; B com média 0,875, a `bpfo_0.3mm` em 0,5 e as outras três falhas em 1,0. A comparação está em `reports/validation/tabela_provisorio_vs_oficial.md`. Os controles obrigatórios com o MFCC oficial estão em `reports/validation/tabela_controles.md`. Sem o c0 e com normalização RMS por segmento nada muda (`exp029`, `exp030`, `exp014`, `exp219`). Com os rótulos permutados, o B fica em 0,450 ± 0,060 em 100 sementes (`exp031`–`exp050`, `exp059`–`exp138`; p empírico 0,0099). Na curva de aprendizado com o sorteio repartido entre as gravações (`exp139`–`exp218`, 10 sementes por ponto), o B vai de 0,757 com 2 s a 0,867 com 30 s por classe. A curva não descarta que o modelo tenha aprendido "diferente da gravação normal = falha", porque há uma só gravação normal e o teste dela vem da mesma gravação. O `inspect_lda_harmonicos.py` mostra que a LDA não depende das bandas de Mel em que a normal tem harmônicos do eixo mais fortes: apagar essas bandas (log-Mel trocado pela média do treino) e treinar o B de novo deixa o resultado idêntico, 0,875, enquanto apagar o mesmo número de bandas sorteadas fora dos harmônicos dá 0,854–0,875 (`exp221`). A decomposição da separação por banda (`exp220`, −0,20 nas bandas dos harmônicos) é complemento, porque bandas vizinhas são correlacionadas. As rodadas `exp051`–`exp058` são da curva sem estratificação e ficam só no registry.
+```
+áudio a 51,2 kHz → decimação para 12,8 kHz → segmentos de 1 s → MFCC (13 coef.) → média e desvio (26 valores) → LDA → normal / falha
+```
 
-### Escolha do classificador
+1. **Decimação:** FIR (Kaiser, 147 taps) e decimação por 4, de 51,2 para 12,8 kHz — a taxa que cabe no `arm_fir_decimate_f32` da CMSIS-DSP e preserva a banda útil.
+2. **Características:** MFCC com quadros de 25 ms e passo de 10 ms; o segmento de 1 s vira a média e o desvio dos 13 coeficientes.
+3. **Classificação:** uma LDA binária; o sinal do escore dá a decisão (escore ≥ 0 → falha). A LDA empatou com uma CNN 2D na escolha do classificador e custa milhares de vezes menos.
+4. **Validação:** como o conjunto de dados tem uma única gravação por classe, o resultado principal vem de um protocolo em que cada gravação de falha fica fora do treino (Protocolo B). A generalização para outra máquina foi testada no HUSTmotor (Protocolo C).
+5. **Placa:** o modelo final é exportado para cabeçalhos em C; a placa processa áudio gravado na flash ou segmentos enviados pela serial, sinaliza a decisão nos LEDs e manda o resultado para um painel no computador.
 
-A proposta previa escolher entre um MLP raso e uma CNN pequena. O `compare_classifiers.py` comparou quatro modelos (LDA como referência, MLP 26 → 16 → 2, CNN 1D sobre a matriz MFCC 13 × 98 e CNN 2D sobre o log-Mel 20 × 98) **sem usar o teste do Protocolo B**. Em cada fold externo do B, o treino é dividido de novo pela mesma lógica: cada falha de treino deixada de fora, combinada com cada bloco normal de treino (15 treinos internos por fold, 24 folds, 3 sementes por rede). A escolha é feita separadamente para cada falha deixada de fora (escolha aninhada), pelo critério do `escolher()`: dentro de uma margem de 0,02 da melhor acurácia interna (ou da dispersão entre sementes, se for maior), fica o modelo mais barato em MACs. O critério foi fechado depois da primeira rodada (`exp222`), que desempatava pela ordem da lista de modelos; aplicado aos mesmos números, ele dá a mesma escolha, e a rodada seguinte já o registra.
+## Resultados principais
 
-A LDA e a CNN 2D empatam exatamente nas quatro escolhas aninhadas (0,875 de acurácia balanceada interna média), e a LDA fica pelo custo: a CNN 2D custa ~13.000× mais MACs e ~700× mais RAM de ativação. O MLP (0,828) e a CNN 1D (0,824) perdem na `bpfi_0.3mm`, onde a sensibilidade média cai para ~0,6. Nenhum modelo recupera a `bpfo_0.3mm`, nem a CNN 2D, que vê as bandas de Mel onde está a diferença: o pior caso vem de deslocamento de distribuição, não de capacidade do modelo. Em todos os modelos, os erros são falsos negativos (especificidade 1,000). Os números internos são pessimistas, porque o treino interno tem só 2 falhas contra 3 no B externo; o que conta é a comparação entre modelos. Cada rede foi avaliada numa configuração fixa (120 épocas, taxa de aprendizado 3e-3, 16 neurônios ocultos no MLP, 16 filtros na CNN 1D, 8 e 16 na CNN 2D), sem busca de hiperparâmetros: a conclusão de que modelos não lineares não trouxeram ganho vale para essas configurações. O estudo é só binário, porque no B a falha de fora não tem exemplos de treino e um modelo multiclasse não poderia prever essa classe. O custo estimado no STM32F411CEU6 (parâmetros, MACs e pico de ativação) sai do próprio script. Saída em `reports/classifier/compare_classifiers.json`.
+- **Protocolo B:** acurácia balanceada média de 0,875 (sensibilidade 0,750, especificidade 1,000). O pior caso é a falha de pista externa de 0,3 mm, que não é detectada.
+- **Placa × Python:** 295/295 segmentos do conjunto principal e 40/40 do HUSTmotor com a mesma decisão do Python, e o escore dentro da tolerância. Isso mede a **fidelidade do porte**, não o desempenho: os 295 segmentos estão no treino do modelo final, e o desempenho é o do Protocolo B.
+- **Outra máquina (HUSTmotor):** a LDA treinada no conjunto principal **não transfere**. Sem retreino, ela decide "falha" nos 40 segmentos, inclusive nos 20 normais.
+- **Tempo real e memória:** a cadeia inteira usa 17,5 % do tempo real; o firmware ocupa 85,9 % da flash e 26,7 % da RAM.
 
-### Aumento de dados com o modelo escolhido
-
-Com a LDA, o Protocolo B com aumento aplicado só no treino de cada fold dá o mesmo resultado que sem aumento: 0,875 de acurácia balanceada média (sensibilidade 0,750, especificidade 1,000), com a `bpfo_0.3mm` como pior falha (0,500) e o pior fold em 0,500. Isso vale para o aumento completo em 10 sorteios diferentes das variantes (`exp224`–`exp233`, desvio 0,000 entre as sementes; o `exp224` reproduz o `exp016`) e para cada técnica isolada (`exp019`–`exp021`). O fator de expansão do treino é 5 nominal (o segmento e 4 variantes) e 4,98 efetivo, porque o filtro por fold recusa as variantes que encostam no teste ou na faixa de descarte (889 a 903 aceitas por fold). O estiramento por reamostragem é o único que muda o resultado, para pior (0,788, `exp022`), por deslocar as linhas estreitas de falha; por isso o padrão é o phase vocoder. O ganho aleatório não foi implementado: a ablação do nível do sinal (`exp014`, `exp029`, `exp030`) mostra que o modelo não usa o nível. A tabela está em `reports/validation/tabela_aumento.md`. Nas rodadas com aumento, os `parametros` (e o registry) trazem duas sementes: `semente` é a do `run_protocol` (permutação e curva de aprendizado; nestas rodadas, sempre a do config) e `aumento_semente` é a do sorteio das variantes, a única que varia entre o `exp224` e o `exp233`.
-
-### Decimação conferida com o classificador
-
-Com a LDA, o Protocolo B a 25,6 kHz não melhora o de 12,8 kHz: 0,870 de acurácia balanceada média contra 0,875 (`exp235` × `exp234`, no mesmo commit e com a mesma partição em segundos; a de 25,6 kHz é a `splits_25600.json`). A `bpfo_0.3mm` continua sem ser detectada nas duas taxas (sensibilidade 0,000). A única diferença é a `bpfi_0.3mm`, que a 25,6 kHz perde 13 dos 59 segmentos num dos seis folds (acurácia balanceada 0,982). O classificador não indica perda com a decimação; somado ao `exp023` (nenhuma energia a mais que a normal entre 6,4 e 12,8 kHz) e ao `exp026` (linhas de BPFO abaixo de ~3,8 kHz, que o MFCC a 12,8 kHz recebe), não há indício de que a faixa cortada carregue a informação da `bpfo_0.3mm`. O `exp235` sozinho não isola a banda alta: a 25,6 kHz as mesmas 20 bandas Mel se redistribuem até 12,8 kHz, e as bandas com centro abaixo de 3,8 kHz, onde ficam as linhas de BPFO, caem de 16 para 13, enquanto só 4 cobrem a faixa de 6,4 a 12,8 kHz. A comparação mede, portanto, a taxa junto com o MFCC padrão; isolar a banda alta pediria uma rodada a 25,6 kHz com as bandas abaixo de 6,4 kHz iguais às de 12,8 kHz e bandas extras na faixa alta. A tabela está em `reports/validation/tabela_taxas.md`.
-
-### Resultados consolidados para o relatório
-
-O `run_consolidacao.py` reúne, a partir dos `metrics.json` e do registry, as tabelas e figuras finais do classificador em `reports/validation/consolidacao/`, com o LaTeX já no formato do relatório (vírgula decimal, `tabularx`/`booktabs`). O número da meta é o do `exp015` (reproduzido pelo `exp013` e pelo `exp234`): acurácia balanceada média de 0,875 no Protocolo B, com sensibilidade 0,750, especificidade 1,000 e pior caso na `bpfo_0.3mm` (0,500 em todos os 6 folds). Somados os 24 folds, a matriz de confusão tem 0 falsos positivos em 236 testes de segmentos normais e 354 falsos negativos, todos da `bpfo_0.3mm`; as outras três falhas são detectadas em todos os testes. O Protocolo A (`exp027`, `exp028`) sai rotulado como limite otimista. O aumento com 10 sementes (`exp224`–`exp233`, mais as ablações `exp019`–`exp022` e o controle permutado `exp017`) e a comparação de taxas (`exp234` × `exp235`) entram com as mesmas conferências do `run_tabela_aumento.py` e do `run_tabela_taxas.py`. O controle dos harmônicos do eixo (`exp220`, `exp221`), que é do `inspect_lda_harmonicos.py` e grava fora das pastas `expNNN_*`, é conferido pelo bloco `intervencao` do seu `metrics.json`, e a referência da intervenção tem que ser o B da meta. O script confere, antes de gravar qualquer saída, que cada rodada tem linha no registry com as mesmas métricas (`rastreabilidade.md`, 207 rodadas).
-
-### Assinatura acústica
-
-As frequências de falha **medidas** no áudio são BPFI ≈ 268,3 Hz e BPFO ≈ 182,7–183,4 Hz (eixo a 50,20 Hz). A BPFI e a BPFO da falha de 1,0 mm foram confirmadas por um segundo sensor: no espectro de envelope, a vibração as mostra a menos de 0,25 Hz do áudio. Na `bpfo_0.3mm` a confirmação é **parcial**: a vibração tem energia em 182,65 Hz, mas o pico do envelope dela fica em 181,5 Hz, e o envelope do áudio não mostra a linha. As medidas diferem das frequências **cinemáticas** da Tabela 1 do artigo (272,1 e 179,4 Hz), calculadas para ângulo de contato θ = 0°. Use as medidas quando precisar de uma frequência de falha, e chame as do artigo de "cinemáticas", não de "frequências da bancada". Abaixo de 6,4 kHz, cada falha aparece no espectro como uma série harmônica estreita da própria pista, e essas linhas sobrevivem à decimação. A impulsividade clássica, no áudio, fica acima de 6,4 kHz (9–22 kHz nas classes de falha), e a decimação a remove.
-
-A `bpfo_0.3mm` tem essas linhas (+30 dB sobre a normal) e o log-Mel oficial as enxerga (+6 a +14 dB em 0,7–1,3 kHz), mas sem a elevação larga das outras falhas. No Protocolo B, o eixo da LDA aprendido com as outras três falhas a coloca a ~20 % do caminho entre a normal e as falhas de treino, do lado da normal. O `inspect_left_out_fault.py` chega ao mesmo número por um cálculo independente. Scripts em `scripts/exploration/` (`inspect_signature_spectra.py`, `identify_tonal_peaks.py`, `confirm_bpf_envelope.py`, `inspect_signature_mel.py`), saídas em `reports/signature/`, rodadas `exp023`–`exp026`.
-
-### Pente harmônico (linhas estreitas): fica fora da cadeia
-
-O `inspect_comb_features.py` avaliou 4 features de pente harmônico de BPFO e BPFI (pontuação e fração de dentes ≥ 6 dB de cada série, com o f₀ buscado a ±3 % da razão cinemática e as harmônicas do eixo mascaradas) junto ao MFCC, com a mesma LDA, nos três candidatos de resolução do card: A, espectro médio dos 98 quadros do MFCC (40 Hz); B, FFT de 4.096 pontos com média de 3 blocos (3,125 Hz, ~40 KB de RAM estimados); C, FFT de 1 s (1 Hz, só referência). A decisão é pela validação interna ao treino do B (`validation.selecao`, a mesma regra do estudo do classificador: o pente só entra se ganhar por mais que a margem de 0,02, sem perder especificidade, para as quatro falhas externas). **O pente fica fora e a cadeia congela com MFCC e LDA** (`exp248`–`exp252`, que substituem o `exp243`–`exp247` com os mesmos números e mais diagnósticos). O A é inviável: com 40 Hz de resolução, nenhum dente da BPFO fica longe das harmônicas do eixo, que são mais fortes na normal. No B e no C, a validação interna é a mesma com e sem o pente (0,833 nas falhas externas em que a `bpfo_0.3mm` sai dentro do treino, 1,000 na outra), e o B externo também (0,875; `bpfo_0.3mm` em 0,500). O pente enxerga a falha: com 1 Hz (C), o f₀ da BPFO na `bpfo_0.3mm` sai em 182,65 Hz e a pontuação é 21,7 dB, contra 9,9 dB na normal; no B, que caberia no chip, 14,4 contra 5,4 dB com a rotação do artigo e 9,4 ± 4,6 contra 5,4 dB com a estimada. Mas a LDA treinada com as outras falhas dá pouco peso a essas colunas (1–7 % da soma dos |coef| nas features padronizadas), e a posição da `bpfo_0.3mm` no eixo da LDA não muda: 0,80 só com o MFCC e 0,79–0,82 com o pente (0 = centro das falhas de treino, 1 = centro da normal, a definição do `inspect_left_out_fault.py`). No B, a rotação estimada no segmento erra nas gravações de BPFO (~48,8 Hz, contra ~50,2 Hz medidos), e o pente só acha a série com a rotação do artigo (`EIXO_ARTIGO_HZ` = 50,17 Hz, Jung et al., 2023); o erro é silencioso, porque o f₀ fica dentro da faixa de busca (só 2 % dos segmentos com o f₀ no extremo da grade). A decisão é a mesma nos dois modos. Como achado, fora da decisão: a regra "LDA OU pente acima de média + 4 desvios da normal do treino" detecta a `bpfo_0.3mm` (0,992–1,000 no C) com especificidade 1,000, mas muda o modelo (é detecção de novidade, assunto do card do Mahalanobis) e a especificidade dela foi medida na mesma gravação normal de onde sai o limiar: só o Protocolo C pode confirmá-la.
-
-### Detecção de novidade para a `bpfo_0.3mm`: sensibilidade no Protocolo B
-
-O `inspect_deteccao_novidade.py` roda, no Protocolo B, os candidatos do `docs/criterio_deteccao_novidade.md` (versão 4) (`exp254`–`exp263`). **A rodada foi feita antes da aprovação formal do critério.** A versão 4 só mudou o controle do D3, que não altera nenhum veredito (o D3 sai descartado por não superar o D2); as regras do D1, do D2 e do D4 são as da versão 3 revisada. Rotação nominal; a estimada é só reporte. **Nenhum é adotado aqui: a especificidade em outra máquina sai do Protocolo C (HUSTmotor).**
-
-- **D2, Mahalanobis no MFCC (OU a LDA): candidato à adoção.** Detecta a `bpfo_0.3mm` em todos os segmentos (1,000), mantém as outras falhas e a especificidade em 1,000, e não dá nenhum alarme na normal fora do bloco. É o mais barato depois do D4 (~1,6 KB de flash). Ressalva: ele mede "diferente da normal" por construção, e não há controle por rótulo no B; com uma única gravação normal, o resultado não separa a falha da identidade da gravação. O Protocolo C decide.
-- **D1, pente com limiar da normal (OU a LDA): não elegível.** Detecta a `bpfo_0.3mm` (1,000), mas o controle reprova: pentes fixos em frequências que não são de rolamento também a detectam (0,555 em média com a FFT de 4.096 e 0,603 com a D1b), e a margem exigida é 0,5. O controle não separa as linhas de rolamento de outras diferenças em relação à normal: no auto-teste sintético, em que a falha tem só linhas de BPFO, os pentes sorteados também a detectaram (0,44 e 0,15). A pergunta "o detector depende da gravação normal?" continua aberta, para o D1 e para o D2, e só o Protocolo C responde. Com a rotação estimada, a `bpfo_0.3mm` cai para 0,712 e 0,729.
-- **D3, Mahalanobis no MFCC + pente: descartado.** Não supera o D2, que já detecta tudo.
-- **D4, LDA retreinada com falha sintética de linhas estreitas: não elegível.** Passa a detectar a `bpfo_0.3mm` (1,000 nas cinco sementes) e passa na permutação (0,535), mas a `bpfi_0.3mm` cai de 1,000 para 0,732, abaixo do piso de 0,95 para as outras falhas.
-
-**SVM linear no lugar da LDA (`exp264`, `exp265`): não resolve a `bpfo_0.3mm`, e a LDA fica.** O card também pedia um SVM linear (C = 1, pesos de classe balanceados, sem busca), que custa na placa o mesmo que a LDA. Na validação interna ao treino do B (`compare_classifiers.py --modelos lda,svm_lin --especificidade-minima 0.95`), ele tem 0,920 contra 0,875 da LDA, com especificidade 1,000 nos dois; o ganho vem só de quando a `bpfo_0.3mm` é a falha interna deixada de fora (0,701 contra 0,500), e o SVM perde um pouco na `bpfi_0.3mm` (0,978 contra 1,000). A escolha aninhada não é única: fica o SVM nas falhas externas `bpfi_1.0mm` e `bpfo_1.0mm` e a LDA nas outras duas, porque, em custo igual, o SVM só troca a LDA se ganhar por mais que a margem de 0,02. No B externo (`run_protocol.py --modelo svm_lin`), reportado seja qual for, a `bpfo_0.3mm` fica em 0,506 (sensibilidade 0,011), contra 0,500 da LDA, e a `bpfi_0.3mm` cai de 1,000 para 0,990; a média é 0,874, contra 0,875 da LDA (`exp015`). Com a escolha aninhada, o B externo é o mesmo da LDA, porque o SVM só é escolhido onde os dois acertam tudo. O ganho interno não se repete no B externo. O Mahalanobis do card é o D2 acima, rodado com a regra do critério v4.
-
-### HUSTmotor: dados do Protocolo C
-
-O `10_prepare_hustmotor.py` põe o som do HUSTmotor multimodal (Zhao et al., 2025) no formato do pipeline, só as classes saudável e falha de rolamento, nas 4 velocidades (5, 10, 20 e 30 Hz), decimado de 25,6 para 12,8 kHz com a mesma regra de filtro do Jung. **Cada arquivo são 5 aquisições separadas de 1,28 s**, e não 6,4 s contínuos: cada bloco é decimado sozinho e dá um segmento de 1 s, então são 5 segmentos por classe e velocidade (20 por classe). O repositório não declara licença (a descrição pede a citação do artigo), e os dados não são versionados. O rolamento é o 6203, inferido (BPFO 3,053 × e BPFI 4,947 × a rotação nominal), e o pente é inviável a 5 e a 10 Hz. Detalhes, download e o que isso muda no Protocolo C em `docs/hustmotor.md`.
-
-A divisão do HUST por rotação fica versionada em `data/processed/hustmotor/divisao_rotacao.json`, gerada só do manifest pelo `11_divisao_hustmotor.py`: um id por segmento (`<arquivo>_a<aquisição>`, por exemplo `h_20hz_a3`), a divisão do C2 rotação a rotação (calibração nas aquisições 1 e 2 da normal, descarte na 3, medida na 4 e na 5, falha nas 5) e a da rotação deixada de fora (calibração com a normal das outras três rotações, todas as aquisições; teste com a normal e a falha da rotação de fora; `dentro_da_faixa_calibrada` só a 10 e a 20 Hz). Como o `03`, o script para se o arquivo existente for diferente; o `run_protocol_c.py --recalibracao` confere os papéis do C2 contra ele, o `--rotacao-fora` confere os folds, e os dois gravam o hash curto no registry.
-
-### Recalibração da LDA pela normal da máquina nova (`exp287`–`exp291`)
-
-**Não funciona: a LDA recalibrada não detecta nenhum segmento com falha do HUSTmotor (0/15 a 10, 20 e 30 Hz; 0/5 a 5 Hz).** O experimento segue a página "Recalibrar a LDA pela normal da máquina nova" do Registro de Decisões (29/10, Definida), com tudo fixado antes de rodar (`run_protocol_c.py --recalibracao`). A LDA final do Jung é aplicada sem mudar os pesos, depois de as características do HUST serem levadas ao referencial da normal do Jung só com gravações saudáveis: a média de cada rotação sai das aquisições 1 e 2 da normal (as do C2), e a referência é a média dos 59 segmentos normais do Jung (`reports/validation/protocolo_c/recalibracao/normal_jung.json`). A base é a normalização da média cepstral: um microfone, uma sala ou um ganho diferentes deslocam as 13 médias do MFCC e não mudam os 13 desvios. Os `exp287`–`exp291` substituem os `exp282`–`exp286` (commit `7681e2b`), com os mesmos números; a rodada nova confere a divisão versionada e grava as decisões por segmento.
-
-| Leitura | Papel | Alarme falso (normais de medida) | Detecção a 10–30 Hz | Detecção a 5 Hz |
-|---|---|---:|---:|---:|
-| LDA sem recalibrar (comparação) | — | 8/8, reprova | 15/15 | 5/5 |
-| Só as 13 médias (`exp287`) | decide | 0/8, inconclusivo | **0/15** | 0/5 |
-| Controle sem o c0 (`exp288`) | decide junto | 0/8, inconclusivo | 0/15 | 0/5 |
-| As 26 médias (`exp289`) | reporte | 0/8, inconclusivo | 0/15 | 0/5 |
-| Com o desvio, piso de 0,5 σ (`exp290`) | reporte | 0/8, inconclusivo | 0/15 | 0/5 |
-| D2 do C2 OU a LDA recalibrada (`exp291`) | combinado | 0/8, inconclusivo | 15/15 | 0/5 |
-
-O critério pedia pelo menos 12 dos 15 segmentos com falha a 10, 20 e 30 Hz na principal e no controle sem o c0. A recalibração acerta a parte do nível: os normais do HUST passam de 8/8 alarmes para 0/8. Mas a falha também é levada para o lado da normal, e nenhuma variante a detecta. A leitura combinada detecta exatamente o que o D2 detecta sozinho (`exp279`), porque a LDA recalibrada não dispara em nenhum segmento. A conferência no Protocolo B (cada fold recalibrado com a normal do próprio treino) dá 0,8750 com e sem a recalibração e nenhuma decisão diferente: o código não muda nada onde não há o que corrigir. O `decisoes_por_segmento.csv`, na mesma pasta, traz para cada segmento (com o id do `divisao_rotacao.json`) o papel no C2, o escore e a decisão da LDA sem recalibrar e de cada variante, o D2 do C2 e o combinado.
-
-**Por que não funciona.** Na variante principal, a recalibração só soma uma constante ao escore de cada rotação: ela equivale a mudar o bias da LDA, que é como o firmware a aplicaria. Ela move o limiar, mas não muda a ordem dos segmentos ao longo do eixo da LDA. No HUST, essa ordem já estava invertida antes de recalibrar (medianas do `decisoes_por_segmento.csv`): escore de 3.694 nos normais de medida e de 1.784 na falha, quando no Jung a falha fica acima da normal (medianas de −1.466 na normal e +1.463 nas falhas, no `escores_referencia.csv`). Depois da recalibração, a normal do HUST cai em −1.410, ao lado da normal do Jung, e a falha cai em −3.206, do lado oposto ao das falhas do Jung; em cada rotação, a falha de maior escore fica abaixo do normal de menor escore. Ao longo do eixo da LDA, a falha do HUST se afasta da normal na direção contrária à das falhas do Jung. Inverter o sinal depois de ver a falha seria treinar na falha, e não vale. **A diferença entre as máquinas não é só de nível e microfone: a direção que separa falha de normal no Jung não é a do HUST.** Calibrado com a normal da máquina nova **em cada rotação em que vai operar** (C2, `exp279`), o D2 detecta a falha a 10–30 Hz (15/15), com o alarme inconclusivo (0/8); calibrado sem ela, reprova (`exp296`). A LDA, mesmo recalibrada, não detecta.
-
-### Rotação deixada de fora (`exp296`–`exp300`)
-
-**O D2 reprova: calibrado sem uma rotação, ele alarma todos os normais dela a 20 Hz (5/5).** O experimento segue o card "Protocolo C — rotação deixada de fora" e a regra de leitura da página "Adoção do D2" do Registro de Decisões, aprovada em 29/10, antes da rodada (`run_protocol_c.py --rotacao-fora`). São quatro folds, um por rotação: o D2 calibra com a normal das outras três (as 5 aquisições de cada, 15 segmentos) e é testado nas 5 normais e nas 5 falhas da rotação de fora. Pela regra, decidem 10 e 20 Hz, que ficam dentro da faixa calibrada, e o D2 reprova com 2 ou mais alarmes em 5 numa delas. 5 e 30 Hz são extrapolação e não reprovam. O total é só reporte. Os `exp296`–`exp300` substituem os `exp292`–`exp295` (commit `34773ec`), com os mesmos números, a regra da página no lugar da do card e o D2 sem o c0.
-
-| Leitura | Papel | Alarme falso 5 / 10 / 20 / 30 Hz | Detecção 5 / 10 / 20 / 30 Hz |
-|---|---|---|---|
-| D2 (`exp296`) | decide | 5/5 · **0/5** · **5/5** · 5/5 | 5/5 · **5/5** · 5/5 · 5/5 |
-| D2 sem o c0 (`exp297`) | reporte | 5/5 · 0/5 · 5/5 · 5/5 | 5/5 · 5/5 · 5/5 · 5/5 |
-| D2 OU a LDA do Jung (`exp298`) | reporte | 5/5 · 5/5 · 5/5 · 5/5 | 5/5 · 5/5 · 5/5 · 5/5 |
-| D1, rotação nominal (`exp299`) | reporte | — · — · 3/5 · 1/5 | — · — · 5/5 · 5/5 |
-| D1, rotação estimada (`exp300`) | reporte | — · — · 1/5 · 1/5 | — · — · 5/5 · 5/5 |
-
-- **D2:** reprova a 20 Hz (5/5, limite inferior de 55 %) e fica inconclusivo a 10 Hz (0/5, até 45 %). Estar dentro da faixa calibrada não protege: 20 Hz fica entre as rotações de calibração (10 e 30 Hz), e mesmo assim a normal dispara toda. A 5 e a 30 Hz, os 5/5 são extrapolação: o D2 não generaliza para fora da faixa calibrada.
-- **Detecção:** só a de 10 Hz (5/5) é lida como acerto. Nas outras rotações, os normais também disparam, e detectar a falha ali não diz nada.
-- **Sem o c0:** os alarmes são os mesmos. Eles não vêm só do nível do som, mas do resto do MFCC.
-- **D2 OU LDA:** 20/20 de alarme, porque a LDA sem recalibrar já dispara em todos os normais do HUST. O combinado com a LDA recalibrada não roda: no C2 ela não dispara em nenhum segmento (`exp287`–`exp291`), e aqui a recalibração precisaria da normal da própria rotação de teste, o que quebra o fold.
-- **D1:** com o limiar no máximo de 5 segmentos e 2 séries, cerca de 31 % de alarme é o esperado por construção. Pela `decidir()`, só o nominal a 20 Hz (3/5) reprova; o resto é inconclusivo.
-
-Pela regra da página do D2, um D2 reprovado leva à opção 1, e a reunião de 03/11 a confirmou: o D2 não é adotado (página "Adoção do D2", Definida) e fica só como resultado em Python no relatório.
-
-### Protocolo C fechado: tabela única
-
-O `run_tabela_protocolo_c.py` junta as leituras do Protocolo C numa tabela só, para o relatório final: sem retreino (`exp274`), C1 (`exp275`–`exp278`), C2 (`exp279`–`exp281`), LDA recalibrada (`exp287`–`exp291`) e rotação deixada de fora (`exp296`–`exp300`), com o alarme falso e a detecção por rotação e a decisão de cada leitura. Pela regra da página "Adoção do D2", a detecção numa rotação em que o detector alarma os normais não conta como acerto e fica fora do total, e os alarmes a 5 e 30 Hz na rotação deixada de fora saem marcados como extrapolação. Antes de gravar, ele confere cada contagem que o registry grava (o total de todas as leituras, o critério da recalibração e, na rotação deixada de fora, cada rotação) e aborta se alguma rodada faltar, for de outro detector ou estiver substituída; nas outras etapas, as colunas por rotação saem do `metrics.json` e têm de somar o total. Saídas em `reports/validation/protocolo_c/`: `tabela_protocolo_c.md` e `tab_protocoloC.tex`, no formato do relatório. A checagem do retreino da LDA (descartada em 29/10) não tem rodada no registry e entra só como nota, com os números da página do Registro de Decisões.
-
-**Leitura do protocolo:** a transferência sem recalibrar falha (a LDA do Jung, o D2 e o D4 alarmam em todos os normais do HUST), e só o D2 calibrado com a normal da máquina nova **na mesma rotação** (C2) fica sem alarme (0/8, inconclusivo: o C2 só consegue reprovar) e detecta a falha a 10–30 Hz. Recalibrar a LDA zera os alarmes, mas ela deixa de detectar. Sem a normal da rotação em que vai operar, o D2 reprova a 20 Hz.
-
-### Sistema embarcado: segmentos pela serial e matriz contra o Python
-
-O `matriz_serial_placa.py` (card "Script do computador: envio dos segmentos à placa e matriz embarcada contra o Python") manda à placa, pelo modo de recepção do firmware (origem `S` do `$SEG`), os 295 segmentos do Jung e os 40 do HUSTmotor, um por vez, em quadros de 1 s a 12,8 kHz (`int16`), e compara cada escore com o do Python em float64 pela tolerância encadeada do escore no A4 (10⁻⁵ relativo). O formato do quadro e o diálogo são os do README do firmware ([`lab3-firmware-stm32`](https://github.com/claraamp/lab3-firmware-stm32), seção "Recepção de segmentos pela serial"), e o script segue as "Regras do PC na rodada" de lá: confere o modelo (`modelo=` e `json=` da linha `recepcao inicio` contra o `lda_final.json`) antes do primeiro quadro; no máximo 3 tentativas por segmento, contando `$ERR`, timeout (tempo de transmissão mais 2 s) e resposta rejeitada, e depois "não processado"; vale o primeiro `$SEG` de cada segmento, e as duplicatas são contadas e têm de ser iguais bit a bit; grupo 1 = Jung (id do segmento no `splits.json`) e grupo 2 = HUSTmotor (índice, a partir de 0, na lista `segmentos` do `divisao_rotacao.json`); com `--lista`, os grupos e ids do `referencias.csv` (robustez ao ruído: grupo 3 = branco e grupo 4 = rosa, com id = SNR·1000 + id do segmento do Jung no `splits.json` e, nas sementes 1 a 9, mais semente·100.000); um reinício da placa no meio da rodada faz o PC pedir o modo de novo e retomar do segmento pendente; o escore vem do `escore_hex` da linha `rx`, que tem de bater com o `$SEG` logo depois (grupo, id, texto do escore e decisão); e uma `rx` com `estouros` > 0 (anel do DMA, no firmware com o contador de voltas do PR #12 do firmware) é descartada e o segmento reenviado. A porta abre a 921.600 bit/s (`--baud 115200` para um firmware compilado a 115.200; o envio exige a `rx` com `voltas` e `estouros`, do firmware desde 04/11), com o DTR e o RTS desligados, para não reiniciar a placa.
-
-O escore do Python é recalculado do mesmo `int16` que vai no quadro (`dsp.mfcc` e a forma dobrada do `lda_final.json`, como no `09`) e conferido, antes de qualquer envio, com o `escores_referencia.csv` (Jung) e com o `escore_sem_recal` do `decisoes_por_segmento.csv` da recalibração (HUST). A captura (`reports/embarcado/capturas/serial-DD-MM.log`) guarda as linhas da placa como chegaram e as do PC começando por `#pc` (o plano, cada envio, timeouts, reinícios); a matriz sai só dela, e `--captura` refaz a análise sem a placa. As saídas (`segmentos.csv`, `resumo.md` e `tabelas.tex`, em `reports/embarcado/serial_DD_MM/`) seguem o formato da matriz dos clipes, com uma matriz por conjunto: no Jung, todos os segmentos são do treino do modelo final, e o resultado é a fidelidade do porte (concordância e fração da tolerância), não desempenho; no HUSTmotor, é a LDA do Jung sem retreino (`exp274` do Protocolo C), e o que se mede é de novo a concordância com o Python. A rodada completa grava duas linhas no registry (etapa `validacao_embarcada`), uma por conjunto, com o commit e a data da rodada (do cabeçalho da captura); uma captura que já tem linha no registry (o mesmo `captura_sha`) não é registrada de novo, então refazer a matriz com `--captura` não cria rodada nova.
-
-**Ensaio contra o emulador do firmware (04/11, sem a placa):** com o `emular_placa` do firmware (a cadeia em C de verdade, compilada no PC, sem a fusão de multiplicação e soma do Cortex-M4), os 335 segmentos foram processados na primeira tentativa, com concordância de 295/295 no Jung e 40/40 no HUSTmotor. O pior caso no Jung é o `bpfi_1.0mm_seg0167`, com 11,3 % da tolerância, o mesmo segmento e o mesmo número da validação bloco a bloco sem FMA (`docs/validacao-blocos.md` do firmware); no HUSTmotor, o `bf_20hz_a4`, com 13,2 %. Os 10 segmentos dos clipes saíram, pela serial, bit a bit iguais às linhas `ref`. Com o emulador do PR #12 do firmware, com o anel estourado de propósito (`--travar-ms 50`) e com um erro de linha (`--erro-uart 9000`), o primeiro quadro voltou como `$ERR truncado` e foi reenviado.
-
-**Rodada na placa (07/11, `exp303`–`exp304`):** firmware `58da414` (`main` do firmware, com o PR #12: 921.600 bit/s e o contador de voltas do anel), análise no commit `fe083e1`. Os 335 segmentos foram processados na primeira tentativa, sem `$ERR`, timeout, estouro do anel, checksum errado nem reinício. A concordância placa × Python é de **295/295 no Jung** (pior caso `bpfi_1.0mm_seg0127`, com 9,8 % da tolerância; mediana 2,2 %) e de **40/40 no HUSTmotor** (pior caso `bf_20hz_a4`, com 7,6 %; mediana 1,3 %). As matrizes da placa são iguais às do Python: no Jung, 59 normais e 236 falhas na diagonal (treino do modelo final: fidelidade, não desempenho); no HUSTmotor, os 20 normais e as 20 falhas decididos como falha, como a LDA do Jung sem retreino (`exp274`). Os 10 segmentos dos clipes saíram, pela serial, bit a bit iguais às linhas `ref`. Por quadro, a mediana foi de 306 ms de recepção (os 25.618 B a 925.926 bit/s reais dão 277 ms; o resto são intervalos entre bytes no PC e no adaptador) e de 5,85 milhões de ciclos de MFCC e LDA (58,5 ms a 100 MHz). Contra o ensaio no emulador, o pior caso do Jung foi de 11,3 % (`bpfi_1.0mm_seg0167`) para 9,8 % (`bpfi_1.0mm_seg0127`), e o do HUSTmotor, de 13,2 % para 7,6 %: a placa funde multiplicação e soma (`vfma.f32`), e o emulador, compilado no PC, não.
-
-**Tempo e memória do firmware final (18/11, `exp322`):** firmware `025449f` (PR #14 do firmware) gravado com `-DMEDIDA=ON`, análise pelo `run_tempo_memoria.py`; a rodada dos 295 + 40 pela serial deu 295/295 e 40/40, com os **335 escores bit a bit iguais aos de 07/11** (o build de medida não mexe na cadeia), e o build padrão do mesmo commit sai byte a byte igual ao da `main` do firmware. **Memória:** 450.236 B de flash (85,9 %; 450.228 B pela soma das partes, 8 B de alinhamento) e 34.992 B de RAM (26,7 %), +9.560 B e +3.344 B desde 22/10, quase tudo da recepção pela serial (3.245 B de RAM) e da HAL com o DMA e a IRQ da USART1 (+5.522 B de flash). **Pilha:** pior caso estático de 1.708 B (boot, com as interrupções) e 1.588 B no modo de recepção; medida na placa, 1.228 B no boot e 1.124 B na recepção, contra a reserva de 4.096 B. **Modo (a), áudio da flash:** 174,42 ms por segundo de áudio, mais 0,5 ms do `$SEG`, ou 17,5 % do tempo real (341 ciclos por amostra contra 1.953 a 51,2 kHz). **Modo (b), pela serial:** 306,3 ms de linha (276,7 teóricos e 30,2 ms em ~400 pausas curtas do adaptador, uma por pacote USB), 121,1 ms de CPU (58,5 de MFCC e LDA e 62,6 de recepção byte a byte, quase tudo custo fixo das leituras do anel, a 1,24 bytes por leitura), ou 39,5 % do tempo de linha, um teto do laço como está escrito; o ciclo por segmento é de 311,0 ms, 3,2 vezes o tempo real. O critério de tempo real vale nos dois modos: em (b), no período de um byte na linha (473 ciclos de CPU contra 1.080; a maior leitura do anel, 0,61 ms, contra os 22,1 ms em que ele enche). A rodada de 16/11 (`reports/embarcado/capturas/tempo-memoria-16-11.log`, firmware `2c67598`) foi a primeira com o build de medida e fica versionada; foi substituída por esta depois da revisão do PR #14 do firmware, que repintou a pilha no modo de recepção e pôs o campo `leituras` na linha `med`. Os tempos das duas rodadas diferem em menos de 0,1 %.
-
-Os quadros vão já decimados a 12,8 kHz, então a rodada testa o MFCC e a LDA, e não a decimação. Na placa, a decimação é testada pelo recorte de 1 s a 51,2 kHz do segmento 29, no boot da mesma captura (`DECIMACAO OK` e a linha `ponta`: escore a 8,3 % da tolerância, 174,4 ms para a cadeia inteira, dos quais 115,9 ms de decimação, ou 17,4 % do tempo real); no PC, nas 5 gravações inteiras (`decimar_gravacao.c` do firmware). Para o critério de tempo real vale o número da cadeia inteira, e não os 58,5 ms. Saídas em `reports/embarcado/serial_07_11/`, captura em `reports/embarcado/capturas/serial-07-11.log`.
-
-### Interface de diagnóstico: painel no computador
-
-O `run_painel.py` (card "Implementar a interface de diagnóstico no computador (leitura serial)") mostra, segmento a segmento, o que a placa decidiu, a partir das linhas `$CAB`, `$SEG` e `$ERR` do formato v1 do pacote (seção "Pacote da serial" do README do firmware). A leitura e o estado ficam no `interface/pacotes.py`, só com a biblioteca padrão, e aceitam e recusam as mesmas linhas que o leitor de referência do firmware (`tests/host/pacote/ler_pacotes.py`); a janela é Tkinter. O que ele mostra, pela decisão de 17/10 ("O que o painel mostra no lugar de grau de confiança") e pelo escopo do guia de 16–23/11:
-
-- **a classe do segmento**: normal, falha ou **erro** quando o bit 4 (`disparou = 4`, escore não finito) vem ligado, nunca "normal" com erro; e o **escore cru da LDA**, como veio no texto, nunca em % nem como confiança. A decisão da LDA se lê pelo sinal do texto (`-0.000` é normal);
-- **o LED que a placa tem de estar mostrando**, pela tabela do README do firmware ("Sinalização por LED"): verde com `N`, vermelho com `F`, os dois com o erro de conta, os dois apagados depois de um `$ERR` e antes do primeiro `$SEG`. É o que a conferência com a placa compara;
-- **o histórico** das últimas inferências (origem, clipe ou grupo, segmento, decisão, escore e tempo de processamento) e quantos dos últimos N segmentos indicaram falha (`--ultimos`, padrão 10), que o pacote não traz de propósito;
-- **pacotes perdidos** pelo salto do contador `n` (inclui as linhas descartadas por checksum, cujo `n` não vale), reinícios da placa, linhas descartadas e os `$ERR` da recepção. Um pacote de origem desconhecida é ignorado sem contar como corrompido nem como perdido.
-
-O modelo é conferido antes de qualquer decisão aparecer: o `$CAB` tem de trazer o id e o SHA-256[:12] do `lda_final.json`. Sem ele (o painel abriu com a placa já rodando), os segmentos são contados, mas a decisão não aparece até o RESET; com outro modelo, o painel avisa e não mostra decisão. Um `hello` no meio (a placa reiniciou) pede o `$CAB` de novo.
-
-**Os dois modos.** Na demonstração (origens `C` e `D`), o painel abre a porta (`--porta`; `--salvar` grava a captura). Na recepção (origem `S`), a porta é do `matriz_serial_placa.py`, que agora grava cada linha na captura assim que ela chega; o painel acompanha essa captura (`--seguir`, com o arquivo ou com a pasta das saídas, em que ele espera a primeira captura nova). As linhas `#pc envio` da captura dão o nome de cada segmento (por exemplo `normal_seg0048_branco_0db`). Para a conferência com o LED e o vídeo, o grupo misto da robustez ao ruído com o `--ids` e o `--pausa` do envio (PR #40) alterna normal e falha e inclui os falsos alarmes.
-
-**Sem a placa:** as capturas versionadas, com `--arquivo` (e `--ritmo S` para ver a sequência); `--sem-janela` escreve uma linha por segmento e o resumo, e sai com 1 se alguma linha foi descartada ou se o modelo não é o do Python. Nas capturas de `reports/embarcado/capturas/` feitas no Linux (as rodadas até 18/11 e a demonstração de 24/11) e nas do firmware (`docs/recepcao-placa-921600-04-11.log`, `docs/leds-placa-19-11.log` e `docs/leds-ruido-19-11.log`), o painel lê todos os pacotes sem descartar nenhum, com os 5 `$ERR` da captura de 04/11 e o reinício dela, e as decisões batem com as de cada rodada (por exemplo, na `serial-ruido-15-11-2.log`, 1.788 segmentos da lista e 2 da demonstração, com 261 + 2 normais). Nas do teste de 22/11 no Windows (`ch340-*-22-11.log`), que perdeu bytes da placa para o computador, ele descarta 7 linhas (`ch340-demo-22-11.log`), 4, 9 e 1 (`ch340-ruido-22-11.log`, `-3` e `-4`). Contra o `emular_placa` do firmware, o `--seguir` acompanhou ao vivo uma rodada do `matriz_serial_placa.py`.
-
-**Na placa (22/11, Windows, a 921.600 bit/s).** Na demonstração (`--porta`), o modelo foi conferido pelo `$CAB` do boot e, em todas as decisões que chegaram inteiras, a cor do painel bateu com o LED da placa. Mas, nesse computador, a serial perde bytes no caminho da placa para o computador: de 1 a cerca de 20 bytes por vez, dentro das rajadas de resposta da placa. Na captura da demonstração (`reports/embarcado/capturas/ch340-demo-22-11.log`), 7 das 24 linhas `$SEG` chegaram estragadas, e o painel as descartou pelo checksum e contou o salto no `n`; as linhas do autoteste do boot também perderam pedaços (o fim da linha do marco grudou no `$CAB`, e o `DECIMACAO OK` chegou como `DECIM`). Como na demonstração o computador não manda nada, a perda não depende de ele estar escrevendo. Na recepção com o grupo misto da robustez (`--ids` e `--pausa`, capturas `ch340-ruido-22-11*.log`; a `-2` parou antes de a placa entrar no modo), a placa recebeu os 71 quadros mandados inteiros, sem nenhum erro de recepção nem estouro do anel, e os 74 `$PED` chegaram com o checksum certo (3 grudados na linha vizinha), mas só 15 das 71 linhas `rx` chegaram inteiras (uma delas veio grudada num `$PED`): na rajada de cada resposta (`rx`, `$SEG` e `$PED`, ~220 B), some o fim de linha entre a `rx` e o `$SEG`, ou um pedaço do meio da `rx`. Foram processados 3, 3 e 4 dos 10 segmentos nas três execuções, e os 10 processados tiveram a decisão do Python e, no LED, a cor do painel. O mesmo circuito, com o mesmo adaptador (CH340) e o mesmo firmware, passou no Linux nas rodadas de 07/11 e 15/11 (2.123 segmentos) sem nenhuma linha estragada: **a 921.600 bit/s, essa combinação de Windows e computador perde bytes**. A troca para o driver WCH 4.0.2026.2 não mudou a taxa de perda. Antes deste teste, uma `rx` grudada no `$SEG` (`estouros=$SEG,...`) quebrava a análise no `int()`. Como a `rx` não tem checksum, agora ela só é aceita inteira: todos os campos na ordem do firmware, só dígitos nos números, `bytes` igual ao tamanho do quadro, `voltas` e `estouros` juntos (no envio, sempre, porque o firmware atual sempre manda os dois; na análise de uma captura, quando alguma `rx` dela os tem, porque o firmware até 31/10 não os mandava) e os `ciclos` iguais aos do `$SEG`; senão, ela é recusada (`sem_rx`, `rx_sem_voltas` ou `rx_ciclos_nao_bate`) e o segmento reenviado. A primeira versão da correção ainda aceitava 2 `rx` cortadas (`erros_u0` no 3:54 da `ch340-ruido-22-11.log` e o 4:5047 da `-4`, sem `estouros`), contadas como processadas. As capturas de recepção têm no cabeçalho a lista `bcc8925a416a`: o `--exportar-placa` regravou o `manifest.json` com o commit em que rodou (`4a0558a`), e para refazer a análise com `--lista` o `git_commit` do manifesto tem de ser esse.
-
-**Na placa (24/11, Linux, a 921.600 bit/s).** O mesmo circuito, com o mesmo adaptador e o mesmo firmware, rodou a demonstração no Linux (`--porta`, captura `reports/embarcado/capturas/linux-demo-24-11.log`) sem nenhuma perda: 295/295 linhas do autoteste do boot, 56/56 linhas `demo` e 62/62 `$SEG` inteiros, contra 156/295, 11/22 e 17/24 na demonstração de 22/11. O painel conferiu o modelo pelo `$CAB` do boot e leu 61 segmentos seguidos (5 voltas e meia, `n` de 0 a 60) sem descartar nenhuma linha nem perder pacote; as duas primeiras linhas da captura são da volta anterior ao RESET, e por isso o resumo conta um reinício e um segmento antes do `$CAB`. A perda de 22/11 é do computador ou do Windows usado naquele teste, e não do circuito nem do código. A recepção com o painel (`--seguir`) não foi refeita na placa.
-
-### Robustez ao ruído: varredura de SNR (`exp305`–`exp319`) e rodada na placa (`exp320`–`exp321`)
-
-O `run_varredura_snr.py` (card "Rodar os testes de robustez com ruído sintético (varredura de SNR)", com o escopo da decisão "Robustez ao ruído também na placa, pela serial", de 05/11) soma ruído **no int16 a 51,2 kHz, antes da decimação**, com a SNR definida nessa entrada, segmento a segmento: o trecho da gravação original que o decimador lê (`dsp.recorte_para_decimar`) recebe o ruído, volta para int16 com saturação, passa pelo FIR do `02` e volta para int16 a 12,8 kHz, que é o que a placa recebe pela serial. Sem ruído, esse caminho reproduz bit a bit o PCM do `02`, e o script confere isso antes de rodar. A grade tem 7 SNRs (30 a 0 dB, de 5 em 5), ruído branco e rosa (1/f) e 10 sementes, as do aumento nos `exp224`–`exp233` (20260925 e 1 a 9); numa semente, o ruído de um segmento é o mesmo em todas as SNRs, com outra escala. O eixo é a SNR da entrada. O filtro de decimação tira o ruído acima de 5,76 kHz, então a SNR na banda que a cadeia vê é 6,3 dB maior que a da entrada no branco e só 0,4 dB maior no rosa: o mesmo número de dB não é o mesmo nível de ruído para a cadeia nos dois ruídos.
-
-- **Curva do Protocolo B:** em cada fold, a LDA treinada nos segmentos limpos, sem e com aumento (4 variantes, deslocamento + estiramento + ruído, como nos `exp224`–`exp233`), avaliada no teste com ruído. A semente fixa o ruído do teste e o sorteio do aumento, então os dois modelos são comparados no mesmo ruído.
-- **Passo 0 (análise de margem):** com o modelo final (`exp239`) nos 295 segmentos, os segmentos com |s| < E, com E o limite absoluto do erro do escore do porte da página de 05/11 (as tolerâncias encadeadas da média e do desvio pesadas pelos |w|, mais a cota γ₂₇ do arredondamento da soma em float32); as amostras saturadas no int16 a 51,2 e a 12,8 kHz; e a cadeia em float32 (a emulação do `exp253`) contra o float64, com o erro de cada estágio em fração da tolerância encadeada do A4 e as decisões diferentes. O escore sai pelas duas medidas: a tolerância relativa do A4 (10⁻⁵ do próprio escore), que é a da regra, e |Δs|/E, que não vai a zero perto do limiar.
-
-**Resultado (12/11, 10 sementes):** até 10 dB nos dois ruídos, e a 5 dB no branco, os dois modelos ficam em 0,875 de acurácia balanceada e 1,000 de especificidade, como no sinal limpo. A queda vem depois e é só de especificidade, com alarmes falsos: a sensibilidade fica em 0,750 em todos os pontos (a `bpfo_0.3mm` continua sem ser detectada, e o resto continua detectado). Sem aumento, a acurácia balanceada cai para 0,753 ± 0,005 no rosa a 5 dB e, a 0 dB, para 0,629 ± 0,005 (branco) e 0,505 ± 0,004 (rosa); com aumento, 0,851 ± 0,018, 0,805 ± 0,028 e 0,526 ± 0,020. A 0 dB, cerca de 73 mil amostras por semente (0,5 %) saturam no int16 a 51,2 kHz, então ali a SNR efetiva fica diferente da nominal; a saturação começa a 25 dB, com uma ou duas amostras nas 10 sementes.
-
-No passo 0, nenhum segmento fica com |s| < E em nenhum ponto (o mais perto, no branco a 0 dB, com |s| = 1,3 E), e nenhuma decisão do float32 difere da do float64. Os estágios até as 26 características ficam abaixo de 16 % da tolerância. O escore sai da tolerância relativa em dois pontos: no branco a 0 dB, nas 10 sementes, e no rosa a 5 dB, em 8 de 10. O pior caso dos dois fica na semente 20260925: 64,96× no branco a 0 dB (no `normal_seg0048`, com escore −0,676 e |s| = 1,6 E) e 7,28× no rosa a 5 dB. Pelo limite absoluto, o mesmo erro é |Δs|/E ≤ 0,0045 em todos os pontos.
-
-**Decisões pelas regras fixadas antes de rodar:**
-
-- **Placa com ruído (regra da página de 05/11):** **necessária** no branco a 0 dB e no rosa a 5 dB, porque a regra pede a emulação dentro da tolerância, e a do escore no A4 é a relativa. A troca da tolerância relativa por |Δs|/E não dispensou a rodada: decidido em 14/11 que a relativa decide que a placa roda e E julga a rodada. Os dois pontos estão no recorte exportado abaixo, com os mesmos int16 da semente 20260925 e o segmento mais perto do limiar de cada uma das outras sementes. **Resultado (15/11, `exp320`–`exp321`): aprovada nos dois ruídos**, 894/894 decisões iguais às do Python em cada um, |Δs|/E ≤ 0,0027; 16 segmentos (branco a 0 dB) e 8 (rosa a 5 dB) acima da tolerância relativa, só como informação. Menor |s|: 0,54 no branco (`normal_seg0057_branco_0db_s5`, 1,3 E) e 1,98 no rosa (`normal_seg0016_rosa_5db_s8`, 4,8 E). Detalhes abaixo, em "Rodada na placa (15/11)".
-- **Modelo final (regra fixada no card em 12/11):** para cada ponto com SNR ≤ 10 dB, ruído e métrica (acurácia balanceada e especificidade), dₖ = com − sem aumento na semente k, e o ponto passa se a média de dₖ for maior que o desvio de dₖ (ddof = 1), estrito; sem ruído, o com aumento não pode ter acurácia balanceada menor; um ponto sem dados conta como falha. O modelo final **continua o `exp239`, sem aumento**: a regra pede todos os pontos, e os dois modelos empatam no teto (dₖ = 0 em todas as sementes) a 10 dB nos dois ruídos e a 5 dB no branco. Onde há queda, o com aumento é melhor: +0,1762 ± 0,0296 de acurácia balanceada no branco a 0 dB, +0,0979 ± 0,0176 no rosa a 5 dB e +0,0213 ± 0,0208 no rosa a 0 dB (média ± desvio de dₖ; no rosa a 0 dB, passa por pouco).
-
-Os números da análise exploratória da 4/6 não são comparáveis ponto a ponto, porque lá o ruído entrou depois da decimação.
-
-Saídas da varredura em `reports/validation/varredura_snr/`: `resumo.md`, `curva.csv` (um ponto por modelo, ruído, SNR e semente), `margem.csv`, `metrics.json` (com as duas decisões), `tab_varredura_snr.tex` e `curva_snr.png`. O registry tem uma linha por ponto da grade (`exp306`–`exp319`) e a do sinal limpo (`exp305`).
-
-**Recorte para a placa (`--exportar-placa`):** o recorte da opção 2 da página de 05/11, para a rodada na placa: os 295 segmentos do Jung com ruído branco e rosa a 10, 5 e 0 dB, semente 20260925 (1.770 segmentos), os mesmos int16 que a varredura usou nesses pontos. 10 dB é onde a curva ainda não caiu; 5 e 0 dB, onde ela cai e onde a placa saiu necessária. Nos dois pontos em que a placa saiu necessária (branco a 0 dB e rosa a 5 dB), entra também o segmento de menor |s|/E de cada uma das outras 9 sementes, porque o mais perto do limiar nem sempre é o da semente 20260925 (no branco a 0 dB, o 57 da semente 5, a 1,3 E, e o 3 da semente 6, a 1,4 E; no rosa a 5 dB, o 16 da semente 8, a 4,8 E): são 18 segmentos a mais, 1.788 ao todo. Cada segmento leva os campos do `Segmento` do `matriz_serial_placa.py`: grupo 3 (branco) ou 4 (rosa), id = SNR·1000 + id do segmento no `splits.json` (nas sementes 1 a 9, mais semente·100.000), a classe, o escore em float64 e a decisão, conferidos com o `escore_python` do script de envio. O int16 vai para `data/processed/robustez_placa/segmentos_ruido.bin` (45 MB, não versionado; o script refaz em ~30 s, e o `sha256` tem de ser `11f26bb8bfe42b5dfaf71523afe5c5d6bc690187d6791cb52880cd0f424066f8`, o do manifesto), e as referências, para `reports/validation/varredura_snr/placa/` (`referencias.csv` e `manifest.json`). O script de envio manda esse recorte com `--lista` (ver "Como rodar"): antes do primeiro quadro, ele confere o sha256 do `.bin` inteiro contra o do manifesto, o modelo, os grupos e ids e o escore de cada segmento contra o `referencias.csv`; cada ruído sai como um conjunto, com |Δs|/E por segmento e o critério abaixo, e uma linha de registry por ruído; as saídas vão para `reports/embarcado/serial_ruido_DD_MM/`. Critério da rodada, fixado em 14/11, antes dela (página de 05/11): reprova se algum segmento ficar sem processar (3 tentativas esgotadas), se alguma decisão diferir da do Python ou se algum segmento tiver |Δs| ≥ E; a fração pela tolerância relativa é só informação.
-
-**Rodada na placa (15/11, `exp320`–`exp321`):** firmware `58da414` (`main` do firmware, a mesma da rodada de 07/11), análise no commit `0b2b57c`. Os 1.788 segmentos foram processados na primeira tentativa, sem `$ERR`, timeout, estouro do anel nem reinício. Critério aprovado nos dois ruídos: 894/894 decisões iguais em cada um, com |Δs|/E de no máximo 0,0027 no branco (`normal_seg0017_branco_10db`) e 0,0020 no rosa (`bpfi_1.0mm_seg0139_rosa_5db`). Pela tolerância relativa, 24 segmentos passam dela (16 no branco a 0 dB e 8 no rosa a 5 dB), todos com |s| ≤ 28 e |Δs|/E ≤ 0,0011; o pior é o `normal_seg0048_branco_0db` (|s| = 0,676), com 54,3× a tolerância relativa, contra 64,96× previstos pela emulação em float32. Por quadro, 306 ms de recepção e 5,85 milhões de ciclos de MFCC e LDA, como em 07/11. Saídas em `reports/embarcado/serial_ruido_15_11/`, captura em `reports/embarcado/capturas/serial-ruido-15-11-2.log`. Uma execução anterior no mesmo dia (`serial-ruido-15-11.log`, versionada) parou ao pedir o modo, com a placa calada, antes de mandar qualquer quadro.
+Os números, as tabelas e as condições de cada resultado estão no relatório final. Cada rodada está registrada em `experiments/registry.csv`, com o commit em que rodou.
 
 ## Dataset
 
-Jung, W.; Kim, S.-H.; Yun, S.-H.; Bae, J.; Park, Y.-H. (2023), *Data in Brief* 48, 109049. Subconjunto acústico (microfone), 5 classes — `0Nm_Normal`, `0Nm_BPFI_03`, `0Nm_BPFI_10`, `0Nm_BPFO_03`, `0Nm_BPFO_10` — 60 s cada, 51,2 kHz, formato `.mat`.
-Mendeley Data, DOI [`10.17632/ztmf3m7h5x.6`](https://doi.org/10.17632/ztmf3m7h5x.6).
+- **Conjunto principal:** Jung et al. (2023), *Data in Brief* 48, 109049 — Mendeley Data, DOI [`10.17632/ztmf3m7h5x.6`](https://doi.org/10.17632/ztmf3m7h5x.6). Usa-se o áudio (microfone) a 0 Nm: 5 gravações de 60 s a 51,2 kHz (normal, BPFI e BPFO com defeitos de 0,3 e 1,0 mm).
+- **HUSTmotor** (Zhao et al., 2025), para o Protocolo C: download e detalhes em [`docs/hustmotor.md`](./docs/hustmotor.md).
 
-Esses cinco arquivos são **todo o áudio do dataset**. Os ensaios com carga (2 e 4 Nm), os defeitos de 3,0 mm e as falhas de desbalanceamento e desalinhamento têm só vibração, corrente e temperatura: os autores não gravaram o microfone com carga porque o freio, resfriado a ar, contaminaria o canal acústico (seção 3.1 do artigo).
-
-Para confirmar as frequências de falha com um segundo sensor, usa-se também a **vibração** da mesma condição (0 Nm; `.mat` com 4 canais a 25,6 kHz; pela ordem das colunas no artigo, 0–1 = x e y do mancal A, 2–3 = mancal B). Ela não entra no classificador. Os arquivos de vibração têm os **mesmos nomes** dos de áudio, então ficam numa subpasta: `data/raw/vibracao/`.
-
-Os arquivos `.mat` **não são versionados** neste repositório (ver `.gitignore`) — são grandes e já têm DOI fixo. O mesmo vale para os `.bin` gerados a partir deles; apenas os `manifest.json` e o `splits.json` (a partição dos protocolos de validação) entram no Git.
-
-Isso significa que **um clone novo vem com `data/` vazio**. Para reconstruir, ver "Como rodar" abaixo.
+Os arquivos de áudio **não são versionados**: um clone novo vem com `data/` vazio. Baixe os 5 `.mat` do Mendeley para `data/raw/` e rode o pipeline abaixo. Os `manifest.json` e a partição (`splits.json`) são versionados, para conferir que a reconstrução bate com a original.
 
 ## Estrutura do repositório
 
 ```
-diagnostico-acustico-motores/
-├── README.md
-├── CONVENTIONS.md
-├── .gitignore
-├── requirements.txt
-│
-├── data/
-│   ├── raw/                  # .mat originais (baixados manualmente, não versionados)
-│   │   ├── vibracao/         # .mat de vibração 0 Nm (só para confirmação; mesmos nomes dos de áudio)
-│   │   └── hustmotor/        # .txt do HUSTmotor, H e BF nas 4 velocidades (Protocolo C; docs/hustmotor.md)
-│   └── processed/
-│       ├── pcm_raw/          # saída do 01 — .bin não versionados, manifest.json versionado
-│       ├── pcm_decimated/    # saída do 02, um subdiretório por taxa (ex.: 12800/)
-│       ├── splits/
-│       │   ├── splits.json   # saída do 03 — partição dos protocolos A e B, VERSIONADA
-│       │   └── splits_25600.json   # a mesma partição a 25,6 kHz (03 --fs 25600), para comparar taxas
-│       ├── features/         # saída do 04 — mfcc_features.npz + manifest_features.json, NÃO versionados
-│       │                     # (outra taxa: features/<fs>/)
-│       └── hustmotor/
-│           ├── pcm_decimated/12800/  # saída do 10 — .bin não versionados, manifest.json versionado
-│           └── divisao_rotacao.json  # saída do 11 — divisão do C2 e da rotação deixada de fora, VERSIONADA
-│
-├── scripts/
-│   ├── config.py             # parâmetros compartilhados entre etapas
-│   ├── dsp.py                # blocos de processamento de sinais (PSD, MFCC, decimação)
-│   ├── pcm_io.py             # leitura e escrita dos PCM e dos manifests
-│   ├── experimentos.py       # escrita do registro de experimentos
-│   ├── augmentation/         # aumento de dados do treino
-│   │   ├── transformacoes.py              # estiramento (phase vocoder / reamostragem), ruído, recorte
-│   │   └── variantes.py                   # sorteio reprodutível, janela lida e filtro por fold
-│   ├── interface/            # interface de diagnóstico no computador (leitura serial)
-│   │   ├── pacotes.py                     # leitura dos $CAB, $SEG e $ERR (formato v1) e estado do painel, só a biblioteca padrão
-│   │   └── run_painel.py                  # executável: painel (Tkinter) pela porta, seguindo a captura da recepção ou de uma captura salva
-│   ├── models/               # modelo final do classificador
-│   │   └── lda.py                         # treino com todos os segmentos e parâmetros em JSON (escore ≥ 0 → falha)
-│   ├── exploration/          # estudos e inspeções, sem numeração
-│   │   ├── inspect_mat_keys.py
-│   │   ├── inspect_signal_data.py
-│   │   ├── inspect_pcm.py                 # sanidade da conversão + caráter do sinal
-│   │   ├── inspect_class_spectra.py       # PSD por classe e banda necessária
-│   │   ├── compare_decimation_rates.py    # estudo que definiu a taxa de trabalho
-│   │   ├── compare_classifiers.py         # estudo que escolheu o classificador (validação interna ao B)
-│   │   ├── inspect_lda_harmonicos.py      # controle: peso da LDA nas bandas dos harmônicos do eixo
-│   │   ├── inspect_comb_features.py       # pente harmônico (BPFO/BPFI) junto ao MFCC: entra na cadeia? (validação interna)
-│   │   ├── inspect_deteccao_novidade.py   # detecção de novidade para a bpfo_0.3mm (D1–D4, sensibilidade no B; docs/criterio_deteccao_novidade.md)
-│   │   ├── inspect_left_out_fault.py      # posição da falha deixada de fora (Protocolo B)
-│   │   ├── inspect_acumulacao_float32.py  # média e desvio do MFCC em float32, por método (contrato numérico, A3)
-│   │   ├── inspect_tolerancias_estagio.py # erro de cada estágio do MFCC em float32 e tolerâncias do porte (contrato numérico, A4)
-│   │   ├── inspect_signature_spectra.py   # PSD assinada falha × normal (excesso e déficit)
-│   │   ├── identify_tonal_peaks.py        # velocidades e BPFI/BPFO medidas por série harmônica
-│   │   ├── inspect_vibration_mat.py       # árvore de um .mat (formato da vibração)
-│   │   ├── confirm_bpf_envelope.py        # envelope com banda por curtose espectral, vibração + áudio
-│   │   └── inspect_signature_mel.py       # o que o log-Mel oficial enxerga da bpfo_0.3mm
-│   ├── pipeline/             # pipeline reprodutível, numerado pela ordem de execução
-│   │   ├── 01_convert_mat_to_pcm.py
-│   │   ├── 02_decimate_pcm.py             # aplica a taxa definida em config.py
-│   │   ├── 03_make_splits.py              # segmenta e gera a partição, uma única vez
-│   │   ├── 04_extract_features.py         # MFCC por segmento da partição (+ variantes do aumento) → .npz
-│   │   ├── 05_train_classifier.py         # modelo final para o firmware (não mede desempenho) → reports/modelo_final/
-│   │   ├── 06_export_lda_header.py        # .h da LDA final (float32), conferido contra os escores de referência
-│   │   ├── 07_export_lda_test_vectors.py  # .h com features e escores de referência para o marco na placa
-│   │   ├── 08_export_stage_references.py  # referências por estágio (float64) e tolerâncias do A4 para o harness em C
-│   │   ├── 09_export_clips.py             # clipes int16 para a flash da placa (12,8 kHz e um recorte a 51,2 kHz) → .h
-│   │   ├── 10_prepare_hustmotor.py        # HUSTmotor (Protocolo C): som de H e BF, 4 velocidades, decimado → data/processed/hustmotor/
-│   │   └── 11_divisao_hustmotor.py        # divisão do HUSTmotor por rotação (C2 e rotação deixada de fora) → divisao_rotacao.json
-│   └── validation/           # protocolo de validação do classificador
-│       ├── particao.py                    # segmentos, folds A e B, verificação
-│       ├── metricas.py                    # sensibilidade, especificidade, acurácia balanceada
-│       ├── selecao.py                     # validação interna ao B e regra de escolha (escolher), sem torch
-│       ├── run_protocol.py                # executável: roda A ou B e registra o resultado
-│       ├── run_protocol_c.py              # executável: Protocolo C no HUSTmotor (C1, C2 e recalibração da LDA)
-│       ├── matriz_serial_placa.py         # executável: segmentos pela serial à placa e matriz embarcada contra o Python
-│       ├── run_tempo_memoria.py           # executável: tempo (dois modos, E/S separada), memória e pilha do firmware final
-│       ├── run_tabela_comparativa.py      # executável: tabela provisório × oficial a partir dos metrics.json
-│       ├── run_tabela_controles.py        # executável: tabela dos controles (sem c0, permutação, curva)
-│       ├── run_tabela_aumento.py          # executável: tabela do B com e sem aumento de dados
-│       ├── run_tabela_taxas.py            # executável: tabela do B em duas taxas de amostragem
-│       ├── run_tabela_protocolo_c.py      # executável: tabela única do Protocolo C, conferida contra o registry
-│       ├── run_varredura_snr.py           # executável: robustez ao ruído (varredura de SNR no B e análise de margem)
-│       └── run_consolidacao.py            # executável: tabelas .tex e figuras finais para o relatório
-│
-├── tests/                    # pytest; não dependem de data/
-│   ├── conftest.py
-│   ├── test_contrato_numerico.py      # cada valor do docs/contrato_numerico.md conferido contra o código
-│   ├── test_dsp.py
-│   ├── test_experimentos.py           # registry: linha nova nunca é colada na anterior
-│   ├── augmentation/
-│   │   ├── test_transformacoes.py
-│   │   └── test_variantes.py              # inclui: variante aceita nunca lê teste/descarte
-│   ├── models/
-│   │   └── test_lda.py                    # o JSON reproduz o sklearn; escore ≥ 0 é falha; a descrição da cadeia refaz o MFCC do dsp
-│   ├── pipeline/
-│   │   ├── test_train_classifier.py       # o 05 só aceita as features de referência da partição
-│   │   ├── test_export_lda_header.py      # o .h é paramétrico em N_FEATURES, traz o float32 do JSON e, compilado, reproduz o escore
-│   │   ├── test_export_lda_test_vectors.py # os vetores de teste ficam dentro da tolerância, a seleção não olha o escore, recusa .h de outro modelo
-│   │   ├── test_export_stage_references.py # o formato volta igual do arquivo; as referências versionadas são as do dsp atual
-│   │   ├── test_export_clips.py           # o clipe recalculado do .h dá o escore gravado; o recorte decimado é o clipe a 12,8 kHz
-│   │   ├── test_prepare_hustmotor.py      # blocos do HUST lidos e decimados um a um, um segmento de 1 s por bloco
-│   │   └── test_divisao_hustmotor.py      # o divisao_rotacao.json versionado é o que o manifest gera; papéis sem repetição
-│   ├── exploration/
-│   │   ├── test_deteccao_novidade.py      # D1b, amplitude da série sintética, D4 só com normais de treino, controle e regra de escolha
-│   │   ├── test_comb_features.py          # candidatos A/B/C do card (A inviável); acha a série fora da razão cinemática; decisão pela validação interna
-│   │   └── test_compare_classifiers.py    # critério de escolha: mais barato na margem, em qualquer ordem (pula sem torch)
-│   └── validation/
-│       ├── test_curva_aprendizado.py      # subamostra só treino, n por classe, reprodutível
-│       ├── test_tabela_aumento.py         # tabela do aumento: comparabilidade e fator de expansão
-│       ├── test_tabela_taxas.py           # tabela das taxas: comparabilidade e mesma partição em segundos
-│       ├── test_consolidacao.py           # consolidação: número sem registry ou rodada no papel errado aborta
-│       ├── test_particao.py               # inclui: outra taxa dá os mesmos segmentos em segundos
-│       ├── test_protocol_c.py             # Protocolo C: limites binomiais, D2 do C2, recalibração (variantes, critério 12/15, só o bias), divisão conferida
-│       ├── test_selecao.py                # folds internos não leem o teste externo; escolher fica com o mais barato na margem
-│       └── test_varredura_snr.py          # SNR exata no segmento, ruído rosa 1/f, recorte decimado igual ao 02, limite E e as duas regras
-│
-├── notebooks/                # notebooks de análise/visualização
-│
-├── firmware/                 # Fase 2 — porte para o STM32F411CEU6
-│   ├── Core/
-│   └── Drivers/
-│
-├── experiments/
-│   └── registry.csv          # registro estruturado de cada rodada de experimento
-│
-├── reports/                  # figuras, tabelas e outputs para os relatórios
-│   ├── c_reference/          # reference_data.h: entrada int16 + MFCC esperado, para o porte em C;
-│   │                         #   estagios/: referências por estágio e tolerâncias do A4 (08), lidas pelo harness em C;
-│   │                         #   clipes_demo.h: clipes de áudio para a flash da placa (09)
-│   ├── classifier/           # estudo de escolha do classificador (compare_classifiers.json; SVM linear: compare_classifiers_svm_lin.json)
-│   ├── decimation/           # métricas, figuras e relatório da escolha da taxa
-│   ├── exploration/          # figuras dos scripts exploratórios
-│   ├── modelo_final/         # lda_final.json (parâmetros para o firmware) e escores_referencia.csv, do 05; lda_modelo.h, do 06
-│   ├── signature/            # caracterização da assinatura acústica
-│   └── validation/           # uma pasta por rodada: metrics.json e folds.csv
-│       └── consolidacao/     # tabelas .tex, figuras e rastreabilidade do relatório (run_consolidacao.py)
-│
-└── docs/                     # proposta, documentação técnica complementar
-    ├── contrato_numerico.md  # o que o C tem que reproduzir da extração de características (Fase 2)
-    ├── hustmotor.md          # HUSTmotor para o Protocolo C: licença, download, blocos, geometria e rotação
-    └── criterio_deteccao_novidade.md  # candidatos, limiar e regra de escolha da detecção de novidade (bpfo_0.3mm)
+scripts/
+  config.py, dsp.py, ...   módulos compartilhados (parâmetros e blocos de DSP)
+  pipeline/                pipeline numerado, do .mat aos cabeçalhos em C
+  validation/              protocolos de validação, envio à placa e tabelas do relatório
+  exploration/             estudos que embasaram as decisões (taxa, classificador, assinatura acústica, ...)
+  augmentation/            aumento de dados
+  models/                  modelo final (LDA)
+  interface/               painel de diagnóstico no computador
+tests/                     pytest; não dependem de data/
+data/                      dados brutos e processados (só os manifestos são versionados)
+experiments/registry.csv   registro de todas as rodadas
+reports/                   saídas: figuras, tabelas, modelo final, capturas da placa
+docs/                      proposta e documentação técnica (pipeline, contrato numérico, HUSTmotor, detecção de novidade)
 ```
 
-Ver [`CONVENTIONS.md`](./CONVENTIONS.md) para as convenções de nomenclatura de scripts, classes e commits, e para o formato do registro de experimentos.
-
 ## Como rodar
+
+Requer Python 3. O `requirements.txt` instala o PyTorch só para CPU (as redes do estudo do classificador são pequenas e não ganham nada com GPU).
 
 ```bash
 python -m venv .venv
 source .venv/bin/activate
 python -m pip install -r requirements.txt
+pytest tests/                     # não precisa de data/
 ```
 
-O `requirements.txt` instala o PyTorch **só para CPU**, pelo índice do PyTorch (linha `--extra-index-url` no topo do arquivo). É proposital: as redes do estudo do classificador têm menos de 2.400 parâmetros, a GPU não acelera nada nesse tamanho, e a versão CUDA ocupa alguns GB. Quem tiver GPU e quiser a versão CUDA pode instalá-la no próprio venv, sem mudar o `requirements.txt`.
-
-Baixe os 5 arquivos `.mat` do Mendeley e coloque em `data/raw/`. Depois, o pipeline na ordem numérica:
+Com os `.mat` em `data/raw/`, o pipeline roda na ordem numérica:
 
 ```bash
-python scripts/pipeline/01_convert_mat_to_pcm.py   # .mat → PCM int16 a 51,2 kHz
-python scripts/pipeline/02_decimate_pcm.py         # decima para a taxa de trabalho
-python scripts/pipeline/03_make_splits.py          # confere que a partição versionada bate
-python scripts/pipeline/04_extract_features.py     # MFCC de cada segmento → data/processed/features/
-python scripts/pipeline/05_train_classifier.py --responsavel <nome>   # modelo final → reports/modelo_final/
-python scripts/pipeline/06_export_lda_header.py --responsavel <nome>  # .h da LDA → reports/modelo_final/lda_modelo.h
-python scripts/pipeline/07_export_lda_test_vectors.py                 # vetores de teste → reports/modelo_final/lda_vetores_teste.h
-python scripts/pipeline/08_export_stage_references.py                 # referências por estágio → reports/c_reference/estagios/
-python scripts/pipeline/09_export_clips.py                            # clipes para a flash → reports/c_reference/clipes_demo.h
-python scripts/pipeline/10_prepare_hustmotor.py                       # HUSTmotor (data/raw/hustmotor/) → data/processed/hustmotor/
-python scripts/pipeline/11_divisao_hustmotor.py                       # divisão do HUSTmotor por rotação → data/processed/hustmotor/divisao_rotacao.json
+python scripts/pipeline/01_convert_mat_to_pcm.py    # .mat → PCM int16 a 51,2 kHz
+python scripts/pipeline/02_decimate_pcm.py          # decimação para 12,8 kHz
+python scripts/pipeline/03_make_splits.py           # confere a partição versionada
+python scripts/pipeline/04_extract_features.py      # MFCC de cada segmento
+python scripts/pipeline/05_train_classifier.py --sem-registro   # modelo final (LDA) → reports/modelo_final/teste/
+python scripts/pipeline/06_export_lda_header.py --sem-registro  # modelo em C → reports/modelo_final/teste/
 ```
 
-O `05` treina a LDA uma única vez, com os 295 segmentos e sem aumento, e grava em `reports/modelo_final/lda_final.json` os parâmetros nas duas formas equivalentes de `models/lda.py`: a padronizada (média, escala, coeficientes e intercepto) e a dobrada, `escore = pesos · x + bias`, que é a que o firmware usa. A convenção é **escore ≥ 0 → falha**: o empate exato segue o sklearn, que o classifica como falha (campo `escore_zero` do JSON). As 26 features seguem a ordem do `04` (as 13 médias, depois os 13 desvios, populacionais). Antes de gravar, o script confere que o JSON reproduz o sklearn em todos os segmentos. O `escores_referencia.csv` traz o escore de cada segmento para conferir a implementação em C. Esses segmentos são os do próprio treino: **o `05` não mede desempenho**, que continua sendo o do Protocolo B (`exp015`). O modelo final classifica corretamente os 295 segmentos, inclusive os da `bpfo_0.3mm`, porque todos estão no treino; **uma demonstração com trechos dessas gravações reproduz o treino, não o Protocolo B**, e não deve ser apresentada como desempenho. O tamanho do escore (±1.300 a ±1.600 nesses segmentos) também não é medida de confiança: a margem vem de o treino conter as cinco gravações, e não diz nada sobre uma gravação nova. **O firmware usa só o sinal do escore.** O JSON é o contrato com o firmware: além dos pesos, ele descreve a cadeia que produz as 26 features nos pontos em que um porte em C costuma divergir sem erro (bloco `entrada`): a origem do sinal a 12,8 kHz (FIR Kaiser de 147 taps, corte em 5.760 Hz, decimação por 4, com o atraso de grupo descartado), escala da entrada (`int16 / 32767`, e não `/ 32768` como a conversão Q15 da CMSIS), janela de Hann simétrica (`np.hanning`), FFT de 512 pontos com espectro de potência, banco de Mel HTK de 20 Hz a fs/2 com os bins já calculados, log natural com `+1e-10`, DCT-II ortonormal e desvio populacional. Um teste refaz o MFCC só a partir dessa descrição e compara com o `dsp.mfcc`. Ao comparar o C com o `escores_referencia.csv`, use tolerância relativa (~1e-3) no escore, porque o MFCC em `float32` difere um pouco do Python; a previsão tem que ser idêntica. Ele exige as features de referência (sem `--norm-clipe`); se o `04` foi rodado com outra opção, rode-o de novo sem opções antes.
+Use sempre `--sem-registro` para reproduzir: ele grava em pastas de teste e não toca no `registry.csv` nem nos arquivos versionados. Com `--responsavel <nome>`, o script registra uma rodada nova, e no `05` isso troca o id e o SHA-256 do `lda_final.json`: o `06` passa a abortar, testes falham e o painel acusa modelo diferente do da placa.
 
-O `06` lê o `lda_final.json` e gera o `reports/modelo_final/lda_modelo.h` com a forma dobrada em float32: `LDA_N_FEATURES`, `lda_pesos`, `lda_bias`, `lda_escore()` e `lda_e_falha()`, com a regra de empate do JSON (escore ≥ 0 → falha). O número de características sai do JSON, sem 26 fixo: o `.h` é regenerado sempre que o modelo final mudar. O cabeçalho usa `float` (o `float32_t` da CMSIS) e não inclui a CMSIS, para compilar também no host. Ele traz o id da rodada do modelo, o SHA-256 do JSON e o commit do gerador; numa rodada registrada, o script aborta se o JSON ou o próprio script tiverem mudanças não commitadas. Antes de gravar, ele lê o `.h` de volta e calcula o escore dos 295 segmentos em float32, em Python e compilando o `.h` no host, e aborta se a previsão mudar em algum segmento ou se o escore se afastar do `escores_referencia.csv` mais que o limite do arredondamento da soma em float32, (N + 3)·2⁻²⁴·(Σ|pesos·x| + |bias|), calculado segmento a segmento. Como as features são as mesmas do Python, esse arredondamento é o único erro esperado; a tolerância relativa de 1e-3 do JSON é a do firmware, que calcula também o MFCC em float32, e aqui deixaria passar um erro de ~1,3 no escore. No Cortex-M4 o gcc funde multiplicação e soma (`vfma.f32`), então o escore da placa não é bit a bit o do host, mas fica dentro do mesmo limite. A conferência completa precisa das features do `04` sem opções. Sem `data/`, os testes conferem o `.h` versionado: o SHA-256 escrito nele tem que ser o do `lda_final.json` (senão o `05` rodou de novo e o `06` não), e, compilado, ele tem que dar o escore do segmento 0 do CSV a partir do MFCC do `reference_data.h`. Como no `05`, os segmentos são os do treino: isso confere o porte, não mede desempenho.
+Os passos `07` a `11` geram as referências e os clipes para a placa e preparam o HUSTmotor. O que cada etapa grava e confere está em [`docs/pipeline.md`](./docs/pipeline.md).
 
-O `07` gera o `reports/modelo_final/lda_vetores_teste.h`, que o firmware ([`lab3-firmware-stm32`](https://github.com/claraamp/lab3-firmware-stm32)) usa no marco de 13/10: as 26 características do `04` de cada segmento (todos, ou `--por-gravacao K` igualmente espaçados), o escore e a decisão do `escores_referencia.csv` e a tolerância de cada segmento. A tolerância é o limite do `06` mais o arredondamento do próprio escore de referência para float32. O `.h` também lista, por gravação, o segmento de menor |escore|, que a placa mostra em laço nos LEDs. Antes de gravar, o script confere que o `lda_modelo.h` versionado é o deste `lda_final.json` e que a soma em float32, em Python e com o `.h` compilado no host, a partir dos valores lidos de volta do arquivo gerado, fica dentro da tolerância e dá a decisão do CSV em todos os segmentos. Ele traz o bias do modelo (`VT_LDA_BIAS`), que o firmware compara com o do `lda_modelo.h` para recusar cabeçalhos de modelos diferentes. Como as características vêm do Python, o marco confere o porte do classificador, não o desempenho. Não há linha no registry: o arquivo é uma fixture de teste, e o resultado é o log da placa. Como o `.h` grava o commit do gerador, o script aborta, ao gravar no caminho versionado, se ele mesmo, o `lda_final.json`, o `escores_referencia.csv` ou o `lda_modelo.h` tiverem mudanças não commitadas; com `--out` em outro caminho, só avisa e marca o commit com `+mudancas`. Precisa das features do `04` sem opções.
-
-O `08` gera as referências por estágio do porte em C, em `reports/c_reference/estagios/`: para o segmento do meio de cada gravação, a saída em float64 de cada estágio da cadeia (escala, janela, espectro, Mel, log-Mel, MFCC, média, desvio e escore), em binários little-endian com um `indice.txt` por segmento, e o `tolerancias.txt` com as tolerâncias do A4 (`dsp.ESTAGIOS_PORTE`). É o que o harness em C do firmware ([`lab3-firmware-stm32`](https://github.com/claraamp/lab3-firmware-stm32), `tests/host/harness`) lê para conferir o porte estágio a estágio, no PC. Os intermediários saem de `dsp.estagios_mfcc`, que usa o mesmo `dsp.mfcc` da extração; o script aborta se o MFCC ou o escore não forem os do `04` e do `05`. As tolerâncias, a métrica de cada estágio e como foram fixadas estão no `docs/contrato_numerico.md` (seção "Tolerâncias por estágio (A4)", `inspect_tolerancias_estagio.py`). Como o `07`, grava o commit e aborta, no caminho versionado, se o script, o `dsp.py`, o `lda_final.json` ou o `escores_referencia.csv` tiverem mudanças não commitadas. Sem `data/`, o teste confere que as referências versionadas são as do `dsp` atual, recalculando-as a partir do `int16` gravado nelas.
-
-O `09` gera o `reports/c_reference/clipes_demo.h`, com o áudio que o firmware grava na flash para rodar a cadeia inteira na placa, do som à decisão:
-- **Clipes a 12,8 kHz:** por gravação, 2 segmentos consecutivos de 1 s (`--segundos`), a partir do segmento do meio, o mesmo das referências do `08`. Vêm em `int16` do PCM decimado, com o id, a classe, o escore e a decisão de cada segmento.
-- **Recorte a 51,2 kHz:** um segmento de 1 s do PCM original, para demonstrar a decimação na placa. Tem as margens do decimador causal de fase 0 (75 amostras antes e 73 depois; descartar as 37 primeiras saídas) e os 147 coeficientes do FIR.
-
-O recorte decimado em float64 e requantizado é, bit a bit, o primeiro segmento do clipe da `normal`. Na placa, a decimação é em float32, e uma amostra perto de um empate pode arredondar para o outro lado: o script emula o `arm_fir_decimate_f32` (sem e com FMA), aborta se o resultado diferir do clipe em mais de 1 LSB ou se o escore sair da tolerância do A4, e registra no `.h` quantas amostras diferem (1 sem FMA e 2 com FMA no recorte atual). Na placa, compare o recorte com folga de 1 LSB e o escore com tolerância. Como a entrada do MFCC é `int16`, a placa requantiza a saída do decimador antes do MFCC (`lrintf(y · 32767.0f)`, saturado em [−32768, 32767] antes do cast; `docs/contrato_numerico.md`, "Decimação", item 4): **a referência da placa é o `RECORTE_ESCORE_REF_INT16`**, o escore do CSV. O `RECORTE_ESCORE_REF`, da saída em float, é só diagnóstico; as duas diferem em ~7e-6, perto da tolerância de 1e-5.
-
-**No firmware:** o `.h` só declara os vetores (`extern const`). Eles são definidos no único `.c` que fizer `#define CLIPES_DEMO_DADOS` antes do `#include "clipes_demo.h"`; os outros `.c` só incluem. Com `static const` no `.h`, cada `.c` que o usasse levaria uma cópia do áudio, e dois já passariam dos 512 KB da flash. Com o firmware atual (vetores do `07` incluídos), a flash fica em cerca de 420 KB de 512 KB. O recorte inteiro em float não cabe na RAM (200 KB, contra 128 KB): a placa decima em blocos de 512 amostras (128 saídas, um passo de quadro). Como 51.348 = 100 × 512 + 148, depois dos blocos cheios vem uma última chamada com 148 amostras (`RECORTE_ULTIMO_BLOCO`); sem ela, as 37 últimas saídas se perdem sem erro. O laço está no comentário do `.h`.
-
-O padrão ocupa cerca de 350 KB, dentro do orçamento de flash do firmware (cerca de 434 KB para áudio); o script aborta acima dele (`--orcamento-kb`). Antes de gravar, ele confere que o escore de cada segmento, recalculado do `int16`, é o do `escores_referencia.csv`.
-
-**Todos os segmentos dos clipes estão no treino do modelo final:** a demonstração na placa mede a fidelidade do porte (se a placa reproduz o Python), não o desempenho do classificador, que continua sendo o do Protocolo B. Como o `07` e o `08`, o script grava o commit e aborta, no caminho versionado, se houver mudanças não commitadas. Sem `data/`, o teste do clipe lê o `.h` versionado, recalcula as características de cada segmento e confere o escore e a decisão gravados. Ele também decima o recorte em float64 e confere que sai o clipe a 12,8 kHz, e em float32, como a CMSIS, que fica a no máximo 1 LSB dele. Se houver compilador C, confere que o `.h` compila, que os dados são definidos num único `.c` e, com o `arm-none-eabi-gcc`, que só esse `.c` leva o áudio para a flash.
-
-O `03` é determinístico: num clone novo, ele reconstrói exatamente o `splits.json` versionado e avisa que "já existe e é idêntico". Se disser que o arquivo é **diferente**, os dados reconstruídos não são os mesmos das rodadas registradas — pare e investigue antes de seguir.
-
-Os testes não dependem de `data/` e devem passar logo depois de clonar:
+Alguns pontos de entrada (o que cada um precisa está no comentário):
 
 ```bash
-pytest tests/
+python scripts/validation/run_protocol.py --protocolo B --sem-registro   # resultado principal; precisa do 01 ao 04
+python scripts/validation/run_protocol_c.py --sem-registro               # HUSTmotor; precisa do 01 ao 06 e do HUSTmotor com o 10
+python scripts/validation/matriz_serial_placa.py --simulada                 # envio à placa simulada (não registra); precisa do 01 ao 06 e do HUSTmotor com o 10
+python scripts/interface/run_painel.py --arquivo reports/embarcado/capturas/linux-demo-24-11.log   # painel com uma captura salva; não precisa de data/
+python scripts/validation/run_consolidacao.py                            # tabelas e figuras do relatório; só lê os resultados versionados
 ```
 
-Para rodar os protocolos de validação. O fluxo é `04` → `mfcc_features.npz` → `run_protocol`: o `run_protocol` não extrai features, lê as do `04` e aborta se o `manifest_features.json` faltar ou tiver sido gerado com outra partição ou outros parâmetros de MFCC — nesse caso, rode o `04` de novo.
+O HUSTmotor vai em `data/raw/hustmotor/` (download em [`docs/hustmotor.md`](./docs/hustmotor.md)) e é preparado pelo `10_prepare_hustmotor.py`. As opções de cada script estão no `--help` dele, e a lista completa de comandos, em [`docs/pipeline.md`](./docs/pipeline.md). As rodadas que entram no `registry.csv` (com `--responsavel`) são da equipe: o registro grava o commit, então commite o código antes de rodar.
 
-```bash
-python scripts/validation/run_protocol.py --protocolo B --responsavel <nome>
-python scripts/validation/run_protocol.py --protocolo A --tarefa multiclasse --responsavel <nome>
-python scripts/validation/run_protocol.py --protocolo B --sem-c0      # ablação do ganho
-python scripts/validation/run_protocol.py --protocolo B --permutar    # controle de permutação
-python scripts/validation/run_protocol.py --protocolo B --permutar --semente 1   # uma rodada por semente
-python scripts/validation/run_protocol.py --protocolo B --segundos-treino 5 --semente 1   # curva de aprendizado (mín. 2 s; sorteio repartido entre as gravações)
-python scripts/validation/run_protocol.py --protocolo B --sem-registro   # teste, não registra
+## Convenções
 
-# Protocolo C no HUSTmotor (precisa do 10 e do 11; lê o data/processed/hustmotor/)
-python scripts/validation/run_protocol_c.py --sintetico                    # auto-teste, sem registro
-python scripts/validation/run_protocol_c.py --responsavel <nome>           # LDA sem retreino, C1 e C2
-python scripts/validation/run_protocol_c.py --recalibracao --responsavel <nome>   # LDA recalibrada pela normal
-python scripts/validation/run_protocol_c.py --recalibracao --sem-registro  # teste: grava em reports/validation/teste_protocolo_c/
-python scripts/validation/run_protocol_c.py --rotacao-fora --sintetico   # rotação deixada de fora: auto-teste
-python scripts/validation/run_protocol_c.py --rotacao-fora --responsavel <nome>   # D2 nos 4 folds; D1 a 20 e 30 Hz
-python scripts/validation/run_tabela_protocolo_c.py   # tabela única do Protocolo C (só lê; confere o registry)
-
-# robustez ao ruído: ruído no int16 a 51,2 kHz, B sem e com aumento, margem do escore e emulação em float32
-python scripts/validation/run_varredura_snr.py --sem-registro --rapido   # teste: 1 semente, 30, 10 e 0 dB
-python scripts/validation/run_varredura_snr.py --sem-registro            # teste: a grade inteira, 10 sementes (~10 min)
-python scripts/validation/run_varredura_snr.py --responsavel <nome>      # uma linha por ponto da grade
-python scripts/validation/run_varredura_snr.py --exportar-placa          # recorte para a placa; sha256 do .bin: 11f26bb8bfe42b5dfaf71523afe5c5d6bc690187d6791cb52880cd0f424066f8
-
-# sistema embarcado: os 295 + 40 segmentos e o recorte da robustez ao ruído pela serial, e a matriz contra o Python (precisa do pyserial)
-python scripts/validation/matriz_serial_placa.py --simulada                       # sem a placa (placa simulada em Python)
-# emular_placa: do repo lab3-firmware-stm32 (Linux/macOS). Lá: cmake -S tests/host/harness -B build/harness -G Ninja,
-# cmake --build build/harness e ./build/harness/emular_placa &, que imprime a porta /dev/pts/N usada abaixo
-python scripts/validation/matriz_serial_placa.py --porta /dev/pts/N --sem-registro   # contra o emular_placa do firmware
-python scripts/validation/matriz_serial_placa.py --porta COM5 --sem-registro      # ensaio com a placa (saídas fora do Git)
-python scripts/validation/matriz_serial_placa.py --porta COM5 --responsavel <nome>   # a rodada registrada
-python scripts/validation/matriz_serial_placa.py --captura reports/embarcado/capturas/serial-DD-MM.log --sem-registro   # refaz a matriz
-python scripts/validation/matriz_serial_placa.py --lista --porta COM5 --sem-registro --limite 10   # robustez na placa: ensaio (10 por ruído)
-python scripts/validation/matriz_serial_placa.py --lista --porta COM5 --responsavel <nome>         # robustez na placa: os 1.788 (precisa do .bin do --exportar-placa)
-python scripts/validation/matriz_serial_placa.py --lista --porta COM5 --ids 3:48,3:3,3:57,3:59 --pausa 4   # teste dos LEDs: só esses, na ordem dada, 4 s em cada um com a cor esperada (ensaio)
-python scripts/validation/matriz_serial_placa.py --captura reports/embarcado/capturas/serial-ruido-15-11-2.log --lista --sem-registro   # refaz a matriz da robustez (15/11)
-
-# painel de diagnóstico (interface/run_painel.py; precisa do Tkinter, que vem com o Python no Windows; no Linux,
-# sudo apt install python3-tk): na demonstração, a porta da placa (aperte o RESET depois de abrir); na recepção,
-# a porta é do matriz_serial_placa.py e o painel segue a captura que ele grava (a pasta das saídas de ensaio)
-python scripts/interface/run_painel.py --porta COM5                                    # demonstração (origens C e D)
-python scripts/interface/run_painel.py --seguir reports/embarcado/teste_serial          # recepção: abra antes do envio
-python scripts/interface/run_painel.py --arquivo reports/embarcado/capturas/serial-ruido-15-11-2.log --ritmo 0.3   # sem a placa
-python scripts/interface/run_painel.py --arquivo reports/embarcado/capturas/serial-07-11.log --sem-janela          # texto
-
-# tempo e memória do firmware final (seção 3.6 do relatório final): a captura é a de uma rodada dos 295 + 40
-# com o firmware gravado com -DMEDIDA=ON (linhas med); o orçamento e a pilha estática vêm do build padrão,
-# pelos tools/orcamento_memoria.py --markdown e tools/pilha_estatica.py do firmware; --linker é o "Memory
-# region" do build padrão, e --comparar-captura confere os escores bit a bit contra outra rodada
-python scripts/validation/run_tempo_memoria.py --captura reports/embarcado/capturas/tempo-memoria-DD-MM.log \
-    --orcamento reports/embarcado/tempo_memoria/orcamento.md --pilha reports/embarcado/tempo_memoria/pilha_estatica.txt \
-    --linker 450236 34992 --comparar-captura reports/embarcado/capturas/serial-07-11.log \
-    --firmware-commit <hash> --responsavel <nome>    # resumo.md, tabelas.tex e segmentos.csv em reports/embarcado/tempo_memoria/
-
-# tabelas (leem os metrics.json; não treinam nem registram)
-python scripts/validation/run_tabela_comparativa.py   # provisório × oficial
-python scripts/validation/run_tabela_controles.py     # sem c0, normalização, permutação e curva de aprendizado
-python scripts/validation/run_tabela_aumento.py       # B com e sem aumento: médias, pior caso e fator de expansão
-
-# controle dos harmônicos do eixo: peso da LDA nas bandas de Mel em que a normal
-# tem harmônicos mais fortes (lê o picos_metrics.json do identify_tonal_peaks.py)
-python scripts/exploration/inspect_lda_harmonicos.py --sintetico   # auto-teste
-python scripts/exploration/inspect_lda_harmonicos.py --responsavel <nome>
-
-# pente harmônico (BPFO/BPFI): candidatos de resolução A/B/C, decisão pela validação interna
-python scripts/exploration/inspect_comb_features.py --sintetico    # auto-teste
-python scripts/exploration/inspect_comb_features.py --responsavel <nome>
-
-# ablação da normalização RMS por segmento: reextrai e roda de novo
-python scripts/pipeline/04_extract_features.py --norm-clipe
-python scripts/validation/run_protocol.py --protocolo B --responsavel <nome>
-python scripts/pipeline/04_extract_features.py       # volta ao padrão (sem normalização)
-
-# estudo da escolha do classificador: LDA × MLP × CNN 1D × CNN 2D por validação
-# interna ao treino do B (~33 min completo; --blocos-externos 1 leva ~1/6 disso)
-python scripts/exploration/compare_classifiers.py --sintetico       # auto-teste, sem registro
-python scripts/exploration/compare_classifiers.py --responsavel <nome>
-python scripts/exploration/compare_classifiers.py --blocos-externos 1 --sem-registro   # conferência rápida
-python scripts/exploration/compare_classifiers.py --modelos lda,svm_lin --especificidade-minima 0.95 \
-    --saida reports/classifier/compare_classifiers_svm_lin.json --responsavel <nome>   # SVM linear (exp264)
-
-# referência para o porte em C (Fase 2)
-python scripts/pipeline/04_extract_features.py --ref-c
-
-# aumento de dados: o 04 gera N variantes de cada segmento e o run_protocol,
-# com --aumento, soma ao treino de cada fold só as que leem segmentos de treino
-python scripts/pipeline/04_extract_features.py --aumento 4
-python scripts/validation/run_protocol.py --protocolo B --aumento --responsavel <nome>
-python scripts/validation/run_protocol.py --protocolo B --aumento --permutar   # controle
-# ablação por técnica (deslocamento | estiramento | ruido) e modo do estiramento
-python scripts/pipeline/04_extract_features.py --aumento 4 --tecnicas ruido
-python scripts/pipeline/04_extract_features.py --aumento 4 --modo-estiramento velocidade
-# outro sorteio das variantes, com os mesmos parâmetros (uma rodada por semente)
-python scripts/pipeline/04_extract_features.py --aumento 4 --semente-aumento 1
-python scripts/validation/run_protocol.py --protocolo B --aumento --responsavel <nome>
-
-# Protocolo B em outra taxa, sem mudar a de produção: cada etapa com --fs grava
-# em caminhos próprios (pcm_decimated/25600/, splits_25600.json, features/25600/)
-python scripts/pipeline/02_decimate_pcm.py --fs 25600
-python scripts/pipeline/03_make_splits.py --fs 25600      # confere a partição versionada
-python scripts/pipeline/04_extract_features.py --fs 25600
-python scripts/validation/run_protocol.py --protocolo B --fs 25600 --responsavel <nome>
-python scripts/pipeline/04_extract_features.py            # a referência, a 12,8 kHz
-python scripts/validation/run_protocol.py --protocolo B --responsavel <nome>
-python scripts/validation/run_tabela_taxas.py --rodadas <exp 12,8 kHz> <exp 25,6 kHz>
-
-# resultados consolidados para o relatório: tabelas .tex (vírgula decimal), matriz de
-# confusão do B, figura dos controles, aumento, harmônicos, taxas e rastreabilidade (cada
-# número → rodada → registry). Aborta se alguma rodada não tiver linha no registry ou se
-# as métricas não baterem. Não treina nem registra.
-python scripts/validation/run_consolidacao.py
-python scripts/validation/run_consolidacao.py --sem-taxas    # sem a tabela 12,8 × 25,6 kHz
-```
-
-O teste nunca é aumentado: todo fold é avaliado nos segmentos originais. Rodar o `04` sem `--aumento` apaga o `mfcc_aumento.npz` de uma rodada anterior, para que ele não seja lido como se fosse da extração atual.
-
-Commite o código **antes** de uma rodada registrada: o `registry.csv` grava o hash do commit, e uma rodada feita com código não commitado aponta para um estado que não existe.
-
-Para conferir que a reconversão reproduziu a original — o `manifest.json` é versionado e a conversão é determinística, então número de amostras e pico PCM devem bater:
-
-```bash
-python scripts/exploration/inspect_pcm.py
-```
-
-O pipeline **aplica** decisões, não as toma. A comparação entre taxas candidatas, que definiu os 12.800 Hz, é um estudo pontual e está em `scripts/exploration/`; ele fica versionado para a decisão continuar auditável, mas não precisa ser reexecutado a cada rodada:
- 
-```bash
-python scripts/exploration/compare_decimation_rates.py --condicao 0Nm
-```
-
-A caracterização da assinatura acústica segue a mesma lógica. Cada script tem um auto-teste com sinal sintético de resposta conhecida (`--sintetico`, que não registra e grava em `reports/signature/sintetico/`, fora do Git). O `confirm_bpf_envelope.py` e o `inspect_signature_mel.py` leem as frequências medidas do `reports/signature/picos_metrics.json`, então o `identify_tonal_peaks.py` roda antes deles. O `confirm_bpf_envelope.py` precisa da vibração em `data/raw/vibracao/`, e o `inspect_signature_mel.py` aborta se as features do `04` não forem as de referência (sem `--norm-clipe`, parâmetros de MFCC do `config.py`):
-
-```bash
-python scripts/exploration/identify_tonal_peaks.py --sintetico       # auto-teste
-python scripts/exploration/inspect_signature_spectra.py
-python scripts/exploration/identify_tonal_peaks.py
-python scripts/exploration/confirm_bpf_envelope.py              # os 4 canais de vibração + microfone
-python scripts/exploration/inspect_signature_mel.py
-```
- 
-Os scripts de `scripts/exploration/` e `scripts/validation/` não escrevem em `data/`. Os módulos na raiz de `scripts/` (`config`, `dsp`, `pcm_io`, `experimentos`) não são executáveis: são importados pelas etapas e pelos estudos, para que todos usem a mesma implementação e os mesmos parâmetros. Nas pastas por assunto, como `validation/`, os executáveis começam com `run_` e o resto é importado.
-
-## Fluxo de trabalho
- 
-Cada tarefa em uma branch própria a partir de `main`, com prefixo por tipo de trabalho (`feature/`, `fix/`, `refactor/`), e merge para `main` ao concluir. As regras completas — branches, mensagens de commit e títulos de PR — estão em [`CONVENTIONS.md`](./CONVENTIONS.md), seção 6.
+Branches, mensagens de commit, nomes de scripts e formato do registro de experimentos: [`CONVENTIONS.md`](./CONVENTIONS.md).
